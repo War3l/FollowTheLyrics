@@ -116,6 +116,15 @@ def main():
         "--hidden-import", "pyaudiowpatch", "--hidden-import", "welcome",
         "--collect-submodules", "winrt",
     ]
+    # Bibliotheques C++ de Microsoft, version la plus recente, a la racine du paquet :
+    # celles livrees avec Qt sont plus vieilles que le compilateur de PyQt, et un PC
+    # peut en avoir d'encore plus vieilles (voir bootstrap.py).
+    sysdir = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+    for dll in ("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "msvcp140_atomic_wait.dll",
+                "concrt140.dll", "vcruntime140.dll", "vcruntime140_1.dll"):
+        src = os.path.join(sysdir, dll)
+        if os.path.exists(src):
+            cmd += ["--add-binary", f"{src}{os.pathsep}."]
     # tout ce dont l'appli n'a pas besoin : .exe plus petit, demarrage plus rapide
     for mod in ("tkinter", "unittest", "pydoc", "doctest", "pdb", "lib2to3", "test", "setuptools", "pip",
                 "PyQt6.QtQml", "PyQt6.QtQuick", "PyQt6.QtPdf", "PyQt6.QtSvg", "PyQt6.QtBluetooth",

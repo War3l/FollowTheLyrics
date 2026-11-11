@@ -37,9 +37,17 @@ from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
 from types import SimpleNamespace
 
-import numpy as np
+import bootstrap
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, pyqtSignal
+bootstrap.prepare()  # nos bibliotheques C++ et Qt d'abord (voir bootstrap.py)
+
+import numpy as np  # noqa: E402
+
+try:
+    from PyQt6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, pyqtSignal
+except ImportError as _qt_error:
+    bootstrap.report(_qt_error)
+    raise SystemExit(1)
 from PyQt6.QtGui import (
     QAction, QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QGuiApplication,
     QImage, QLinearGradient, QPainter, QPainterPath, QPen, QRegion,
@@ -1923,6 +1931,7 @@ def selftest(app, out_dir):
     import traceback
     import settings
     report = [f"frozen={settings.FROZEN}", f"data_dir={settings.DATA_DIR}"]
+    report += [f"boot {n}: {r}" for n, r in bootstrap.LOG]
     try:
         import media  # noqa: F401
         report.append("winrt=ok")
