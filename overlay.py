@@ -50,11 +50,12 @@ except ImportError as _qt_error:
     raise SystemExit(1)
 from PyQt6.QtGui import (
     QAction, QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QGuiApplication,
-    QImage, QLinearGradient, QPainter, QPainterPath, QPen, QRegion,
+    QImage, QLinearGradient, QPainter, QPainterPath, QPen, QRegion, QTransform,
 )
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
 
 import colors as cover_colors
+import easter
 import games
 import hotkeys
 from lyrics import (Line, build_line, cache_load, cache_save, extract_singers, fetch_lyrics_ex,
@@ -429,6 +430,7 @@ class Overlay(QWidget):
         self._band = None
         self._halo_cache = OrderedDict()
         self.flash = None          # titre du morceau affiche en geant
+        self.egg = None            # easter egg du morceau en cours (voir easter.py)
         self.force_paint = True
         self.was_animating = False
         self.accent = [QColor(c) for c in NEUTRAL_PALETTE]
@@ -545,6 +547,8 @@ class Overlay(QWidget):
             self.cover_img = None
             self.accent = [QColor(c) for c in NEUTRAL_PALETTE]
             self.anchor_pos, self.anchor_t = np.position, now
+            self.egg = easter.pick(np, self) if self.cfg.get("easter", True) else None
+            self.force_paint = True
         elif np.playing != self.playing or abs(np.position - self.raw_position()) > 0.35:
             self.anchor_pos, self.anchor_t = np.position, now
         self.playing = np.playing
@@ -566,6 +570,8 @@ class Overlay(QWidget):
             self.times = [l.time for l in lines]
             self.word_sync = any(l.chars for l in lines)
             self.state = "ok"
+            if self.egg:
+                self.egg.set_lines(lines)
         else:
             self.state = "missing"
         self.track_changed_at = self.clock()
@@ -709,6 +715,17 @@ class Overlay(QWidget):
     def column_mode(self):
         return self.cfg.get("mode") in ("classic", "typewriter")
 
+    def stacked(self):
+        """Mode Edit : rangees de tailles differentes, une seule en couleur."""
+        return self.cfg.get("mode") == "edit" and self.cfg.get("stack", True)
+
+    @staticmethod
+    def row_scales(rows):
+        """-> (rangee vedette, taille de chaque rangee). La vedette est celle du mot le plus
+        long ; les autres rapetissent en s'en eloignant."""
+        hero = max(range(len(rows)), key=lambda r: (max(len(w[0].strip(",.!?;:")) for w in rows[r][0]), -r))
+        return hero, [1.0 if r == hero else max(0.46, 0.64 - 0.12 * (abs(r - hero) - 1)) for r in range(len(rows))]
+
     # ---- placement : mode Edit (au hasard, moitie haute) --------------------
     def place_line(self, line, avoid):
         if self.column_mode():
@@ -728,7 +745,11 @@ class Overlay(QWidget):
                     mul *= 1.22
                 if attempt >= 100:  # pas de place parfaite : on reduit plutot que d'empieter
                     mul *= 0.78 if attempt < 150 else 0.62
-                maxw = rng.choice([0.18, 0.24, 0.30, 0.36]) * W / mul
+                if self.stacked():  # mots empiles : rangees courtes, bloc un peu plus gros
+                    mul *= 1.45
+                    maxw = rng.choice([0.11, 0.14, 0.18, 0.22]) * W / mul
+                else:
+                    maxw = rng.choice([0.18, 0.24, 0.30, 0.36]) * W / mul
                 bw, bh = self.block_size(line, maxw)
                 bw, bh = bw * mul, bh * mul
             else:
@@ -764,7 +785,8 @@ class Overlay(QWidget):
         direction = {"left": (-1, 0), "right": (1, 0)}.get(align, (0, -1))
         return SimpleNamespace(rect=r, ax=ax, cy=r.center().y(), align=align, mul=mul, maxw=maxw,
                                rot=rng.choice([-4, -3, -2, -1, 0, 0, 1, 2, 3, 4]),
-                               enter=enter, dir=direction, chorus=chorus)
+                               enter=enter, dir=direction, chorus=chorus,
+                               tilt={"left": 1, "right": -1}.get(align, 0) * rng.uniform(26, 34))
 
     # ---- placement : modes Classique / Machine a ecrire ---------------------
     def column_band(self):
@@ -828,7 +850,7 @@ class Overlay(QWidget):
         """Le chanteur dit le titre du morceau : on l'affiche en tres grand."""
         line = self.lines[idx]
         mode = self.cfg.get("title_drop", "always")
-        if mode == "never" or not getattr(line, "title_drop", False):
+        if mode == "never" or self.egg or not getattr(line, "title_drop", False):
             return
         in_game = self.profile_key != "bureau"
         if in_game and mode == "desktop":
@@ -910,6 +932,8 @@ class Overlay(QWidget):
         """Faux quand l'image est figee : inutile de redessiner (moins de charge en jeu)."""
         if self.exiting or self.particles or self.flash:
             return True
+        if self.egg and self.egg.busy(now, pos):
+            return True
         if now < self.toast_until or now < self.zones_until or self.card_visible():
             return True
         if self.beat_pulse() > 0.01:
@@ -963,6 +987,8 @@ class Overlay(QWidget):
                 pt["vx"] *= 0.97
                 alive.append(pt)
         self.particles = alive
+        if self.egg:
+            self.egg.tick(now, dt, pos_now)
 
         toast_on = now < self.toast_until or now < self.zones_until
         since = now - self.track_changed_at
@@ -991,8 +1017,8 @@ class Overlay(QWidget):
             if self.flash:
                 g = int(self.flash["font"].pixelSize() * 0.9) + 40
                 region = region.united(QRegion(self.flash["rect"].toAlignedRect().adjusted(-g, -g, g, g)))
-            if now < self.zones_until:
-                region = QRegion(self.rect())
+            if now < self.zones_until or (self.egg and self.egg.busy(now, pos_now)):
+                region = QRegion(self.rect())  # feux d'artifice : partout sur l'ecran
         dirty = region.united(self.last_region)
         # On ne redessine que si quelque chose bouge (texte fige = aucun travail).
         animating = abs(target - self.alpha) > 0.002 or self.is_animating(now, pos_now)
@@ -1043,6 +1069,8 @@ class Overlay(QWidget):
 
         self.draw_particles(p)
         self.draw_card(p)
+        if self.egg:
+            self.egg.draw(p, now, pos)
         p.end()
 
     def sung_end(self, idx):
@@ -1109,11 +1137,22 @@ class Overlay(QWidget):
         if alpha <= 0.003:
             return
         line = self.lines[e["idx"]]
+        if self.egg:
+            alpha *= self.egg.line_alpha(e["idx"], pos, e["place"].rect)
+            if alpha <= 0.003:
+                return
         pl = e["place"]
         x, y = at if at else (pl.ax, pl.cy)
         p.save()
         p.setOpacity(clamp(self.alpha * alpha))
         p.translate(x + ox, y + oy)
+        tilt = getattr(pl, "tilt", 0) if self.cfg.get("tilt", True) else 0
+        if tilt and line.text:
+            # effet 3D : le texte pivote comme sur un mur, le bord de l'ecran devant, le centre au fond
+            ang = math.radians(abs(tilt))
+            depth = max(120.0, pl.rect.width()) * 2.1  # camera proche : la perspective se voit meme sur une ligne courte
+            k = math.copysign(math.sin(ang) / depth, tilt)
+            p.setTransform(QTransform(math.cos(ang), 0, k, 0, 1, 0, 0, 0, 1), True)
         p.rotate(pl.rot)
         p.scale(pl.mul * scale_k, pl.mul * scale_k)
         if not line.text:
@@ -1236,7 +1275,10 @@ class Overlay(QWidget):
         label_h = self.label_height() if line.singer else 0
         tf = self.small_font(0.5)
         trans_h = QFontMetricsF(tf).height() * 1.1 if self.show_translation(line) else 0
-        h = lh * len(rows) + label_h + trans_h
+        stack = self.stacked() and len(rows) > 1
+        hero, scales = self.row_scales(rows) if stack else (-1, [1.0] * len(rows))
+        rows_h = lh * sum(scales)
+        h = rows_h + label_h + trans_h
         style = self.cfg["style"]
         align = pl.align
         current = mode == "current"
@@ -1261,10 +1303,18 @@ class Overlay(QWidget):
             chorus = pl.chorus
             word_i = 0
             lit = []
+            white = self.cfg.get("color") == "white"
+            row_top = 0.0
             for r, (row, roww) in enumerate(rows):
                 x0 = {"left": 0, "right": -roww}.get(align, -roww / 2)
-                base_y = r * lh + ascent
-                brush = self.fill_brush(x0, roww, chorus)
+                rs = scales[r]
+                p.save()  # chaque rangee a sa taille (autour du point d'ancrage : l'alignement tient)
+                p.translate(0, row_top)
+                p.scale(rs, rs)
+                base_y = ascent
+                plain = stack and r != hero  # rangee secondaire : blanche, peu de halo
+                brush = QBrush(QColor(255, 255, 255, 215 if white else 245)) if plain \
+                    else self.fill_brush(x0, roww, chorus or stack)
                 for word, wx, ww, cstart in row:
                     x = x0 + wx
                     if not current:
@@ -1273,6 +1323,10 @@ class Overlay(QWidget):
                         continue
                     sc, dx, dy, glow_k, sx = held_fx(meta.get(cstart), pos) if timed else (1, 0, 0, 0, 1)
                     glow = base_glow * (1 + 1.4 * glow_k) + (0.25 if chorus else 0)
+                    if plain:
+                        glow *= 0.4
+                    elif stack:
+                        glow *= 1.25
                     cxw, cyw = x + ww / 2, base_y - ascent * 0.35
                     p.save()
                     if sc != 1 or dx or dy or sx != 1:
@@ -1337,7 +1391,9 @@ class Overlay(QWidget):
                     lp.end()
                     p.drawImage(QPointF(left, top), layer)
                 lit = []
-                last_row_end = (x0 + roww, base_y)
+                p.restore()
+                last_row_end = ((x0 + roww) * rs, row_top + ascent * rs)
+                row_top += lh * rs
 
         # choeur "(yeah)" : petit, en italique, a cote de la fin de ligne
         if line.adlib and current:
@@ -1364,7 +1420,7 @@ class Overlay(QWidget):
             text = fm.elidedText(line.translation, Qt.TextElideMode.ElideRight, pl.maxw * 1.2)
             tw = fm.horizontalAdvance(text)
             tx = {"left": 0, "right": -tw}.get(align, -tw / 2)
-            ty = len(rows) * lh + fm.ascent() + 2
+            ty = rows_h + fm.ascent() + 2
             self.draw_text_fx(p, text, tf, tx, ty, QBrush(QColor(255, 255, 255, 205)), glow=0)
 
     def draw_typed(self, p, line, rows, lh, ascent, font, align, pos, chorus):
@@ -1913,8 +1969,10 @@ class App:
         o = self.overlay
         if key == "scale":
             o.apply_geometry()
-        elif key in ("mode", "position", "font", "translation"):
+        elif key in ("mode", "position", "font", "translation", "stack"):
             o.reset_layout()
+        elif key == "easter" and not value:
+            o.egg = None
         o.poke()
 
     def set_visible(self, visible):
