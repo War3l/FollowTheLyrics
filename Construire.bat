@@ -1,0 +1,10 @@
+@echo off
+cd /d "%~dp0"
+if not exist ".venv\Scripts\python.exe" (
+  echo Installation de l'environnement...
+  python -m venv .venv
+  ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+)
+".venv\Scripts\python.exe" -m pip install --quiet pyinstaller
+".venv\Scripts\python.exe" build.py
+pause

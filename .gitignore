@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+cache/
+config.json
+profiles.json
+apercu_couleurs.png
