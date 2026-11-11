@@ -1,275 +1,48 @@
-"""Panneau de controle : musique en cours + tous les reglages, en direct."""
+"""Panneau de controle : un menu a gauche, une page par sujet a droite.
+
+Accueil (musique en cours) · Affichage · Style · Musique · Jeux · Raccourcis · Général.
+Tout s'applique en direct ; les briques dessinees a la main sont dans widgets.py.
+"""
 import ctypes
-import math
+import os
 
-from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (
-    QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QIcon, QImage, QLinearGradient,
-    QPainter, QPainterPath, QPen, QPixmap, QRadialGradient,
-)
+from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtGui import QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QLinearGradient, QPainter, QPen, QRadialGradient
+from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtWidgets import (
-    QAbstractButton, QButtonGroup, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QListWidget, QListWidgetItem, QPushButton, QScrollArea, QSizePolicy, QSlider,
-    QVBoxLayout, QWidget,
+    QButtonGroup, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QPushButton, QScrollArea, QSlider, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+import hotkeys
 from settings import (COLORS, MODES, POSITIONS, RECOMMENDED_FONTS, STYLES, TITLE_DROP, app_label,
                       autostart_enabled, set_autostart)
+from widgets import (BG, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, SIDE, TEXT, UI,  # noqa: F401
+                     ColorCard, CoverView, Equalizer, HotkeyButton, MiniPlayer, ModeCard, NavTile,
+                     ProgressView, Segmented, SideNav, Toggle, alpha, fmt_time, icon_pixmap,
+                     make_anim, make_icon, run_anim, ui_font)
 
-DEFAULT_ACCENT = QColor("#8B7CFF")
-UI = {"accent": QColor(DEFAULT_ACCENT)}  # couleur d'accent du panneau (celle de la pochette)
+SITE_URL = "https://war3l.github.io/FollowTheLyrics/"
 
-BG = "#0c0d12"
-CARD = "#14161e"
-CARD_BORDER = "#20232e"
-FIELD = "#1b1e28"
-TEXT = "#eceef4"
-DIM = "#8b91a3"
-
-
-def icon_pixmap(size=64):
-    """Le logo : carre arrondi en degrade, trois lignes de paroles dont une « chantee »."""
-    pm = QPixmap(size, size)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    s = size / 64.0
-    p.scale(s, s)
-    body = QRectF(2, 2, 60, 60)
-    g = QLinearGradient(QPointF(4, 2), QPointF(60, 62))
-    g.setColorAt(0.0, QColor("#5EE7FF"))
-    g.setColorAt(0.5, QColor("#8B7CFF"))
-    g.setColorAt(1.0, QColor("#FF6FB5"))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(g))
-    p.drawRoundedRect(body, 15, 15)
-    shine = QRadialGradient(QPointF(16, 8), 44)
-    shine.setColorAt(0, QColor(255, 255, 255, 90))
-    shine.setColorAt(1, QColor(255, 255, 255, 0))
-    p.setBrush(QBrush(shine))
-    p.drawRoundedRect(body, 15, 15)
-    # trois lignes de paroles : celle du milieu est en train d'etre chantee
-    dark = QColor(14, 12, 28)
-    p.setBrush(QColor(dark.red(), dark.green(), dark.blue(), 95))
-    p.drawRoundedRect(QRectF(13, 16, 26, 7), 3.5, 3.5)
-    p.drawRoundedRect(QRectF(13, 41, 32, 7), 3.5, 3.5)
-    p.setBrush(QColor(dark.red(), dark.green(), dark.blue(), 110))
-    p.drawRoundedRect(QRectF(13, 27, 38, 10), 5, 5)
-    p.setBrush(QColor("white"))
-    p.drawRoundedRect(QRectF(13, 27, 25, 10), 5, 5)
-    p.end()
-    return pm
-
-
-def make_icon():
-    ic = QIcon()
-    for size in (16, 24, 32, 48, 64, 128, 256):
-        ic.addPixmap(icon_pixmap(size))
-    return ic
-
-
-def fmt_time(t):
-    t = max(0, int(t))
-    return f"{t // 60}:{t % 60:02d}"
-
-
-def ui_font(px, weight=QFont.Weight.Normal, family="Segoe UI Variable Text"):
-    f = QFont(family)
-    f.setPixelSize(px)
-    f.setWeight(weight)
-    return f
-
-
-# --------------------------------------------------------------------------
-# Petits composants dessines a la main
-# --------------------------------------------------------------------------
-class Toggle(QAbstractButton):
-    """Interrupteur on/off."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setCheckable(True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(46, 26)
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        on = self.isChecked()
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(UI["accent"] if on else QColor("#2a2e3b"))
-        p.drawRoundedRect(QRectF(0, 0, 46, 26), 13, 13)
-        p.setBrush(QColor("#0c0d12") if on else QColor("#cfd3de"))
-        p.drawEllipse(QRectF(23 if on else 3, 3, 20, 20))
-
-
-class ModeCard(QAbstractButton):
-    """Carte de choix du mode avec une mini illustration de l'ecran."""
-
-    def __init__(self, key, title, desc, parent=None):
-        super().__init__(parent)
-        self.key, self.title, self.desc = key, title, desc
-        self.setCheckable(True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumSize(170, 176)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        acc = UI["accent"]
-        on = self.isChecked()
-        r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        bg = QColor(FIELD)
-        if on:
-            bg = QColor(int(bg.red() * 0.8 + acc.red() * 0.2), int(bg.green() * 0.8 + acc.green() * 0.2),
-                        int(bg.blue() * 0.8 + acc.blue() * 0.2))
-        p.setPen(QPen(acc if on else QColor(CARD_BORDER), 2 if on else 1))
-        p.setBrush(bg)
-        p.drawRoundedRect(r, 14, 14)
-
-        # mini ecran
-        scr = QRectF(r.left() + 12, r.top() + 12, r.width() - 24, 86)
-        p.setPen(QPen(QColor("#2b2f3c"), 1))
-        p.setBrush(QColor("#0a0b0f"))
-        p.drawRoundedRect(scr, 8, 8)
-        p.setPen(QPen(QColor(120, 200, 255, 70), 1, Qt.PenStyle.DashLine))
-        p.drawLine(QPointF(scr.left() + 4, scr.center().y()), QPointF(scr.right() - 4, scr.center().y()))
-        p.setPen(Qt.PenStyle.NoPen)
-        dim = QColor(255, 255, 255, 70)
-        w = scr.width()
-
-        def bar(x, y, length, col, h=6, rot=0):
-            p.save()
-            p.translate(scr.left() + x, scr.top() + y)
-            p.rotate(rot)
-            p.setBrush(col)
-            p.drawRoundedRect(QRectF(0, -h / 2, length, h), h / 2, h / 2)
-            p.restore()
-
-        if self.key == "classic":
-            bar(10, 14, w * 0.30, dim, 5)
-            bar(10, 26, w * 0.48, acc, 7)
-        elif self.key == "edit":
-            bar(10, 16, w * 0.32, acc, 7, -4)
-            bar(w * 0.58, 12, w * 0.30, dim, 5, 3)
-            bar(w * 0.40, 34, w * 0.26, dim, 5, -2)
-        else:
-            bar(w * 0.25, 14, w * 0.40, dim, 5)
-            bar(w * 0.25, 27, w * 0.30, acc, 7)
-            p.setBrush(acc)
-            p.drawRoundedRect(QRectF(scr.left() + w * 0.25 + w * 0.30 + 4, scr.top() + 21, 3, 12), 1, 1)
-
-        p.setPen(QColor(TEXT))
-        p.setFont(ui_font(14, QFont.Weight.Bold, "Segoe UI Variable Display"))
-        p.drawText(QRectF(r.left() + 14, scr.bottom() + 10, r.width() - 28, 20),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.title)
-        p.setPen(QColor(DIM))
-        p.setFont(ui_font(11))
-        p.drawText(QRectF(r.left() + 14, scr.bottom() + 32, r.width() - 28, 36),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap, self.desc)
-
-
-class Segmented(QWidget):
-    """Groupe de boutons dont un seul est actif."""
-    changed = pyqtSignal(str)
-
-    def __init__(self, options: dict, parent=None):
-        super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
-        self.group = QButtonGroup(self)
-        self.buttons = {}
-        for key, label in options.items():
-            b = QPushButton(label)
-            b.setCheckable(True)
-            b.setProperty("role", "seg")
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.group.addButton(b)
-            lay.addWidget(b)
-            self.buttons[key] = b
-            b.clicked.connect(lambda _=False, k=key: self.changed.emit(k))
-        lay.addStretch(1)
-
-    def set_value(self, key):
-        if key in self.buttons:
-            self.buttons[key].setChecked(True)
-
-    def setEnabled(self, on):  # noqa: N802 (API Qt)
-        for b in self.buttons.values():
-            b.setEnabled(on)
-
-
-class CoverView(QWidget):
-    def __init__(self, size, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(size, size)
-        self.img = None
-
-    def set_image(self, img):
-        self.img = img
-        self.update()
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        r = QRectF(self.rect())
-        path = QPainterPath()
-        path.addRoundedRect(r, 18, 18)
-        p.setClipPath(path)
-        if self.img is not None and not self.img.isNull():
-            p.drawImage(r, self.img)
-        else:
-            g = QLinearGradient(r.topLeft(), r.bottomRight())
-            acc = UI["accent"]
-            g.setColorAt(0, QColor(acc.red(), acc.green(), acc.blue(), 120))
-            g.setColorAt(1, QColor("#16182200"))
-            p.fillRect(r, QColor("#161822"))
-            p.fillRect(r, QBrush(g))
-            p.setPen(QColor(255, 255, 255, 170))
-            p.setFont(ui_font(int(r.width() * 0.32), QFont.Weight.Bold, "Segoe UI Symbol"))
-            p.drawText(r, Qt.AlignmentFlag.AlignCenter, "♪")
-
-
-class ProgressView(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(34)
-        self.pos, self.dur = 0.0, 0.0
-
-    def set_values(self, pos, dur):
-        self.pos, self.dur = pos, dur
-        self.update()
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w = self.width()
-        bar = QRectF(0, 6, w, 5)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#272a36"))
-        p.drawRoundedRect(bar, 2.5, 2.5)
-        if self.dur > 0:
-            frac = max(0.0, min(1.0, self.pos / self.dur))
-            p.setBrush(UI["accent"])
-            p.drawRoundedRect(QRectF(0, 6, w * frac, 5), 2.5, 2.5)
-            p.setBrush(QColor("white"))
-            p.drawEllipse(QPointF(w * frac, 8.5), 5, 5)
-        p.setPen(QColor(DIM))
-        p.setFont(ui_font(11))
-        p.drawText(QRectF(0, 16, w / 2, 18), Qt.AlignmentFlag.AlignLeft, fmt_time(self.pos) if self.dur else "")
-        p.drawText(QRectF(w / 2, 16, w / 2, 18), Qt.AlignmentFlag.AlignRight, fmt_time(self.dur) if self.dur else "")
+# (cle, nom dans le menu, icone, titre de la page, phrase d'explication)
+PAGES = [
+    ("home", "Accueil", "home", "Accueil", "Ce qui joue en ce moment, et tes réglages en un coup d'œil."),
+    ("display", "Affichage", "screen", "Affichage", "Où et comment les paroles apparaissent à l'écran."),
+    ("style", "Style", "style", "Style", "Couleurs, animation des mots et police d'écriture."),
+    ("music", "Musique", "music", "Musique", "Les applis écoutées, la traduction et le calage des paroles."),
+    ("games", "Jeux", "game", "Jeux", "Les paroles évitent les zones importantes de tes jeux."),
+    ("keys", "Raccourcis", "keys", "Raccourcis clavier", "Ils marchent partout, même en pleine partie. Choisis tes touches."),
+    ("general", "Général", "sliders", "Général", "Démarrage, mises à jour et à propos."),
+]
 
 
 class FontPreview(QWidget):
-    """Apercu du texte avec la police et les couleurs choisies."""
+    """Apercu du texte avec la police et les couleurs choisies (meme rendu qu'a l'ecran)."""
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
         self.app = app
-        self.setFixedHeight(96)
+        self.setFixedHeight(104)
 
     def paintEvent(self, _):
         p = QPainter(self)
@@ -280,56 +53,100 @@ class FontPreview(QWidget):
         g.setColorAt(1, QColor("#33424e"))
         p.setPen(QPen(QColor(CARD_BORDER), 1))
         p.setBrush(QBrush(g))
-        p.drawRoundedRect(r, 12, 12)
+        p.drawRoundedRect(r, 16, 16)
+        p.setPen(QColor(255, 255, 255, 120))
+        p.setFont(ui_font(11, QFont.Weight.Bold))
+        p.drawText(r.adjusted(16, 10, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "APERÇU")
         cfg = self.app.cfg
         o = self.app.overlay
         f = QFont(cfg.get("font", "Segoe UI"))
-        f.setPixelSize(32)
+        f.setPixelSize(34)
         f.setWeight(QFont.Weight.Black)
         text = "Les paroles prennent vie"
         fm = QFontMetricsF(f)
         tw = fm.horizontalAdvance(text)
-        if tw > r.width() - 30:
-            f.setPixelSize(int(32 * (r.width() - 30) / tw))
+        if tw > r.width() - 40:
+            f.setPixelSize(int(34 * (r.width() - 40) / tw))
             fm = QFontMetricsF(f)
             tw = fm.horizontalAdvance(text)
         x = r.center().x() - tw / 2
-        y = r.center().y() + fm.ascent() / 2 - 4
-        # meme rendu que les paroles a l'ecran (vrai glow)
+        y = r.center().y() + fm.ascent() / 2 - 2
         o.draw_text_fx(p, text, f, x, y, o.fill_brush(x, tw, False), o.base_glow())
 
 
-def section(title):
-    """Carte avec un titre en petites majuscules ; renvoie (carte, layout du contenu)."""
-    card = QFrame()
-    card.setProperty("role", "card")
-    lay = QVBoxLayout(card)
-    lay.setContentsMargins(20, 18, 20, 20)
-    lay.setSpacing(14)
-    lbl = QLabel(title.upper())
-    lbl.setProperty("role", "section")
-    lay.addWidget(lbl)
-    return card, lay
+class Card(QFrame):
+    """Bloc de reglages : un titre, une phrase, puis des lignes separees par un trait fin."""
+
+    def __init__(self, title=None, hint=None):
+        super().__init__()
+        self.setProperty("role", "card")
+        self.lay = QVBoxLayout(self)
+        self.lay.setContentsMargins(22, 20, 22, 20)
+        self.lay.setSpacing(14)
+        self.rows = 0
+        if title:
+            t = QLabel(title)
+            t.setProperty("role", "cardtitle")
+            self.lay.addWidget(t)
+            self.title_label = t
+        if hint:
+            h = QLabel(hint)
+            h.setProperty("role", "hint")
+            h.setWordWrap(True)
+            self.lay.addWidget(h)
+            self.hint_label = h
+
+    def add(self, widget):
+        self.lay.addWidget(widget)
+        return widget
+
+    def add_row(self, label, widget, hint=None):
+        """Une ligne : le nom du reglage a gauche, sa commande a droite."""
+        if self.rows:
+            sep = QFrame()
+            sep.setFixedHeight(1)
+            sep.setProperty("role", "sep")
+            self.lay.addWidget(sep)
+        self.rows += 1
+        w = QWidget()
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(16)
+        box = QVBoxLayout()
+        box.setSpacing(2)
+        l1 = QLabel(label)
+        l1.setProperty("role", "rowtitle")
+        box.addWidget(l1)
+        w.hint_label = None
+        if hint:
+            l2 = QLabel(hint)
+            l2.setProperty("role", "hint")
+            l2.setWordWrap(True)
+            box.addWidget(l2)
+            w.hint_label = l2
+        lay.addLayout(box, 1)
+        lay.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+        w.title_label = l1
+        self.lay.addWidget(w)
+        return w
 
 
-def row(label, widget, hint=None):
+def button(text, role="ghost"):
+    b = QPushButton(text)
+    b.setProperty("role", role)
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
+    return b
+
+
+def hbox(*widgets, spacing=10, stretch=True):
     w = QWidget()
     lay = QHBoxLayout(w)
     lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(14)
-    box = QVBoxLayout()
-    box.setSpacing(2)
-    l1 = QLabel(label)
-    l1.setProperty("role", "rowtitle")
-    box.addWidget(l1)
-    if hint:
-        l2 = QLabel(hint)
-        l2.setProperty("role", "hint")
-        l2.setWordWrap(True)
-        box.addWidget(l2)
-    lay.addLayout(box, 1)
-    lay.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
-    w.title_label = l1
+    lay.setSpacing(spacing)
+    for x in widgets:
+        lay.addWidget(x)
+    if stretch:
+        lay.addStretch(1)
     return w
 
 
@@ -343,72 +160,175 @@ class Panel(QWidget):
         self.setObjectName("Panel")
         self.setWindowTitle("FollowTheLyrics")
         self.setWindowIcon(make_icon())
-        self.resize(1140, 780)
-        self.setMinimumSize(1000, 660)
+        self.resize(1160, 770)
+        self.setMinimumSize(1020, 660)
         self._accent_name = None
         self._cover_src = None
         self._building = True
+        self._key_note = ""
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(26, 22, 26, 22)
-        root.setSpacing(18)
-        root.addLayout(self.build_header())
-        body = QHBoxLayout()
-        body.setSpacing(18)
-        body.addWidget(self.build_now_playing(), 0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        content = QWidget()
-        content.setObjectName("Content")
-        cl = QVBoxLayout(content)
-        cl.setContentsMargins(0, 0, 8, 0)
-        cl.setSpacing(16)
-        cl.addWidget(self.build_update_bar())
-        cl.addWidget(self.build_modes())
-        cl.addWidget(self.build_look())
-        cl.addWidget(self.build_options())
-        cl.addWidget(self.build_sources())
-        cl.addWidget(self.build_sync_games())
-        cl.addWidget(self.build_shortcuts())
-        cl.addStretch(1)
-        scroll.setWidget(content)
-        body.addWidget(scroll, 1)
-        root.addLayout(body, 1)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        root.addWidget(self.build_sidebar())
+        main = QVBoxLayout()
+        main.setContentsMargins(34, 26, 20, 0)
+        main.setSpacing(16)
+        self.page_title = QLabel()
+        self.page_title.setProperty("role", "pagetitle")
+        self.page_hint = QLabel()
+        self.page_hint.setProperty("role", "pagehint")
+        head = QVBoxLayout()
+        head.setSpacing(2)
+        head.addWidget(self.page_title)
+        head.addWidget(self.page_hint)
+        main.addLayout(head)
+        ub = QHBoxLayout()
+        ub.setContentsMargins(0, 0, 14, 0)
+        ub.addWidget(self.build_update_bar())
+        main.addLayout(ub)
+        self.stack = QStackedWidget()
+        self.pages = {}
+        for key, builder in (("home", self.build_home), ("display", self.build_display),
+                             ("style", self.build_style), ("music", self.build_music),
+                             ("games", self.build_games), ("keys", self.build_keys),
+                             ("general", self.build_general)):
+            self.pages[key] = self.make_page(builder())
+            self.stack.addWidget(self.pages[key])
+        main.addWidget(self.stack, 1)
+        root.addLayout(main, 1)
 
+        self._fade_fx = None
+        self._fade_anim = make_anim(self, self._fade_step, 240)
+        self._fade_anim.finished.connect(self._fade_done)
         self._building = False
         self.apply_style(DEFAULT_ACCENT)
+        self.go("home", animate=False)
         self.sync_from_cfg()
+        self.hotkeys_changed()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(200)
+        self.anim_timer = QTimer(self)  # petites animations en boucle (egaliseur, cartes de mode)
+        self.anim_timer.timeout.connect(self.tick)
+        self.anim_timer.start(33)
         self.refresh()
 
-    # ---- construction ----------------------------------------------------
-    def build_header(self):
-        lay = QHBoxLayout()
-        lay.setSpacing(14)
+    # ---- menu lateral ---------------------------------------------------------
+    def build_sidebar(self):
+        side = QFrame()
+        side.setObjectName("Side")
+        side.setFixedWidth(244)
+        lay = QVBoxLayout(side)
+        lay.setContentsMargins(16, 22, 16, 16)
+        lay.setSpacing(10)
+        brand = QHBoxLayout()
+        brand.setSpacing(11)
         logo = QLabel()
-        logo.setPixmap(make_icon().pixmap(40, 40))
-        lay.addWidget(logo)
+        logo.setPixmap(make_icon().pixmap(38, 38))
+        brand.addWidget(logo)
         box = QVBoxLayout()
         box.setSpacing(0)
-        t = QLabel("FollowTheLyrics")
-        t.setProperty("role", "apptitle")
+        name = QLabel("FollowTheLyrics")
+        name.setProperty("role", "brand")
         import updater
-        st = QLabel(f"Les paroles de ta musique, par-dessus tes jeux  ·  version {updater.current_version()}")
-        st.setProperty("role", "hint")
-        box.addWidget(t)
-        box.addWidget(st)
-        lay.addLayout(box)
+        self.version = updater.current_version()
+        ver = QLabel(f"version {self.version}")
+        ver.setProperty("role", "hint")
+        box.addWidget(name)
+        box.addWidget(ver)
+        brand.addLayout(box, 1)
+        lay.addLayout(brand)
+        lay.addSpacing(16)
+        self.nav = SideNav([(k, label, icon) for k, label, icon, _t, _h in PAGES])
+        self.nav.changed.connect(lambda k: self.go(k))
+        lay.addWidget(self.nav)
         lay.addStretch(1)
+        self.mini = MiniPlayer()
+        self.mini.clicked.connect(lambda: self.nav.select("home"))
+        lay.addWidget(self.mini)
+        power = QFrame()
+        power.setProperty("role", "power")
+        pl = QHBoxLayout(power)
+        pl.setContentsMargins(14, 12, 12, 12)
+        box = QVBoxLayout()
+        box.setSpacing(0)
         lbl = QLabel("Paroles à l'écran")
         lbl.setProperty("role", "rowtitle")
-        lay.addWidget(lbl)
+        self.master_state = QLabel()
+        self.master_state.setProperty("role", "hint")
+        box.addWidget(lbl)
+        box.addWidget(self.master_state)
+        pl.addLayout(box, 1)
         self.master = Toggle()
-        self.master.toggled.connect(lambda v: None if self._building else self.app.set_visible(v))
-        lay.addWidget(self.master)
-        return lay
+        self.master.toggled.connect(self.on_master)
+        pl.addWidget(self.master)
+        lay.addWidget(power)
+        return side
+
+    def on_master(self, on):
+        self.master_state.setText("Affichées" if on else "Masquées")
+        if not self._building:
+            self.app.set_visible(on)
+
+    def make_page(self, widgets):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        content.setObjectName("Content")
+        lay = QVBoxLayout(content)
+        lay.setContentsMargins(0, 0, 14, 24)
+        lay.setSpacing(16)
+        for w in widgets:
+            lay.addWidget(w)
+        lay.addStretch(1)
+        scroll.setWidget(content)
+        return scroll
+
+    def go(self, key, animate=True):
+        """Affiche une page (fondu + leger glissement vers le haut)."""
+        info = next(p for p in PAGES if p[0] == key)
+        self.nav.select(key, emit=False)
+        self.page_title.setText(info[3])
+        self.page_hint.setText(info[4])
+        page = self.pages[key]
+        if self.stack.currentWidget() is page:
+            return
+        self._fade_done()
+        self.stack.setCurrentWidget(page)
+        page.verticalScrollBar().setValue(0)
+        if animate and self.isVisible():
+            self._fade_fx = QGraphicsOpacityEffect(page)
+            self._fade_fx.setOpacity(0.0)
+            page.setGraphicsEffect(self._fade_fx)
+            run_anim(self._fade_anim, 0.0, 1.0)
+
+    def _fade_step(self, v):
+        page = self.stack.currentWidget()
+        if self._fade_fx is not None and page is not None:
+            self._fade_fx.setOpacity(v)
+            page.move(0, int(round(16 * (1.0 - v))))
+
+    def _fade_done(self):
+        self._fade_anim.stop()
+        page = self.stack.currentWidget()
+        if self._fade_fx is not None and page is not None:
+            page.setGraphicsEffect(None)
+            page.move(0, 0)
+        self._fade_fx = None
+
+    def tick(self):
+        if not self.isVisible():
+            return
+        page = self.nav.key()
+        if page == "home" and self.eq.playing:
+            self.eq.update()
+        elif page == "display":
+            for c in self.mode_cards.values():
+                if c.alive():
+                    c.update()
 
     # ---- mise a jour ---------------------------------------------------------
     def build_update_bar(self):
@@ -421,9 +341,7 @@ class Panel(QWidget):
         self.update_lbl.setProperty("role", "rowtitle")
         self.update_lbl.setWordWrap(True)
         lay.addWidget(self.update_lbl, 1)
-        self.update_btn = QPushButton("Mettre à jour")
-        self.update_btn.setProperty("role", "main")
-        self.update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_btn = button("Mettre à jour", "main")
         self.update_btn.clicked.connect(self.on_update_click)
         lay.addWidget(self.update_btn)
         bar.hide()
@@ -436,6 +354,9 @@ class Panel(QWidget):
         self.update_btn.setText("Mettre à jour")
         self.update_btn.setEnabled(True)
         self.update_bar.show()
+        self.nav.set_badge("general", True)
+        self.check_lbl.setText(f"La version {info['version']} est disponible (bandeau en haut).")
+        self.check_btn.setEnabled(True)
 
     def on_update_click(self):
         self.update_btn.setEnabled(False)
@@ -452,59 +373,93 @@ class Panel(QWidget):
         self.update_btn.setText("Réessayer")
         self.update_btn.setEnabled(True)
 
-    def build_now_playing(self):
-        card = QFrame()
-        card.setProperty("role", "card")
-        card.setFixedWidth(340)
-        lay = QVBoxLayout(card)
-        lay.setContentsMargins(22, 20, 22, 22)
-        lay.setSpacing(10)
-        lbl = QLabel("EN COURS")
-        lbl.setProperty("role", "section")
-        lay.addWidget(lbl)
-        self.cover = CoverView(296)
-        lay.addWidget(self.cover, 0, Qt.AlignmentFlag.AlignHCenter)
-        lay.addSpacing(6)
+    def on_check_click(self):
+        self.check_btn.setEnabled(False)
+        self.check_lbl.setText("Recherche…")
+        self.app.check_update(manual=True)
+
+    def update_none(self, error):
+        """Reponse a « Rechercher une mise a jour » quand il n'y a rien de neuf."""
+        self.check_btn.setEnabled(True)
+        self.check_lbl.setText("Impossible de joindre GitHub. Vérifie ta connexion." if error
+                               else "Tu as déjà la dernière version.")
+
+    # ---- page Accueil -----------------------------------------------------------
+    def build_home(self):
+        hero = Card()
+        hero.lay.setSpacing(16)
+        top = QHBoxLayout()
+        top.setSpacing(22)
+        self.cover = CoverView(168, 20)
+        top.addWidget(self.cover, 0, Qt.AlignmentFlag.AlignTop)
+        box = QVBoxLayout()
+        box.setSpacing(4)
+        state = QHBoxLayout()
+        state.setSpacing(9)
+        self.eq = Equalizer()
+        state.addWidget(self.eq)
+        self.state_lbl = QLabel("EN COURS")
+        self.state_lbl.setProperty("role", "section")
+        state.addWidget(self.state_lbl)
+        state.addStretch(1)
+        self.badge = QLabel()
+        self.badge.setProperty("role", "badge")
+        state.addWidget(self.badge)
+        box.addLayout(state)
+        box.addSpacing(6)
         self.np_title = QLabel()
         self.np_title.setProperty("role", "nptitle")
         self.np_title.setWordWrap(True)
         self.np_artist = QLabel()
         self.np_artist.setProperty("role", "npartist")
-        lay.addWidget(self.np_title)
-        lay.addWidget(self.np_artist)
+        self.np_artist.setWordWrap(True)
+        box.addWidget(self.np_title)
+        box.addWidget(self.np_artist)
+        box.addStretch(1)
         self.progress = ProgressView()
-        lay.addWidget(self.progress)
-        brow = QHBoxLayout()
-        self.badge = QLabel()
-        self.badge.setProperty("role", "badge")
-        brow.addWidget(self.badge)
-        brow.addStretch(1)
-        self.state_lbl = QLabel()
-        self.state_lbl.setProperty("role", "hint")
-        brow.addWidget(self.state_lbl)
-        lay.addLayout(brow)
+        box.addWidget(self.progress)
+        top.addLayout(box, 1)
+        hero.lay.addLayout(top)
         sep = QFrame()
         sep.setFixedHeight(1)
         sep.setProperty("role", "sep")
-        lay.addWidget(sep)
-        l2 = QLabel("PAROLES")
-        l2.setProperty("role", "section")
-        lay.addWidget(l2)
+        hero.add(sep)
+        cap = QLabel("PAROLES EN DIRECT")
+        cap.setProperty("role", "section")
+        hero.add(cap)
         self.lyric = QLabel()
         self.lyric.setProperty("role", "lyric")
         self.lyric.setWordWrap(True)
-        self.lyric.setMinimumHeight(54)
-        self.lyric.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        lay.addWidget(self.lyric)
+        self.lyric.setMinimumHeight(34)
+        hero.add(self.lyric)
         self.lyric_tr = QLabel()
         self.lyric_tr.setProperty("role", "hint")
         self.lyric_tr.setWordWrap(True)
-        lay.addWidget(self.lyric_tr)
-        lay.addStretch(1)
-        return card
+        hero.add(self.lyric_tr)
 
-    def build_modes(self):
-        card, lay = section("Mode d'affichage")
+        self.fs_warn = QLabel()
+        self.fs_warn.setProperty("role", "warn")
+        self.fs_warn.setWordWrap(True)
+        self.fs_warn.hide()
+
+        self.tile_display = NavTile("screen", "Affichage")
+        self.tile_style = NavTile("style", "Style")
+        self.tile_game = NavTile("game", "Jeu détecté")
+        self.tile_display.clicked.connect(lambda: self.nav.select("display"))
+        self.tile_style.clicked.connect(lambda: self.nav.select("style"))
+        self.tile_game.clicked.connect(lambda: self.nav.select("games"))
+        tiles = hbox(self.tile_display, self.tile_style, self.tile_game, spacing=14, stretch=False)
+
+        demo = Card()
+        self.demo = Toggle()
+        self.demo.toggled.connect(lambda v: None if self._building else self.app.set_demo(v))
+        demo.add_row("Essayer sans musique", self.demo,
+                     "Des paroles de démonstration tournent en boucle : pratique pour régler le style.")
+        return [hero, self.fs_warn, tiles, demo]
+
+    # ---- page Affichage -----------------------------------------------------------
+    def build_display(self):
+        modes = Card("Mode", "Passe la souris sur une carte pour voir le mode en action.")
         cards = QHBoxLayout()
         cards.setSpacing(12)
         self.mode_group = QButtonGroup(self)
@@ -515,98 +470,108 @@ class Panel(QWidget):
             c.clicked.connect(lambda _=False, k=key: self.set("mode", k))
             cards.addWidget(c)
             self.mode_cards[key] = c
-        lay.addLayout(cards)
+        modes.lay.addLayout(cards)
+
+        place = Card("Placement et taille")
         self.position = Segmented(POSITIONS)
         self.position.changed.connect(lambda k: self.set("position", k))
-        self.position_row = row("Position", self.position, "En haut de l'écran, à gauche, au centre ou à droite.")
-        lay.addWidget(self.position_row)
-        return card
-
-    def build_look(self):
-        card, lay = section("Apparence")
-        self.color = Segmented(COLORS)
-        self.color.changed.connect(lambda k: self.set("color", k))
-        lay.addWidget(row("Couleurs", self.color, "Les couleurs de la pochette, ou blanc avec un léger halo."))
-        self.style = Segmented(STYLES)
-        self.style.changed.connect(lambda k: self.set("style", k))
-        self.style_row = row("Animation", self.style, "Comment les mots arrivent (modes Classique et Edit).")
-        lay.addWidget(self.style_row)
-
-        sz = QWidget()
-        sl = QHBoxLayout(sz)
-        sl.setContentsMargins(0, 0, 0, 0)
+        self.position_row = place.add_row("Position", self.position, "En haut de l'écran : à gauche, au centre ou à droite.")
         self.size = QSlider(Qt.Orientation.Horizontal)
         self.size.setRange(70, 160)
         self.size.setSingleStep(5)
-        self.size.setFixedWidth(260)
+        self.size.setFixedWidth(240)
         self.size_lbl = QLabel()
         self.size_lbl.setProperty("role", "value")
         self.size_lbl.setFixedWidth(52)
+        self.size_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.size.valueChanged.connect(self.on_size)
         self.size.sliderReleased.connect(lambda: self.set("scale", self.size.value() / 100))
-        sl.addWidget(self.size)
-        sl.addWidget(self.size_lbl)
-        lay.addWidget(row("Taille du texte", sz))
+        place.add_row("Taille du texte", hbox(self.size, self.size_lbl, stretch=False))
 
-        lbl = QLabel("Police")
-        lbl.setProperty("role", "rowtitle")
-        lay.addWidget(lbl)
+        extra = Card("Moments forts")
+        self.opt = {}
+        self.title_drop = Segmented(TITLE_DROP)
+        self.title_drop.changed.connect(lambda k: self.set("title_drop", k))
+        extra.add_row("Titre en géant", self.title_drop,
+                      "Quand le chanteur dit le titre du morceau, il s'affiche en très grand "
+                      "(en jeu : dans un espace libre, jamais sur l'action).")
+        self.opt["card"] = Toggle()
+        extra.add_row("Carte de la pochette", self.opt["card"],
+                      "Pochette, titre et artiste quelques secondes au début du morceau.")
+        return [modes, place, extra]
+
+    # ---- page Style -----------------------------------------------------------------
+    def build_style(self):
         self.preview = FontPreview(self.app)
-        lay.addWidget(self.preview)
+
+        colors = Card("Couleurs du texte")
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.color_group = QButtonGroup(self)
+        self.color_cards = {
+            "album": ColorCard("album", "Couleurs de l'album", "Tirées de la pochette du morceau.",
+                               lambda: self.app.overlay.accent[:3]),
+            "white": ColorCard("white", "Blanc lumineux", "Blanc avec un léger halo.",
+                               lambda: [QColor("#ffffff")]),
+        }
+        for key, c in self.color_cards.items():
+            self.color_group.addButton(c)
+            c.clicked.connect(lambda _=False, k=key: self.set("color", k))
+            row.addWidget(c)
+        colors.lay.addLayout(row)
+
+        motion = Card("Animation")
+        self.style = Segmented(STYLES)
+        self.style.changed.connect(lambda k: self.set("style", k))
+        self.style_row = motion.add_row("Arrivée des mots", self.style, "Pour les modes Classique et Edit.")
+        self.opt["beat"] = Toggle()
+        motion.add_row("Pulsation sur le beat", self.opt["beat"], "Le texte grossit légèrement sur la grosse caisse.")
+        self.opt["particles"] = Toggle()
+        motion.add_row("Particules sur les mots tenus", self.opt["particles"],
+                       "De petites étincelles quand le chanteur tient une note.")
+
+        fonts = Card("Police")
         self.font_search = QLineEdit()
         self.font_search.setPlaceholderText("\U0001F50D  Rechercher une police…")
         self.font_search.setClearButtonEnabled(True)
         self.font_search.textChanged.connect(self.filter_fonts)
-        lay.addWidget(self.font_search)
+        fonts.add(self.font_search)
         self.font_list = QListWidget()
-        self.font_list.setFixedHeight(250)
+        self.font_list.setFixedHeight(264)
         self.font_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.populate_fonts()
         self.font_list.currentItemChanged.connect(self.on_font)
-        lay.addWidget(self.font_list)
-        return card
+        fonts.add(self.font_list)
+        return [self.preview, colors, motion, fonts]
 
-    def build_options(self):
-        card, lay = section("Options")
-        self.opt = {}
-        for key, title, hint in (
-            ("translation", "Traduction en français", "Sous la ligne, pour les chansons qui ne sont pas en français."),
-            ("beat", "Pulsation sur le beat", "Le texte grossit légèrement sur la grosse caisse."),
-            ("card", "Carte de la pochette", "Pochette, titre et artiste quelques secondes au début du morceau."),
-            ("particles", "Particules sur les mots tenus", "Petites étincelles quand le chanteur tient une note."),
-        ):
-            t = Toggle()
-            t.toggled.connect(lambda v, k=key: self.set(k, bool(v)))
-            lay.addWidget(row(title, t, hint))
-            self.opt[key] = t
-        self.title_drop = Segmented(TITLE_DROP)
-        self.title_drop.changed.connect(lambda k: self.set("title_drop", k))
-        lay.addWidget(row("Titre en géant", self.title_drop,
-                          "Quand le chanteur dit le titre du morceau, il s'affiche en très grand "
-                          "(en jeu : dans un espace libre, jamais sur l'action)."))
-        self.demo = Toggle()
-        self.demo.toggled.connect(lambda v: None if self._building else self.app.set_demo(v))
-        lay.addWidget(row("Mode démo", self.demo, "Des paroles de test en boucle, pour essayer les réglages sans musique."))
-        self.autostart = Toggle()
-        self.autostart.setChecked(autostart_enabled())
-        self.autostart.toggled.connect(lambda v: None if self._building else set_autostart(bool(v)))
-        lay.addWidget(row("Lancer avec Windows", self.autostart,
-                          "Démarre tout seul à l'allumage du PC, discrètement près de l'heure."))
-        return card
-
-    def build_sources(self):
-        card, lay = section("Sources de musique")
-        hint = QLabel("Les applis qui diffusent du son. Décoche celles qui ne servent pas à la musique "
-                      "(par exemple le navigateur où tu regardes des vidéos) : elles seront ignorées. "
-                      "Les médias de plus de 20 minutes (films, lives) sont toujours ignorés.")
-        hint.setProperty("role", "hint")
-        hint.setWordWrap(True)
-        lay.addWidget(hint)
+    # ---- page Musique ---------------------------------------------------------------
+    def build_music(self):
+        src = Card("Applis écoutées",
+                   "Décoche celles qui ne servent pas à la musique (par exemple le navigateur où tu regardes "
+                   "des vidéos). Les médias de plus de 20 minutes sont toujours ignorés.")
         self.sources_box = QVBoxLayout()
         self.sources_box.setSpacing(12)
-        lay.addLayout(self.sources_box)
+        src.lay.addLayout(self.sources_box)
         self._sources_shown = None
-        return card
+
+        lyr = Card("Paroles")
+        self.opt["translation"] = Toggle()
+        lyr.add_row("Traduction en français", self.opt["translation"],
+                    "Sous la ligne, pour les chansons qui ne sont pas en français.")
+        later = button("−", "round")
+        earlier = button("+", "round")
+        reset = button("Remettre à zéro", "link")
+        self.offset_lbl = QLabel()
+        self.offset_lbl.setProperty("role", "bigvalue")
+        self.offset_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.offset_lbl.setFixedWidth(78)
+        later.clicked.connect(lambda: self.set("offset", round(self.app.cfg["offset"] - 0.1, 2)))
+        earlier.clicked.connect(lambda: self.set("offset", round(self.app.cfg["offset"] + 0.1, 2)))
+        reset.clicked.connect(lambda: self.set("offset", 0.0))
+        self.offset_row = lyr.add_row("Calage des paroles", hbox(reset, later, self.offset_lbl, earlier, stretch=False), " ")
+        for key, t in self.opt.items():
+            t.toggled.connect(lambda v, k=key: self.set(k, bool(v)))
+        return [src, lyr]
 
     def refresh_sources(self):
         blocked = list(self.app.cfg.get("sources_blocked", []))
@@ -621,89 +586,150 @@ class Panel(QWidget):
                 w.deleteLater()
         if not ids:
             lbl = QLabel("Aucune appli détectée pour l'instant. Lance une musique.")
-            lbl.setProperty("role", "hint")
+            lbl.setProperty("role", "empty")
             self.sources_box.addWidget(lbl)
             return
         for app_id in ids:
             t = Toggle()
             t.setChecked(app_id not in blocked)
             t.toggled.connect(lambda v, a=app_id: self.app.set_source_enabled(a, v))
-            self.sources_box.addWidget(row(app_label(app_id), t))
+            line = QWidget()
+            lay = QHBoxLayout(line)
+            lay.setContentsMargins(0, 0, 0, 0)
+            name = QLabel(app_label(app_id))
+            name.setProperty("role", "rowtitle")
+            lay.addWidget(name, 1)
+            lay.addWidget(t)
+            self.sources_box.addWidget(line)
 
-    def build_sync_games(self):
-        card, lay = section("Synchro et jeux")
-        w = QWidget()
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(8)
-        later = QPushButton("− 0,1 s")
-        earlier = QPushButton("+ 0,1 s")
-        reset = QPushButton("Réinitialiser")
-        for b in (later, earlier, reset):
-            b.setProperty("role", "ghost")
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.offset_lbl = QLabel()
-        self.offset_lbl.setProperty("role", "value")
-        self.offset_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.offset_lbl.setFixedWidth(70)
-        later.clicked.connect(lambda: self.set("offset", round(self.app.cfg["offset"] - 0.1, 2)))
-        earlier.clicked.connect(lambda: self.set("offset", round(self.app.cfg["offset"] + 0.1, 2)))
-        reset.clicked.connect(lambda: self.set("offset", 0.0))
-        h.addWidget(later)
-        h.addWidget(self.offset_lbl)
-        h.addWidget(earlier)
-        h.addWidget(reset)
-        lay.addWidget(row("Décalage des paroles", w, "Paroles en retard : + ; en avance : −."))
+    # ---- page Jeux -------------------------------------------------------------------
+    def build_games(self):
+        cur = Card()
+        cap = QLabel("JEU DÉTECTÉ")
+        cap.setProperty("role", "section")
+        cur.add(cap)
+        self.profile_lbl = QLabel("Bureau")
+        self.profile_lbl.setProperty("role", "nptitle")
+        cur.add(self.profile_lbl)
+        hint = QLabel("Les paroles contournent les zones importantes du jeu : vie, minimap, score, sorts…")
+        hint.setProperty("role", "hint")
+        hint.setWordWrap(True)
+        cur.add(hint)
+        draw = button("Dessiner les zones…", "main")
+        show = button("Voir les zones 5 secondes")
+        draw.clicked.connect(lambda: self.app.open_zone_editor())
+        show.clicked.connect(self.app.show_zones)
+        cur.add(hbox(draw, show))
 
-        g = QWidget()
-        gl = QHBoxLayout(g)
-        gl.setContentsMargins(0, 0, 0, 0)
-        gl.setSpacing(8)
-        zones = QPushButton("Voir les zones (5 s)")
-        prof = QPushButton("Dessiner les zones…")
-        for b in (zones, prof):
-            b.setProperty("role", "ghost")
-            b.setCursor(Qt.CursorShape.PointingHandCursor)
-        zones.clicked.connect(self.app.show_zones)
-        prof.clicked.connect(lambda: self.app.open_zone_editor())
-        gl.addWidget(zones)
-        gl.addWidget(prof)
-        self.profile_row = row("Jeu détecté : Bureau", g, "Les paroles évitent les zones importantes du jeu (vie, minimap, score…). "
-                               "En jeu, Ctrl+Alt+E prend une capture pour dessiner les zones dessus.")
-        self.profile_lbl = self.profile_row.title_label
-        lay.addWidget(self.profile_row)
-        self.fs_warn = QLabel()
-        self.fs_warn.setProperty("role", "warn")
-        self.fs_warn.setWordWrap(True)
-        self.fs_warn.hide()
-        lay.addWidget(self.fs_warn)
-        tip = QLabel("Astuce : mets tes jeux en « fenêtré sans bordure ». En plein écran exclusif, "
-                     "Windows n'affiche aucune fenêtre par-dessus le jeu.")
-        tip.setProperty("role", "hint")
-        tip.setWordWrap(True)
-        lay.addWidget(tip)
-        return card
+        self.fs_warn2 = QLabel()
+        self.fs_warn2.setProperty("role", "warn")
+        self.fs_warn2.setWordWrap(True)
+        self.fs_warn2.hide()
 
-    def build_shortcuts(self):
-        card, lay = section("Raccourcis (marchent en jeu)")
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(10)
-        items = [("Ctrl+Alt+L", "Afficher / masquer"), ("Ctrl+Alt+M", "Changer de mode"),
-                 ("Ctrl+Alt+T", "Couleurs album / blanc"), ("Ctrl+Alt+S", "Changer d'animation"),
-                 ("Ctrl+Alt+Z", "Voir les zones du jeu"), ("Ctrl+Alt+↑ / ↓", "Paroles plus tôt / tard"),
-                 ("Ctrl+Alt+E", "Capturer le jeu (éditeur de zones)")]
-        for i, (k, d) in enumerate(items):
-            key = QLabel(k)
-            key.setProperty("role", "key")
-            desc = QLabel(d)
-            desc.setProperty("role", "hint")
-            grid.addWidget(key, i // 2, (i % 2) * 2, Qt.AlignmentFlag.AlignLeft)
-            grid.addWidget(desc, i // 2, (i % 2) * 2 + 1)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(3, 1)
-        lay.addLayout(grid)
-        return card
+        how = Card("Ajouter un jeu en 3 étapes")
+        self.step_labels = []
+        for n in range(3):
+            num = QLabel(str(n + 1))
+            num.setProperty("role", "step")
+            num.setFixedSize(30, 30)
+            num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            txt = QLabel()
+            txt.setProperty("role", "steptext")
+            txt.setWordWrap(True)
+            line = QWidget()
+            lay = QHBoxLayout(line)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(14)
+            lay.addWidget(num, 0, Qt.AlignmentFlag.AlignTop)
+            lay.addWidget(txt, 1)
+            how.add(line)
+            self.step_labels.append(txt)
+        self.step_labels[1].setText("Reviens ici : la capture s'ouvre toute seule. Dessine à la souris un rectangle "
+                                    "sur chaque endroit à protéger.")
+        self.step_labels[2].setText("Clique sur « Enregistrer ». C'est appliqué tout de suite, sans relancer le jeu.")
+
+        tip = Card("Le jeu cache les paroles ?")
+        t = QLabel("Mets tes jeux en « fenêtré sans bordure » dans leurs options vidéo. En plein écran exclusif, "
+                   "Windows n'affiche aucune fenêtre par-dessus le jeu.")
+        t.setProperty("role", "hint")
+        t.setWordWrap(True)
+        tip.add(t)
+        return [cur, self.fs_warn2, how, tip]
+
+    # ---- page Raccourcis -----------------------------------------------------------------
+    def build_keys(self):
+        card = Card("Tes raccourcis", "Clique sur un raccourci, puis appuie sur la nouvelle combinaison "
+                    "(avec Ctrl ou Alt, ou une touche F1 à F24). Échap annule, Suppr retire le raccourci.")
+        self.key_buttons = {}
+        for name, label, _default in hotkeys.ACTIONS:
+            b = HotkeyButton()
+            b.started.connect(self.app.hotkeys.pause)
+            b.ended.connect(self.app.hotkeys.resume)
+            b.captured.connect(lambda combo, n=name: self.on_key_captured(n, combo))
+            card.add_row(label, b)
+            self.key_buttons[name] = b
+        self.key_msg = QLabel()
+        self.key_msg.setProperty("role", "warn")
+        self.key_msg.setWordWrap(True)
+        self.key_msg.hide()
+        reset = button("Remettre les raccourcis d'origine")
+        reset.clicked.connect(self.on_keys_reset)
+        return [card, self.key_msg, hbox(reset)]
+
+    def on_key_captured(self, name, combo):
+        stolen = self.app.set_hotkey(name, combo)
+        self._key_note = (f"« {hotkeys.LABELS[stolen]} » utilisait déjà {hotkeys.pretty(combo)} : "
+                          "ce raccourci lui a été retiré.") if stolen else ""
+        self.hotkeys_changed()
+
+    def on_keys_reset(self):
+        self._key_note = ""
+        self.app.reset_hotkeys()
+        self.hotkeys_changed()
+
+    def hotkeys_changed(self):
+        """Les raccourcis ont change (ou Windows vient de dire lesquels il refuse)."""
+        keys = self.app.cfg["hotkeys"]
+        failed = [n for n in getattr(self.app, "hotkeys_failed", []) if keys.get(n)]
+        for name, b in self.key_buttons.items():
+            b.set_combo(keys.get(name, ""), name in failed)
+        notes = [self._key_note] if self._key_note else []
+        if failed:
+            notes.append("Windows refuse " + ", ".join(hotkeys.pretty(keys[n]) for n in failed) +
+                         " : cette combinaison est déjà prise par une autre appli. Choisis-en une autre.")
+        self.key_msg.setText("\n".join(notes))
+        self.key_msg.setVisible(bool(notes))
+        capture = keys.get("capture", "")
+        self.step_labels[0].setText(
+            f"Dans le jeu, appuie sur {hotkeys.pretty(capture)} : une capture est prise, sans les paroles."
+            if capture else "Donne d'abord un raccourci à « Capturer le jeu » dans la page Raccourcis.")
+        up, down = keys.get("earlier", ""), keys.get("later", "")
+        tip = "Paroles en retard : appuie sur +. En avance : appuie sur −."
+        if up and down:
+            tip += f"\nEn jeu : {hotkeys.pretty(up)} et {hotkeys.pretty(down)}."
+        self.offset_row.hint_label.setText(tip)
+
+    # ---- page General ----------------------------------------------------------------------
+    def build_general(self):
+        start = Card("Démarrage")
+        self.autostart = Toggle()
+        self.autostart.setChecked(autostart_enabled())
+        self.autostart.toggled.connect(lambda v: None if self._building else set_autostart(bool(v)))
+        start.add_row("Lancer avec Windows", self.autostart,
+                      "Démarre tout seul à l'allumage du PC, discrètement près de l'heure.")
+
+        upd = Card("Mises à jour")
+        self.check_btn = button("Rechercher une mise à jour")
+        self.check_btn.clicked.connect(self.on_check_click)
+        row = upd.add_row(f"Version {self.version}", self.check_btn,
+                          "L'appli vérifie toute seule de temps en temps et te prévient ici.")
+        self.check_lbl = row.hint_label
+
+        about = Card("À propos")
+        site = button("Ouvrir le site")
+        site.clicked.connect(lambda: os.startfile(SITE_URL))
+        about.add_row("FollowTheLyrics", site, "Les paroles de ta musique, par-dessus tes jeux. Gratuit et libre.")
+        return [start, upd, about]
 
     # ---- polices -----------------------------------------------------------
     def populate_fonts(self):
@@ -784,7 +810,7 @@ class Panel(QWidget):
             column = cfg["mode"] in ("classic", "typewriter")
             self.position.setEnabled(column)
             self.position_row.setEnabled(column)
-            self.color.set_value(cfg["color"])
+            self.color_cards[cfg["color"]].setChecked(True)
             self.style.set_value(cfg["style"])
             self.title_drop.set_value(cfg.get("title_drop", "always"))
             self.style_row.setEnabled(cfg["mode"] != "typewriter")
@@ -796,6 +822,7 @@ class Panel(QWidget):
             self.demo.setChecked(self.app.demo)
             self.autostart.setChecked(autostart_enabled())
             self.master.setChecked(not self.app.overlay.user_hidden)
+            self.master_state.setText("Affichées" if self.master.isChecked() else "Masquées")
             self.offset_lbl.setText(f"{cfg['offset']:+.1f} s")
             fam = cfg.get("font")
             for it in self._font_items:
@@ -804,8 +831,11 @@ class Panel(QWidget):
                     break
         finally:
             self._building = False
+        mode = MODES[cfg["mode"]][0]
+        self.tile_display.set_value(f"{mode} · {POSITIONS[cfg['position']]}" if column else mode)
+        self.tile_style.set_value(f"{'Album' if cfg['color'] == 'album' else 'Blanc'} · {STYLES[cfg['style']]}")
         self.preview.update()
-        for c in self.mode_cards.values():
+        for c in list(self.mode_cards.values()) + list(self.color_cards.values()):
             c.update()
 
     # ---- musique en cours ---------------------------------------------------
@@ -820,21 +850,29 @@ class Panel(QWidget):
             self.np_artist.setText(t.artist or "")
             dur = t.duration if 0 < (t.duration or 0) < 4 * 3600 else 0
             self.progress.set_values(o.raw_position(), dur)
-            self.state_lbl.setText("" if o.playing else "En pause")
+            self.state_lbl.setText("EN COURS" if o.playing else "EN PAUSE")
+            self.mini.set_track(t.title, t.artist or "", o.cover_img)
         else:
             self.np_title.setText("Aucune musique")
-            self.np_artist.setText("Lance une musique sur Spotify, YouTube Music, Deezer…")
+            self.np_artist.setText("Lance un morceau sur Spotify, YouTube Music, Deezer… les paroles arrivent toutes seules.")
             self.progress.set_values(0, 0)
-            self.state_lbl.setText("")
+            self.state_lbl.setText("EN ATTENTE")
+            self.mini.set_track("Aucune musique", "En attente…", None)
+        playing = bool(t is not None and o.playing)
+        if playing != self.eq.playing:
+            self.eq.playing = playing
+            self.eq.update()
         if o.cover_img is not self._cover_src:
             self._cover_src = o.cover_img
             self.cover.set_image(o.cover_img)
         badge = o.card_badge() if t is not None else ""
-        self.badge.setText(badge)
+        kind = "word" if (o.state == "ok" and o.word_sync) else "line"
+        if badge != self.badge.text() or kind != self.badge.property("kind"):
+            self.badge.setText(badge)
+            self.badge.setProperty("kind", kind)
+            self.badge.style().unpolish(self.badge)
+            self.badge.style().polish(self.badge)
         self.badge.setVisible(bool(badge))
-        self.badge.setProperty("kind", "word" if (o.state == "ok" and o.word_sync) else "line")
-        self.badge.style().unpolish(self.badge)
-        self.badge.style().polish(self.badge)
         txt = o.current_text()
         if o.state == "ok":
             self.lyric.setText(txt or "♪  …")
@@ -849,13 +887,19 @@ class Panel(QWidget):
         else:
             self.lyric.setText("—")
             self.lyric_tr.setText("")
-        self.profile_lbl.setText(f"Jeu détecté : {o.profile.get('nom', o.profile_key)}")
+        self.lyric_tr.setVisible(bool(self.lyric_tr.text()))
+        game = o.profile.get("nom", o.profile_key) or "Bureau"
+        self.profile_lbl.setText(game)
+        self.tile_game.set_value(game)
         if getattr(self.app, "exclusive", False):
-            self.fs_warn.setText("⚠  Plein écran exclusif détecté : les paroles ne peuvent pas passer "
-                                 "par-dessus le jeu. " + (self.app.exclusive_tip or ""))
-            self.fs_warn.show()
+            msg = ("⚠  Plein écran exclusif détecté : les paroles ne peuvent pas passer "
+                   "par-dessus le jeu. " + (self.app.exclusive_tip or ""))
+            for w in (self.fs_warn, self.fs_warn2):
+                w.setText(msg)
+                w.show()
         else:
             self.fs_warn.hide()
+            self.fs_warn2.hide()
         accent = QColor(o.accent[0]) if o.cover_img is not None else DEFAULT_ACCENT
         if accent.name() != self._accent_name:
             self.apply_style(accent)
@@ -867,43 +911,59 @@ class Panel(QWidget):
         UI["accent"] = QColor(accent)
         a = accent.name()
         r, g, b = accent.red(), accent.green(), accent.blue()
+        ft = '"Segoe UI Variable Text"'
+        fd = '"Segoe UI Variable Display"'
         self.setStyleSheet(f"""
             QWidget#Panel {{ background: {BG}; }}
+            QFrame#Side {{ background: rgba(15,16,23,0.82); border: none; border-right: 1px solid {CARD_BORDER}; }}
             QWidget#Content {{ background: transparent; }}
             QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
+            QStackedWidget {{ background: transparent; }}
             QLabel {{ color: {TEXT}; background: transparent; }}
             QFrame[role="card"] {{ background: {CARD}; border: 1px solid {CARD_BORDER}; border-radius: 18px; }}
+            QFrame[role="power"] {{ background: {CARD}; border: 1px solid {CARD_BORDER}; border-radius: 13px; }}
             QFrame[role="sep"] {{ background: {CARD_BORDER}; border: none; }}
-            QLabel[role="section"] {{ color: {DIM}; font: 700 11px "Segoe UI Variable Text"; letter-spacing: 1.6px; }}
-            QLabel[role="apptitle"] {{ font: 800 24px "Segoe UI Variable Display"; }}
-            QLabel[role="rowtitle"] {{ font: 600 14px "Segoe UI Variable Text"; }}
-            QLabel[role="hint"] {{ color: {DIM}; font: 12px "Segoe UI Variable Text"; }}
-            QLabel[role="value"] {{ color: {TEXT}; font: 600 13px "Segoe UI Variable Text"; }}
-            QLabel[role="nptitle"] {{ font: 800 21px "Segoe UI Variable Display"; }}
-            QLabel[role="npartist"] {{ color: {DIM}; font: 14px "Segoe UI Variable Text"; }}
-            QLabel[role="lyric"] {{ font: 700 17px "Segoe UI Variable Display"; color: {TEXT}; }}
-            QLabel[role="badge"] {{ font: 700 10px "Segoe UI Variable Text"; padding: 3px 9px; border-radius: 9px;
+            QLabel[role="brand"] {{ font: 800 17px {fd}; }}
+            QLabel[role="pagetitle"] {{ font: 800 30px {fd}; }}
+            QLabel[role="pagehint"] {{ color: {DIM}; font: 14px {ft}; }}
+            QLabel[role="cardtitle"] {{ font: 700 17px {fd}; }}
+            QLabel[role="section"] {{ color: {DIM}; font: 700 11px {ft}; letter-spacing: 1.6px; }}
+            QLabel[role="rowtitle"] {{ color: {TEXT}; font: 600 14px {ft}; }}
+            QLabel[role="rowtitle"]:disabled {{ color: #5a5f6e; }}
+            QLabel[role="hint"] {{ color: {DIM}; font: 12px {ft}; }}
+            QLabel[role="hint"]:disabled {{ color: #4b5060; }}
+            QLabel[role="empty"] {{ color: {DIM}; font: 13px {ft}; padding: 10px 0; }}
+            QLabel[role="value"] {{ color: {TEXT}; font: 600 13px {ft}; }}
+            QLabel[role="bigvalue"] {{ color: {TEXT}; font: 700 16px {fd}; }}
+            QLabel[role="nptitle"] {{ font: 800 27px {fd}; }}
+            QLabel[role="npartist"] {{ color: {DIM}; font: 15px {ft}; }}
+            QLabel[role="lyric"] {{ font: 700 21px {fd}; color: {a}; }}
+            QLabel[role="steptext"] {{ color: {TEXT}; font: 14px {ft}; padding-top: 5px; }}
+            QLabel[role="step"] {{ color: {BG}; background: {a}; border-radius: 15px; font: 800 14px {fd}; }}
+            QLabel[role="badge"] {{ font: 700 10px {ft}; padding: 3px 9px; border-radius: 9px;
                                     color: #b9bdc9; background: rgba(185,189,201,0.12); border: 1px solid rgba(185,189,201,0.35); }}
             QLabel[role="badge"][kind="word"] {{ color: {a}; background: rgba({r},{g},{b},0.14); border: 1px solid rgba({r},{g},{b},0.6); }}
-            QLabel[role="key"] {{ font: 700 12px "Cascadia Code", "Consolas"; color: {TEXT}; background: {FIELD};
-                                  border: 1px solid {CARD_BORDER}; border-bottom: 2px solid #2c303d; border-radius: 7px; padding: 4px 9px; }}
-            QPushButton[role="seg"] {{ background: {FIELD}; color: #c7cbd6; border: 1px solid {CARD_BORDER};
-                                       padding: 8px 16px; border-radius: 10px; font: 600 13px "Segoe UI Variable Text"; }}
-            QPushButton[role="seg"]:hover {{ border-color: rgba({r},{g},{b},0.7); }}
-            QPushButton[role="seg"]:checked {{ background: {a}; color: {BG}; border-color: {a}; }}
-            QPushButton[role="seg"]:disabled {{ color: #4b5060; background: #15171f; }}
-            QPushButton[role="seg"]:checked:disabled {{ background: rgba({r},{g},{b},0.25); color: #6b7080; }}
             QPushButton[role="ghost"] {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
-                                         padding: 8px 14px; border-radius: 10px; font: 600 13px "Segoe UI Variable Text"; }}
-            QPushButton[role="ghost"]:hover {{ border-color: {a}; }}
+                                         padding: 9px 16px; border-radius: 10px; font: 600 13px {ft}; }}
+            QPushButton[role="ghost"]:hover {{ border-color: {a}; background: #222634; }}
+            QPushButton[role="ghost"]:pressed {{ background: rgba({r},{g},{b},0.2); }}
+            QPushButton[role="ghost"]:disabled {{ color: #5a5f6e; }}
+            QPushButton[role="round"] {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
+                                         min-width: 38px; max-width: 38px; min-height: 38px; max-height: 38px;
+                                         border-radius: 19px; font: 700 18px {fd}; padding: 0 0 3px 0; }}
+            QPushButton[role="round"]:hover {{ border-color: {a}; color: {a}; }}
+            QPushButton[role="round"]:pressed {{ background: rgba({r},{g},{b},0.25); }}
+            QPushButton[role="link"] {{ background: transparent; color: {DIM}; border: none; padding: 6px 8px;
+                                        font: 600 12px {ft}; }}
+            QPushButton[role="link"]:hover {{ color: {a}; }}
             QPushButton[role="main"] {{ background: {a}; color: {BG}; border: none; padding: 10px 20px;
-                                        border-radius: 10px; font: 800 13px "Segoe UI Variable Text"; }}
+                                        border-radius: 10px; font: 800 13px {ft}; }}
+            QPushButton[role="main"]:hover {{ background: rgba({r},{g},{b},0.86); }}
             QPushButton[role="main"]:disabled {{ background: rgba({r},{g},{b},0.3); color: #c7cbd6; }}
             QFrame[role="update"] {{ background: rgba({r},{g},{b},0.13); border: 1px solid rgba({r},{g},{b},0.6);
                                      border-radius: 14px; }}
-            QPushButton[role="ghost"]:pressed {{ background: rgba({r},{g},{b},0.2); }}
             QLineEdit {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER}; border-radius: 10px;
-                         padding: 9px 12px; font: 14px "Segoe UI Variable Text"; selection-background-color: {a}; }}
+                         padding: 9px 12px; font: 14px {ft}; selection-background-color: {a}; }}
             QLineEdit:focus {{ border-color: {a}; }}
             QListWidget {{ background: #101219; color: {TEXT}; border: 1px solid {CARD_BORDER}; border-radius: 12px;
                            padding: 6px; outline: none; }}
@@ -918,11 +978,8 @@ class Panel(QWidget):
             QScrollBar::handle:vertical:hover {{ background: #3a3f50; }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-            QLabel[role="rowtitle"] {{ color: {TEXT}; }}
-            QLabel[role="rowtitle"]:disabled {{ color: #5a5f6e; }}
-            QLabel[role="hint"]:disabled {{ color: #4b5060; }}
             QLabel[role="warn"] {{ color: #ffcf7a; background: rgba(255,170,60,0.10); border: 1px solid rgba(255,170,60,0.45);
-                                   border-radius: 10px; padding: 10px 12px; font: 600 13px "Segoe UI Variable Text"; }}
+                                   border-radius: 12px; padding: 11px 14px; font: 600 13px {ft}; }}
         """)
         for w in self.findChildren(QWidget):
             w.update()
@@ -934,13 +991,13 @@ class Panel(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.fillRect(self.rect(), QColor(BG))
         acc = UI["accent"]
-        g = QRadialGradient(QPointF(self.width() * 0.12, 0), self.width() * 0.6)
-        g.setColorAt(0, QColor(acc.red(), acc.green(), acc.blue(), 46))
-        g.setColorAt(1, QColor(acc.red(), acc.green(), acc.blue(), 0))
+        g = QRadialGradient(QPointF(self.width() * 0.10, 0), self.width() * 0.62)
+        g.setColorAt(0, alpha(acc, 58))
+        g.setColorAt(1, alpha(acc, 0))
         p.fillRect(self.rect(), QBrush(g))
         g2 = QRadialGradient(QPointF(self.width(), self.height()), self.width() * 0.5)
-        g2.setColorAt(0, QColor(acc.red(), acc.green(), acc.blue(), 22))
-        g2.setColorAt(1, QColor(acc.red(), acc.green(), acc.blue(), 0))
+        g2.setColorAt(0, alpha(acc, 24))
+        g2.setColorAt(1, alpha(acc, 0))
         p.fillRect(self.rect(), QBrush(g2))
 
     def showEvent(self, e):
@@ -953,7 +1010,7 @@ class Panel(QWidget):
         self.refresh()
 
     def closeEvent(self, e):
-        """Fermer le panneau ne quitte pas : les paroles continuent (icone ♪ pour le rouvrir)."""
+        """Fermer le panneau ne quitte pas : les paroles continuent (icone pres de l'heure pour le rouvrir)."""
         if getattr(self.app, "quitting", False):
             e.accept()
             return

@@ -8,7 +8,7 @@ par-dessus les jeux, dans la moitie haute de l'ecran. Trois modes :
 
 Un panneau de controle s'ouvre au lancement (icone ♪ pres de l'heure pour le rouvrir).
 
-Raccourcis :
+Raccourcis (modifiables dans le panneau, page « Raccourcis ») :
   Ctrl+Alt+L      afficher / masquer
   Ctrl+Alt+M      changer de mode
   Ctrl+Alt+T      couleurs : album / blanc lumineux
@@ -56,6 +56,7 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
 
 import colors as cover_colors
 import games
+import hotkeys
 from lyrics import (Line, build_line, cache_load, cache_save, extract_singers, fetch_lyrics_ex,
                     mark_title_lines, split_adlibs, translate_lines)
 from settings import COLORS, DEFAULTS, MODES, POSITIONS, STYLES, load_config, save_config
@@ -371,35 +372,6 @@ def demo_track(position):
         title="Monte le son", artist="FollowTheLyrics (demo)", album="Demo", duration=DEMO_LENGTH,
         position=position, playing=True, app="demo", key=DEMO_KEY,
     )
-
-
-class Hotkeys(QThread):
-    """Raccourcis clavier globaux (marchent meme quand le jeu a le focus)."""
-    pressed = pyqtSignal(str)
-    KEYS = {1: ("toggle", 0x4C), 2: ("zones", 0x5A), 3: ("style", 0x53), 4: ("color", 0x54),
-            5: ("mode", 0x4D), 6: ("earlier", 0x26), 7: ("later", 0x28), 8: ("capture", 0x45)}
-
-    def __init__(self):
-        super().__init__()
-        self.tid = 0
-
-    def run(self):
-        user32 = ctypes.windll.user32
-        self.tid = ctypes.windll.kernel32.GetCurrentThreadId()
-        mods = 0x0001 | 0x0002 | 0x4000  # ALT | CTRL | NOREPEAT
-        for hid, (_, vk) in self.KEYS.items():
-            user32.RegisterHotKey(None, hid, mods, vk)
-        msg = wintypes.MSG()
-        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            if msg.message == 0x0312 and msg.wParam in self.KEYS:
-                self.pressed.emit(self.KEYS[msg.wParam][0])
-        for hid in self.KEYS:
-            user32.UnregisterHotKey(None, hid)
-
-    def stop(self):
-        if self.tid:
-            ctypes.windll.user32.PostThreadMessageW(self.tid, 0x0012, 0, 0)  # WM_QUIT
-        self.wait(1000)
 
 
 class BeatBridge(QThread):
@@ -1664,11 +1636,14 @@ class App:
         self.profile_timer.timeout.connect(self.check_profile)
         self.profile_timer.start(1000)
 
-        self.hotkeys = Hotkeys()
+        self.cfg["hotkeys"] = hotkeys.normalize(self.cfg.get("hotkeys"))
+        self.hotkeys_failed = []  # combinaisons refusees par Windows (prises par une autre appli)
+        self.hotkeys = hotkeys.Hotkeys(self.cfg["hotkeys"])
         self.hotkeys.pressed.connect(self.on_hotkey)
-        self.hotkeys.start()
+        self.hotkeys.failed.connect(self.on_hotkeys_failed)
 
         self.panel = Panel(self)
+        self.hotkeys.start()
         self.tray = QSystemTrayIcon(make_icon())
         self.tray.setToolTip("FollowTheLyrics")
         menu = QMenu()
@@ -1712,9 +1687,9 @@ class App:
         self.cleanup_timer.timeout.connect(self.cleanup_update)
         self.cleanup_timer.start(3000)
         if updater.bootstrap.FROZEN or os.environ.get("FTL_FAKE_VERSION"):
-            QTimer.singleShot(5000, self.check_update)
+            QTimer.singleShot(5000, lambda: self.check_update())
             self.update_timer = QTimer()
-            self.update_timer.timeout.connect(self.check_update)
+            self.update_timer.timeout.connect(lambda: self.check_update())
             self.update_timer.start(6 * 3600 * 1000)
 
     def cleanup_update(self):
@@ -1723,12 +1698,19 @@ class App:
         if updater.cleanup_leftovers() or self.cleanup_tries >= 10:
             self.cleanup_timer.stop()
 
-    def check_update(self):
+    def check_update(self, manual=False):
+        """manual : demande depuis le panneau (on repond meme s'il n'y a rien de neuf)."""
         import updater
-        if self.update_info or (self.update_check and self.update_check.isRunning()):
+        if self.update_info:
+            if manual:
+                self.panel.show_update(self.update_info)
+            return
+        if self.update_check and self.update_check.isRunning():
             return
         self.update_check = updater.UpdateCheck()
         self.update_check.found.connect(self.on_update_found)
+        if manual:
+            self.update_check.nothing.connect(self.panel.update_none)
         self.update_check.start()
 
     def on_update_found(self, info):
@@ -1786,13 +1768,13 @@ class App:
             w.activateWindow()
 
     def capture_game(self):
-        """Ctrl+Alt+E en jeu : capture l'ecran (sans les paroles) pour l'editeur de zones."""
+        """Raccourci « capture » en jeu : capture l'ecran (sans les paroles) pour l'editeur de zones."""
         exe, _full = games.foreground_info()
         key, _prof = games.current_profile(self.profiles)
         if key not in self.profiles.get("jeux", {}):
             own = os.path.basename(sys.executable).lower()
             if not exe or exe.lower() in ("explorer.exe", own, "python.exe", "pythonw.exe"):
-                self.overlay.toast("Mets-toi dans le jeu, puis Ctrl+Alt+E")
+                self.overlay.toast("Mets-toi dans le jeu, puis " + self.hotkey_text("capture"))
                 return
             key = exe  # jeu pas encore connu : il sera cree a l'enregistrement
         o = self.overlay
@@ -1954,6 +1936,36 @@ class App:
             os.startfile(games.PROFILES_PATH)
         except Exception:
             pass
+
+    # ---- raccourcis modifiables -------------------------------------------------
+    def hotkey_text(self, name):
+        """La combinaison actuelle d'une action, telle qu'on l'affiche (« Ctrl + Alt + E »)."""
+        return hotkeys.pretty(self.cfg["hotkeys"].get(name, ""))
+
+    def set_hotkey(self, name, combo):
+        """Change un raccourci. Si une autre action avait deja cette combinaison, elle la perd.
+        Renvoie le nom de cette autre action (ou None)."""
+        keys = dict(self.cfg["hotkeys"])
+        stolen = None
+        for other, used in keys.items():
+            if combo and other != name and used == combo:
+                keys[other] = ""
+                stolen = other
+        keys[name] = combo
+        self.apply_hotkeys(keys)
+        return stolen
+
+    def reset_hotkeys(self):
+        self.apply_hotkeys(dict(hotkeys.DEFAULTS))
+
+    def apply_hotkeys(self, keys):
+        self.cfg["hotkeys"] = keys
+        save_config(self.cfg)
+        self.hotkeys.set_bindings(keys)
+
+    def on_hotkeys_failed(self, names):
+        self.hotkeys_failed = list(names)
+        self.panel.hotkeys_changed()
 
     def on_hotkey(self, name):
         o = self.overlay
