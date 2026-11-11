@@ -364,6 +364,7 @@ class Panel(QWidget):
         cl = QVBoxLayout(content)
         cl.setContentsMargins(0, 0, 8, 0)
         cl.setSpacing(16)
+        cl.addWidget(self.build_update_bar())
         cl.addWidget(self.build_modes())
         cl.addWidget(self.build_look())
         cl.addWidget(self.build_options())
@@ -394,7 +395,8 @@ class Panel(QWidget):
         box.setSpacing(0)
         t = QLabel("FollowTheLyrics")
         t.setProperty("role", "apptitle")
-        st = QLabel("Les paroles de ta musique, par-dessus tes jeux")
+        import updater
+        st = QLabel(f"Les paroles de ta musique, par-dessus tes jeux  ·  version {updater.current_version()}")
         st.setProperty("role", "hint")
         box.addWidget(t)
         box.addWidget(st)
@@ -407,6 +409,48 @@ class Panel(QWidget):
         self.master.toggled.connect(lambda v: None if self._building else self.app.set_visible(v))
         lay.addWidget(self.master)
         return lay
+
+    # ---- mise a jour ---------------------------------------------------------
+    def build_update_bar(self):
+        bar = QFrame()
+        bar.setProperty("role", "update")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(18, 12, 12, 12)
+        lay.setSpacing(14)
+        self.update_lbl = QLabel()
+        self.update_lbl.setProperty("role", "rowtitle")
+        self.update_lbl.setWordWrap(True)
+        lay.addWidget(self.update_lbl, 1)
+        self.update_btn = QPushButton("Mettre à jour")
+        self.update_btn.setProperty("role", "main")
+        self.update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_btn.clicked.connect(self.on_update_click)
+        lay.addWidget(self.update_btn)
+        bar.hide()
+        self.update_bar = bar
+        return bar
+
+    def show_update(self, info):
+        self.update_lbl.setText(f"La version {info['version']} est disponible. "
+                                "La mise à jour se fait toute seule, en gardant tes réglages.")
+        self.update_btn.setText("Mettre à jour")
+        self.update_btn.setEnabled(True)
+        self.update_bar.show()
+
+    def on_update_click(self):
+        self.update_btn.setEnabled(False)
+        self.update_btn.setText("Téléchargement…")
+        self.app.install_update()
+
+    def update_progress(self, frac):
+        self.update_btn.setText(f"Téléchargement {int(frac * 100)} %")
+        if frac >= 1.0:
+            self.update_lbl.setText("Installation… l'appli va redémarrer toute seule.")
+
+    def update_failed(self, message):
+        self.update_lbl.setText(message)
+        self.update_btn.setText("Réessayer")
+        self.update_btn.setEnabled(True)
 
     def build_now_playing(self):
         card = QFrame()
@@ -616,15 +660,16 @@ class Panel(QWidget):
         gl.setContentsMargins(0, 0, 0, 0)
         gl.setSpacing(8)
         zones = QPushButton("Voir les zones (5 s)")
-        prof = QPushButton("Modifier les profils…")
+        prof = QPushButton("Dessiner les zones…")
         for b in (zones, prof):
             b.setProperty("role", "ghost")
             b.setCursor(Qt.CursorShape.PointingHandCursor)
         zones.clicked.connect(self.app.show_zones)
-        prof.clicked.connect(self.app.edit_profiles)
+        prof.clicked.connect(lambda: self.app.open_zone_editor())
         gl.addWidget(zones)
         gl.addWidget(prof)
-        self.profile_row = row("Jeu détecté : Bureau", g, "Les paroles évitent les zones importantes du jeu (vie, minimap, score…).")
+        self.profile_row = row("Jeu détecté : Bureau", g, "Les paroles évitent les zones importantes du jeu (vie, minimap, score…). "
+                               "En jeu, Ctrl+Alt+E prend une capture pour dessiner les zones dessus.")
         self.profile_lbl = self.profile_row.title_label
         lay.addWidget(self.profile_row)
         self.fs_warn = QLabel()
@@ -646,7 +691,8 @@ class Panel(QWidget):
         grid.setVerticalSpacing(10)
         items = [("Ctrl+Alt+L", "Afficher / masquer"), ("Ctrl+Alt+M", "Changer de mode"),
                  ("Ctrl+Alt+T", "Couleurs album / blanc"), ("Ctrl+Alt+S", "Changer d'animation"),
-                 ("Ctrl+Alt+Z", "Voir les zones du jeu"), ("Ctrl+Alt+↑ / ↓", "Paroles plus tôt / tard")]
+                 ("Ctrl+Alt+Z", "Voir les zones du jeu"), ("Ctrl+Alt+↑ / ↓", "Paroles plus tôt / tard"),
+                 ("Ctrl+Alt+E", "Capturer le jeu (éditeur de zones)")]
         for i, (k, d) in enumerate(items):
             key = QLabel(k)
             key.setProperty("role", "key")
@@ -850,6 +896,11 @@ class Panel(QWidget):
             QPushButton[role="ghost"] {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
                                          padding: 8px 14px; border-radius: 10px; font: 600 13px "Segoe UI Variable Text"; }}
             QPushButton[role="ghost"]:hover {{ border-color: {a}; }}
+            QPushButton[role="main"] {{ background: {a}; color: {BG}; border: none; padding: 10px 20px;
+                                        border-radius: 10px; font: 800 13px "Segoe UI Variable Text"; }}
+            QPushButton[role="main"]:disabled {{ background: rgba({r},{g},{b},0.3); color: #c7cbd6; }}
+            QFrame[role="update"] {{ background: rgba({r},{g},{b},0.13); border: 1px solid rgba({r},{g},{b},0.6);
+                                     border-radius: 14px; }}
             QPushButton[role="ghost"]:pressed {{ background: rgba({r},{g},{b},0.2); }}
             QLineEdit {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER}; border-radius: 10px;
                          padding: 9px 12px; font: 14px "Segoe UI Variable Text"; selection-background-color: {a}; }}
