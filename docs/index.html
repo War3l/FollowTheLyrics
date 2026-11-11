@@ -64,9 +64,10 @@ header{position:relative}
 .hud.chat{left:2%;bottom:3%;width:20%;height:22%}
 .tag{position:absolute;left:2%;top:3.2%;font-size:clamp(9px,1.1vw,12px);color:#ffffff66;letter-spacing:.14em;text-transform:uppercase}
 .ly{position:absolute;font-family:"Segoe UI Variable Display","Segoe UI",sans-serif;font-weight:900;white-space:nowrap;opacity:0;
-  font-size:clamp(15px,3.3vw,40px);background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+  font-size:clamp(15px,3.3vw,40px);color:transparent;
   filter:drop-shadow(0 0 14px #8b7cffcc) drop-shadow(0 0 34px #8b7cff77);animation:pop 12s infinite}
-.ly span{display:inline-block;animation:word 12s infinite both}
+.ly span,.ly.d{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ly span{display:inline-block;white-space:pre;animation:word 12s infinite both}
 .ly.a{left:7%;top:13%;transform:rotate(-3deg);animation-delay:0s}
 .ly.b{right:6%;top:24%;transform:rotate(2deg);animation-delay:3s}
 .ly.c{left:22%;top:9%;transform:rotate(-1.5deg);animation-delay:6s}
