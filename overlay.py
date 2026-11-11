@@ -199,6 +199,30 @@ def mark_chorus(lines):
         l.chorus = counts.get(key(l.text), 0) >= need
 
 
+# mots trop banals pour etre mis en vedette, meme s'ils reviennent partout
+COMMON_WORDS = frozenset("""
+    avec dans pour plus mais comme tout tous toute cette elle elles nous vous leur leurs sans sous
+    quand alors aussi encore jamais toujours etre avoir fait faire suis sont etait veux peux vais
+    that this with from your what when where have just like dont cant youre they them then than
+    there here were been will would could should about into over some know want gonna wanna yeah
+    """.split())
+
+
+def word_key(word):
+    """« L'amour, » -> « lamour » : minuscules, sans accents ni ponctuation."""
+    table = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
+    return re.sub(r"[^a-z0-9]", "", word.lower().translate(table))
+
+
+def count_word_lines(lines):
+    counts = {}
+    for l in lines:
+        for k in {word_key(w) for w in l.text.split()}:
+            if k:
+                counts[k] = counts.get(k, 0) + 1
+    return counts
+
+
 def held_fx(meta, pos):
     """-> (echelle, dx, dy, lueur 0..1, etirement horizontal)"""
     none = (1.0, 0.0, 0.0, 0.0, 1.0)
@@ -429,6 +453,8 @@ class Overlay(QWidget):
         self._layout_cache = {}
         self._band = None
         self._halo_cache = OrderedDict()
+        self._hero_cache = {}      # ligne -> rangee vedette (mode Edit, mots empiles)
+        self.word_lines = {}       # mot -> nombre de lignes de la chanson qui le contiennent
         self.flash = None          # titre du morceau affiche en geant
         self.egg = None            # easter egg du morceau en cours (voir easter.py)
         self.force_paint = True
@@ -564,6 +590,8 @@ class Overlay(QWidget):
             mark_chorus(lines)
             if self.track is not None:
                 mark_title_lines(lines, self.track.title, self.track.artist)
+            self._hero_cache = {}
+            self.word_lines = count_word_lines(lines)
             self.cur = self.prev = None
             self.exiting = []
             self.lines = lines
@@ -719,11 +747,36 @@ class Overlay(QWidget):
         """Mode Edit : rangees de tailles differentes, une seule en couleur."""
         return self.cfg.get("mode") == "edit" and self.cfg.get("stack", True)
 
-    @staticmethod
-    def row_scales(rows):
-        """-> (rangee vedette, taille de chaque rangee). La vedette est celle du mot le plus
-        long ; les autres rapetissent en s'en eloignant."""
-        hero = max(range(len(rows)), key=lambda r: (max(len(w[0].strip(",.!?;:")) for w in rows[r][0]), -r))
+    def word_score(self, line, word, cstart, index):
+        """Importance d'un mot dans sa ligne : tenu par le chanteur > titre du morceau >
+        mot qui revient dans la chanson > simple longueur."""
+        key = word_key(word)
+        score = min(len(key), 12) * 0.04  # a defaut d'autre indice : le mot le plus long
+        meta = (getattr(line, "word_meta", None) or {}).get(cstart)
+        if meta:
+            score += 3.0 * meta[2]  # mot tenu (0..1)
+        span = getattr(line, "title_span", None)
+        if span and span[0] <= index < span[0] + span[1]:
+            score += 2.5
+        if len(key) >= 4 and key not in COMMON_WORDS:
+            # present dans 2 lignes = un peu, dans 6 lignes ou plus = le mot du refrain
+            score += 1.5 * clamp((self.word_lines.get(key, 1) - 1) / 5)
+        return score
+
+    def row_scales(self, line, rows):
+        """-> (rangee vedette, taille de chaque rangee). La vedette est la rangee du mot le
+        plus important ; les autres rapetissent en s'en eloignant."""
+        key = (line.time, line.text, len(rows))
+        hero = self._hero_cache.get(key)
+        if hero is None:
+            best, index = -1.0, 0
+            for r, (row, _w) in enumerate(rows):
+                for word, _x, _ww, cstart in row:
+                    sc = self.word_score(line, word, cstart, index)
+                    if sc > best + 1e-9:  # a egalite : la premiere rangee
+                        best, hero = sc, r
+                    index += 1
+            self._hero_cache[key] = hero
         return hero, [1.0 if r == hero else max(0.46, 0.64 - 0.12 * (abs(r - hero) - 1)) for r in range(len(rows))]
 
     # ---- placement : mode Edit (au hasard, moitie haute) --------------------
@@ -1276,7 +1329,7 @@ class Overlay(QWidget):
         tf = self.small_font(0.5)
         trans_h = QFontMetricsF(tf).height() * 1.1 if self.show_translation(line) else 0
         stack = self.stacked() and len(rows) > 1
-        hero, scales = self.row_scales(rows) if stack else (-1, [1.0] * len(rows))
+        hero, scales = self.row_scales(line, rows) if stack else (-1, [1.0] * len(rows))
         rows_h = lh * sum(scales)
         h = rows_h + label_h + trans_h
         style = self.cfg["style"]
