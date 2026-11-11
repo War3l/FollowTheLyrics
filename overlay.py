@@ -377,7 +377,7 @@ class Hotkeys(QThread):
     """Raccourcis clavier globaux (marchent meme quand le jeu a le focus)."""
     pressed = pyqtSignal(str)
     KEYS = {1: ("toggle", 0x4C), 2: ("zones", 0x5A), 3: ("style", 0x53), 4: ("color", 0x54),
-            5: ("mode", 0x4D), 6: ("earlier", 0x26), 7: ("later", 0x28)}
+            5: ("mode", 0x4D), 6: ("earlier", 0x26), 7: ("later", 0x28), 8: ("capture", 0x45)}
 
     def __init__(self):
         super().__init__()
@@ -1618,7 +1618,7 @@ class Overlay(QWidget):
 # Application : panneau + icone + raccourcis
 # --------------------------------------------------------------------------
 class App:
-    def __init__(self, app, demo=False, minimized=False):
+    def __init__(self, app, demo=False, minimized=False, updated=""):
         from panel import Panel, make_icon
 
         self.app = app
@@ -1686,10 +1686,134 @@ class App:
             self.set_demo(True)
             self.panel.sync_from_cfg()
         self.welcome = None
+        self.zone_editor = None
+        self.last_game = None
+        self.setup_updates(updated)
         if not self.cfg.get("welcomed"):
             self.show_welcome()  # tout premier lancement
         elif not minimized:
             self.show_panel()
+
+    # ---- mises a jour ---------------------------------------------------------
+    def setup_updates(self, updated):
+        import updater
+        self.update_info = None
+        self.update_check = None
+        self.update_job = None
+        self.cleanup_tries = 0
+        if updated:  # on vient d'etre installe par l'ancienne version
+            try:
+                self.tray.showMessage("FollowTheLyrics", f"Mise à jour installée : version {updated}.",
+                                      self.tray.icon(), 5000)
+            except Exception:
+                pass
+        # restes d'une mise a jour (l'ancien .exe ne peut etre efface qu'une fois ferme)
+        self.cleanup_timer = QTimer()
+        self.cleanup_timer.timeout.connect(self.cleanup_update)
+        self.cleanup_timer.start(3000)
+        if updater.bootstrap.FROZEN or os.environ.get("FTL_FAKE_VERSION"):
+            QTimer.singleShot(5000, self.check_update)
+            self.update_timer = QTimer()
+            self.update_timer.timeout.connect(self.check_update)
+            self.update_timer.start(6 * 3600 * 1000)
+
+    def cleanup_update(self):
+        import updater
+        self.cleanup_tries += 1
+        if updater.cleanup_leftovers() or self.cleanup_tries >= 10:
+            self.cleanup_timer.stop()
+
+    def check_update(self):
+        import updater
+        if self.update_info or (self.update_check and self.update_check.isRunning()):
+            return
+        self.update_check = updater.UpdateCheck()
+        self.update_check.found.connect(self.on_update_found)
+        self.update_check.start()
+
+    def on_update_found(self, info):
+        self.update_info = info
+        self.panel.show_update(info)
+        try:
+            self.tray.showMessage("FollowTheLyrics", f"La version {info['version']} est disponible. "
+                                  "Ouvre le panneau pour mettre à jour.", self.tray.icon(), 6000)
+        except Exception:
+            pass
+        if os.environ.get("FTL_AUTO_UPDATE"):  # test de bout en bout
+            self.install_update()
+
+    def install_update(self):
+        import updater
+        if not self.update_info or (self.update_job and self.update_job.isRunning()):
+            return
+        if not updater.bootstrap.FROZEN:  # version « code » : on ouvre juste la page
+            os.startfile(updater.RELEASES_URL)
+            self.panel.update_failed("Version « code » : télécharge la nouvelle version sur la page ouverte.")
+            return
+        self.update_job = updater.UpdateInstall(self.update_info)
+        self.update_job.progress.connect(self.panel.update_progress)
+        self.update_job.failed.connect(self.panel.update_failed)
+        self.update_job.installed.connect(self.on_update_installed)
+        self.update_job.start()
+
+    def on_update_installed(self, version):
+        import updater
+        try:
+            updater.relaunch(sys.executable, version)  # la nouvelle version nous demandera de quitter
+        except Exception as e:
+            self.panel.update_failed(f"La nouvelle version est installée mais n'a pas pu démarrer ({e}). "
+                                     "Relance FollowTheLyrics.")
+
+    # ---- editeur de zones -------------------------------------------------------
+    def reload_profiles(self):
+        self.profiles = games.load_profiles()
+        self.profiles_mtime = games.profiles_mtime()
+        self.overlay.profile_key = None  # reapplique au prochain passage
+
+    def open_zone_editor(self, key=None, activate=True):
+        from zone_editor import ZoneEditor
+        if key is None:
+            key = self.overlay.profile_key if self.overlay.profile_key in self.profiles.get("jeux", {}) else self.last_game
+        if self.zone_editor is None:
+            self.zone_editor = ZoneEditor(self, key)
+        else:
+            self.zone_editor.show_game(key)
+        w = self.zone_editor
+        w.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not activate)
+        w.show()
+        if activate:
+            w.raise_()
+            w.activateWindow()
+
+    def capture_game(self):
+        """Ctrl+Alt+E en jeu : capture l'ecran (sans les paroles) pour l'editeur de zones."""
+        exe, _full = games.foreground_info()
+        key, _prof = games.current_profile(self.profiles)
+        if key not in self.profiles.get("jeux", {}):
+            own = os.path.basename(sys.executable).lower()
+            if not exe or exe.lower() in ("explorer.exe", own, "python.exe", "pythonw.exe"):
+                self.overlay.toast("Mets-toi dans le jeu, puis Ctrl+Alt+E")
+                return
+            key = exe  # jeu pas encore connu : il sera cree a l'enregistrement
+        o = self.overlay
+        o.setWindowOpacity(0.0)  # les paroles ne doivent pas etre sur la capture
+
+        def grab():
+            try:
+                pm = o.screen().grabWindow(0)
+                os.makedirs(games.CAPTURES_DIR, exist_ok=True)
+                ok = (not pm.isNull()) and pm.save(games.capture_path(key), "JPG", 88)
+            except Exception:
+                ok = False
+            o.setWindowOpacity(1.0)
+            if not ok:
+                o.toast("Capture impossible")
+                return
+            self.last_game = key
+            o.toast("Capture prise : reviens sur FollowTheLyrics pour dessiner les zones")
+            self.open_zone_editor(key, activate=False)
+
+        QTimer.singleShot(150, grab)
 
     # ---- premier lancement ---------------------------------------------------
     def show_welcome(self):
@@ -1841,6 +1965,9 @@ class App:
         if name == "toggle":
             self.toggle()
             return
+        if name == "capture":
+            self.capture_game()
+            return
         if name == "zones":
             self.show_zones()
         elif name == "mode":
@@ -1871,6 +1998,8 @@ class App:
         self.quitting = True
         if self.welcome is not None:
             self.welcome.close()
+        if self.zone_editor is not None:
+            self.zone_editor.close()
         self.panel.close()
         self.app.quit()
 
@@ -1977,7 +2106,7 @@ def selftest(app, out_dir):
         os._exit(1)
 
 
-INSTANCE_NAME = "LyricsOverlay-instance"  # ancien nom du projet, garde pour remplacer les vieilles versions
+INSTANCE_NAME = "LyricsOverlay-instance" + os.environ.get("FTL_TEST_INSTANCE", "")  # ancien nom du projet, garde pour remplacer les vieilles versions
 _instance_mutex = None
 
 
@@ -2018,6 +2147,7 @@ def take_over_instance():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--demo", action="store_true")
+    ap.add_argument("--updated", default="")  # lance par l'ancienne version apres une mise a jour
     ap.add_argument("--minimized", action="store_true")  # demarrage avec Windows : pas de panneau
     ap.add_argument("--selftest")  # dossier : verifie que le .exe demarre, sans rien deranger
     ap.add_argument("--snapshot")
@@ -2052,7 +2182,7 @@ def main():
     import settings
     if settings.FROZEN:
         settings.refresh_autostart()  # le .exe a peut-etre ete deplace
-    a = App(app, demo=args.demo, minimized=args.minimized)
+    a = App(app, demo=args.demo, minimized=args.minimized, updated=args.updated)
     if server is not None:
         # une nouvelle version se lance : celle-ci lui laisse la place
         server.newConnection.connect(a.quit)

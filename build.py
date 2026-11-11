@@ -115,6 +115,8 @@ def main():
         "--distpath", os.path.join(HERE, "dist"), "--workpath", work, "--specpath", work,
         "--hidden-import", "pyaudiowpatch", "--hidden-import", "welcome",
         "--collect-submodules", "winrt",
+        "--hidden-import", "updater", "--hidden-import", "zone_editor",
+        "--add-data", f"{os.path.join(HERE, 'VERSION')}{os.pathsep}.",
     ]
     # Bibliotheques C++ de Microsoft, version la plus recente, a la racine du paquet :
     # celles livrees avec Qt sont plus vieilles que le compilateur de PyQt, et un PC

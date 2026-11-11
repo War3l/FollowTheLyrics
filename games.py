@@ -114,6 +114,50 @@ def load_profiles():
     return data
 
 
+CAPTURES_DIR = os.path.join(DATA_DIR, "captures")
+
+
+def _safe(key):
+    return "".join(ch if ch.isalnum() or ch in " ._-" else "_" for ch in key)
+
+
+def capture_path(key):
+    """Fichier de la capture d'ecran d'un jeu (pour l'editeur de zones)."""
+    return os.path.join(CAPTURES_DIR, _safe(key or "aucun") + ".jpg")
+
+
+def captured_games():
+    """Cles des jeux dont on a une capture."""
+    try:
+        return sorted(f[:-4] for f in os.listdir(CAPTURES_DIR) if f.lower().endswith(".jpg"))
+    except Exception:
+        return []
+
+
+def pretty_name(exe):
+    name = exe[:-4] if exe.lower().endswith(".exe") else exe
+    return name.replace("_", " ").replace("-", " ").strip() or exe
+
+
+def save_zones(key, zones):
+    """Enregistre les zones d'un jeu (le cree s'il est nouveau). key = nom du .exe,
+    ou "jeu_inconnu" pour le profil des autres jeux en plein ecran."""
+    data = load_profiles()
+    if data is DEFAULT_PROFILES:
+        data = json.loads(json.dumps(DEFAULT_PROFILES))
+    if key == "jeu_inconnu":
+        data.setdefault("jeu_inconnu", {"nom": "Jeu (profil generique)"})["zones_interdites"] = zones
+    else:
+        prof = data.setdefault("jeux", {}).setdefault(key, {"nom": pretty_name(key)})
+        prof["zones_interdites"] = zones
+    try:
+        with open(PROFILES_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception:
+        return False
+
+
 def profiles_mtime():
     try:
         return os.path.getmtime(PROFILES_PATH)
