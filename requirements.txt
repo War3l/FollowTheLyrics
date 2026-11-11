@@ -1,0 +1,7 @@
+PyQt6
+winrt-runtime
+winrt-Windows.Media.Control
+winrt-Windows.Foundation
+winrt-Windows.Storage.Streams
+numpy
+PyAudioWPatch
