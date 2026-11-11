@@ -529,6 +529,15 @@ class Panel(QWidget):
         self.opt["particles"] = Toggle()
         motion.add_row("Particules sur les mots tenus", self.opt["particles"],
                        "De petites étincelles quand le chanteur tient une note.")
+        self.opt["stack"] = Toggle()
+        self.stack_row = motion.add_row("Mots empilés", self.opt["stack"],
+                                        "En mode Edit, des rangées de tailles différentes, la plus forte en couleur.")
+        self.opt["tilt"] = Toggle()
+        self.tilt_row = motion.add_row("Effet 3D sur les côtés", self.opt["tilt"],
+                                       "En mode Edit, les lignes à gauche et à droite partent en perspective.")
+        self.opt["easter"] = Toggle()
+        motion.add_row("Easter eggs", self.opt["easter"],
+                       "Quelques morceaux cachent un spectacle spécial. À toi de les trouver.")
 
         fonts = Card("Police")
         self.font_search = QLineEdit()
