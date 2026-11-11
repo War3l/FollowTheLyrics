@@ -24,6 +24,11 @@ Windows et un raccourci sur le bureau.
 Fermer le panneau ne quitte pas l'appli : les paroles continuent. L'icône près de l'heure rouvre
 le panneau (clic gauche) ; clic droit → **Quitter** pour arrêter.
 
+### Mises à jour
+L'appli regarde de temps en temps s'il existe une version plus récente sur GitHub. Si oui, un bandeau
+apparaît dans le panneau : un clic sur **Mettre à jour** télécharge la nouvelle version, remplace le
+`.exe` sur place (même fichier, mêmes raccourcis, mêmes réglages) et relance l'appli.
+
 ### Le .exe en pratique
 - Réglages, profils de jeux et cache sont rangés dans `%APPDATA%\FollowTheLyrics` : le `.exe` peut
   être déplacé ou remplacé sans rien perdre.
@@ -51,6 +56,7 @@ le panneau (clic gauche) ; clic droit → **Quitter** pour arrêter.
 | Ctrl+Alt+T | Couleurs album / blanc |
 | Ctrl+Alt+S | Changer d'animation |
 | Ctrl+Alt+Z | Voir les zones interdites du jeu (5 s) |
+| Ctrl+Alt+E | Capturer le jeu pour l'éditeur de zones |
 | Ctrl+Alt+↑ / ↓ | Paroles plus tôt / plus tard (0,2 s) |
 
 ## Ce qui se passe à l'écran
@@ -69,7 +75,9 @@ le panneau (clic gauche) ; clic droit → **Quitter** pour arrêter.
 - L'overlay se remet devant le jeu dès que le jeu passe au premier plan, et vérifie toutes les 0,5 s.
 - Si le jeu est en **plein écran exclusif**, Windows n'affiche rien par-dessus : le logiciel le détecte, prévient (notification + panneau) et indique où changer le mode dans le jeu.
 - Autre jeu ou vidéo en plein écran : profil prudent. Bureau : tout l'écran est libre.
-- Les zones sont dans `profiles.json` (panneau → Modifier les profils). Valeurs entre 0 et 1.
+- **Éditeur de zones** : en jeu, **Ctrl+Alt+E** prend une capture (sans les paroles). De retour sur
+  FollowTheLyrics, tu dessines à la souris les endroits à éviter, tu les nommes, tu enregistres.
+  Ça marche aussi pour un jeu sans profil : il est créé à l'enregistrement. Panneau → **Dessiner les zones**.
 
 ## Sous le capot
 - Relancer **Lancer.bat** remplace automatiquement la version déjà ouverte.
@@ -96,6 +104,8 @@ python -m venv .venv
 ## Fichiers
 - `overlay.py` : la fenêtre des paroles, l'appli, les raccourcis.
 - `panel.py` : le panneau de contrôle.
+- `updater.py` : la mise à jour automatique. `zone_editor.py` : l'éditeur de zones.
+- `bootstrap.py` : le démarrage blindé du `.exe`.
 - `welcome.py` : l'écran de bienvenue. `build.py` : la fabrication du `.exe` et de son icône.
 - `settings.py` : les réglages (sauvés dans `config.json`).
 - `media.py`, `lyrics.py`, `games.py`, `audio.py` : musique en cours, paroles, jeux, beats.
