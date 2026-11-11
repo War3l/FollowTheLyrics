@@ -107,6 +107,7 @@ python -m venv .venv
 - `overlay.py` : la fenêtre des paroles, l'appli, les raccourcis.
 - `panel.py` : le panneau de contrôle (un menu, une page par sujet). `widgets.py` : ses briques animées.
 - `hotkeys.py` : les raccourcis clavier modifiables.
+- `easter.py` : les easter eggs (certains morceaux déclenchent un spectacle à part).
 - `updater.py` : la mise à jour automatique. `zone_editor.py` : l'éditeur de zones.
 - `bootstrap.py` : le démarrage blindé du `.exe`.
 - `welcome.py` : l'écran de bienvenue. `build.py` : la fabrication du `.exe` et de son icône.
