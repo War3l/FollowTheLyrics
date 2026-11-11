@@ -142,14 +142,17 @@ def cleanup_leftovers():
 class UpdateCheck(QThread):
     """Regarde s'il existe une version plus recente."""
     found = pyqtSignal(dict)
+    nothing = pyqtSignal(bool)  # rien de neuf (True = on n'a pas pu joindre GitHub)
 
     def run(self):
         try:
             info = fetch_latest()
             if info and info["version"] and is_newer(info["version"], current_version()):
                 self.found.emit(info)
+            else:
+                self.nothing.emit(False)
         except Exception:
-            pass  # pas de reseau, GitHub injoignable : on reessaiera plus tard
+            self.nothing.emit(True)  # pas de reseau, GitHub injoignable : on reessaiera plus tard
 
 
 class UpdateInstall(QThread):

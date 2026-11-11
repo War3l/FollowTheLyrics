@@ -15,7 +15,7 @@ PROFILES_PATH = os.path.join(DATA_DIR, "profiles.json")
 # Zones en fraction de l'ecran : x, y = coin haut-gauche ; l, h = largeur, hauteur.
 DEFAULT_PROFILES = {
     "_aide": "Zones en fraction de l'ecran (0 a 1) : x,y = coin haut-gauche, l,h = largeur,hauteur. "
-             "En jeu, Ctrl+Alt+Z affiche les zones en rouge. Le fichier est relu automatiquement.",
+             "En jeu, le raccourci « Voir les zones » (Ctrl+Alt+Z au depart) les affiche en rouge. Le fichier est relu automatiquement.",
     "jeux": {
         "League of Legends.exe": {
             "nom": "League of Legends",
