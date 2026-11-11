@@ -49,6 +49,8 @@ apparaît dans le panneau : un clic sur **Mettre à jour** télécharge la nouve
 - **Synchro et jeux** : décalage des paroles, jeu détecté, zones interdites.
 
 ## Raccourcis (marchent en jeu)
+Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci puis appuie sur la nouvelle combinaison. Ceux d'origine :
+
 | Touches | Action |
 |---|---|
 | Ctrl+Alt+L | Afficher / masquer |
@@ -103,7 +105,8 @@ python -m venv .venv
 
 ## Fichiers
 - `overlay.py` : la fenêtre des paroles, l'appli, les raccourcis.
-- `panel.py` : le panneau de contrôle.
+- `panel.py` : le panneau de contrôle (un menu, une page par sujet). `widgets.py` : ses briques animées.
+- `hotkeys.py` : les raccourcis clavier modifiables.
 - `updater.py` : la mise à jour automatique. `zone_editor.py` : l'éditeur de zones.
 - `bootstrap.py` : le démarrage blindé du `.exe`.
 - `welcome.py` : l'écran de bienvenue. `build.py` : la fabrication du `.exe` et de son icône.
