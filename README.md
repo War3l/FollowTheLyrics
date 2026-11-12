@@ -110,6 +110,7 @@ python -m venv .venv
 - `easter.py` : les easter eggs (certains morceaux déclenchent un spectacle à part).
 - `install.py` : installation sur le PC (menu Démarrer, « Applications installées », désinstallation).
 - `video_demo.py` : fabrique la vidéo de démo du site à partir du vrai rendu de l'appli.
+- `visuels_site.py` : fabrique les images des cartes du site, elles aussi tirées du vrai rendu.
 - `updater.py` : la mise à jour automatique. `zone_editor.py` : l'éditeur de zones.
 - `bootstrap.py` : le démarrage blindé du `.exe`.
 - `welcome.py` : l'écran de bienvenue. `build.py` : la fabrication du `.exe` et de son icône.

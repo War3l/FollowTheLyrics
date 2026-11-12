@@ -95,35 +95,63 @@ class Hover:
 # --------------------------------------------------------------------------
 # Logo et icones
 # --------------------------------------------------------------------------
+def logo_path():
+    """Le signe du logo dans une grille de 64 x 64 : un triangle de lecture fendu par un trait
+    (la ligne de paroles qui traverse la musique)."""
+    path = QPainterPath()
+    for pts in (((16, 10), (16, 27), (48, 27)), ((16, 54), (16, 37), (48, 37))):
+        path.moveTo(*pts[0])
+        path.lineTo(*pts[1])
+        path.lineTo(*pts[2])
+        path.closeSubpath()
+    return path
+
+
+def draw_logo(p, rect, brush):
+    """Dessine le signe du logo dans `rect` (coins arrondis), rempli avec `brush`."""
+    p.save()
+    p.translate(rect.left(), rect.top())
+    p.scale(rect.width() / 64.0, rect.height() / 64.0)
+    pen = QPen(brush, 4)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(brush)
+    p.drawPath(logo_path())
+    p.restore()
+
+
 def icon_pixmap(size=64):
-    """Le logo : carre arrondi en degrade, trois lignes de paroles dont une « chantee »."""
+    """L'icone de l'appli : le signe en degrade sur une tuile sombre. En tout petit (pres de
+    l'heure), le signe seul, pour rester lisible."""
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     s = size / 64.0
     p.scale(s, s)
-    body = QRectF(2, 2, 60, 60)
-    g = QLinearGradient(QPointF(4, 2), QPointF(60, 62))
+    g = QLinearGradient(QPointF(10, 8), QPointF(54, 56))
     g.setColorAt(0.0, QColor("#5EE7FF"))
     g.setColorAt(0.5, QColor("#8B7CFF"))
     g.setColorAt(1.0, QColor("#FF6FB5"))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QBrush(g))
-    p.drawRoundedRect(body, 15, 15)
-    shine = QRadialGradient(QPointF(16, 8), 44)
-    shine.setColorAt(0, QColor(255, 255, 255, 90))
-    shine.setColorAt(1, QColor(255, 255, 255, 0))
-    p.setBrush(QBrush(shine))
-    p.drawRoundedRect(body, 15, 15)
-    dark = QColor(14, 12, 28)
-    p.setBrush(QColor(dark.red(), dark.green(), dark.blue(), 95))
-    p.drawRoundedRect(QRectF(13, 16, 26, 7), 3.5, 3.5)
-    p.drawRoundedRect(QRectF(13, 41, 32, 7), 3.5, 3.5)
-    p.setBrush(QColor(dark.red(), dark.green(), dark.blue(), 110))
-    p.drawRoundedRect(QRectF(13, 27, 38, 10), 5, 5)
-    p.setBrush(QColor("white"))
-    p.drawRoundedRect(QRectF(13, 27, 25, 10), 5, 5)
+    if size < 32:
+        draw_logo(p, QRectF(-8.5, -9.6, 83.2, 83.2), QBrush(g))  # agrandi : le signe remplit la case
+    else:
+        body = QRectF(2, 2, 60, 60)
+        tile = QLinearGradient(QPointF(2, 2), QPointF(62, 62))
+        tile.setColorAt(0.0, QColor("#1d1a33"))
+        tile.setColorAt(1.0, QColor("#0b0a14"))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(tile))
+        p.drawRoundedRect(body, 15, 15)
+        shine = QRadialGradient(QPointF(16, 6), 46)
+        shine.setColorAt(0, QColor(255, 255, 255, 38))
+        shine.setColorAt(1, QColor(255, 255, 255, 0))
+        p.setBrush(QBrush(shine))
+        p.drawRoundedRect(body, 15, 15)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 46), 1))
+        p.drawRoundedRect(body.adjusted(0.5, 0.5, -0.5, -0.5), 14.5, 14.5)
+        draw_logo(p, QRectF(11.5, 10, 44, 44), QBrush(g))
     p.end()
     return pm
 

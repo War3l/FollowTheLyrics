@@ -7,225 +7,445 @@
 <meta name="description" content="FollowTheLyrics affiche les paroles synchronisées de ta musique par-dessus tes jeux, mot à mot, aux couleurs de la pochette. Gratuit, pour Windows.">
 <meta property="og:title" content="FollowTheLyrics">
 <meta property="og:description" content="Les paroles de ta musique, par-dessus tes jeux. Mot à mot, aux couleurs de la pochette.">
-<meta property="og:image" content="img/titre.png">
-<link rel="icon" href="img/favicon.png">
+<meta property="og:image" content="img/demo.jpg">
+<meta name="theme-color" content="#07080d">
+<link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+<link rel="alternate icon" href="img/favicon.png">
 <style>
 :root{
-  --bg:#08090e; --card:#12141c; --line:#222634; --text:#eef0f6; --dim:#9aa1b5;
+  --bg:#07080d; --text:#f2f3f8; --dim:#a4a9bd; --faint:#6f7489;
   --c1:#5EE7FF; --c2:#8B7CFF; --c3:#FF6FB5;
-  --grad:linear-gradient(90deg,var(--c1),var(--c2) 50%,var(--c3));
+  --grad:linear-gradient(100deg,var(--c1),var(--c2) 52%,var(--c3));
+  --glass:rgba(255,255,255,.055); --glass-hi:rgba(255,255,255,.1);
+  --edge:rgba(255,255,255,.14); --edge-hi:rgba(255,255,255,.3);
+  --r:28px;
+  --display:"Segoe UI Variable Display","Segoe UI",system-ui,-apple-system,"SF Pro Display",Roboto,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font:16px/1.6 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;overflow-x:hidden}
+html{scroll-behavior:smooth;scroll-padding-top:96px;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font:16px/1.6 "Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 a{color:inherit}
-.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
-h1,h2,h3{font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;line-height:1.1;letter-spacing:-.02em}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+img,video{display:block;max-width:100%;height:auto}
+.wrap{max-width:1160px;margin:0 auto;padding:0 20px}
+h1,h2,h3{font-family:var(--display);line-height:1.04;letter-spacing:-.03em}
 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+:focus-visible{outline:2px solid var(--c1);outline-offset:3px;border-radius:8px}
 
-/* lueurs de fond */
-.glow{position:absolute;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
-.glow i{position:absolute;border-radius:50%;filter:blur(110px);opacity:.34}
-.glow i:nth-child(1){width:560px;height:560px;background:var(--c1);left:-180px;top:-200px}
-.glow i:nth-child(2){width:520px;height:520px;background:var(--c3);right:-200px;top:-120px}
-.glow i:nth-child(3){width:620px;height:620px;background:var(--c2);left:30%;top:420px;opacity:.2}
+/* ---- fond : lueurs colorees qui derivent + grain. C'est ce qu'on voit a travers le verre ---- */
+.aurora{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
+.aurora i{position:absolute;width:70vmax;height:70vmax;border-radius:50%;will-change:transform}
+.aurora i:nth-child(1){left:-22vmax;top:-30vmax;background:radial-gradient(closest-side,#5ee7ff66,#5ee7ff00);animation:drift1 34s ease-in-out infinite alternate}
+.aurora i:nth-child(2){right:-26vmax;top:-18vmax;background:radial-gradient(closest-side,#ff6fb55c,#ff6fb500);animation:drift2 40s ease-in-out infinite alternate}
+.aurora i:nth-child(3){left:18vw;top:46vh;background:radial-gradient(closest-side,#8b7cff55,#8b7cff00);animation:drift3 46s ease-in-out infinite alternate}
+.aurora i:nth-child(4){right:-10vmax;bottom:-34vmax;background:radial-gradient(closest-side,#ffb3473d,#ffb34700);animation:drift1 52s ease-in-out infinite alternate-reverse}
+@keyframes drift1{to{transform:translate(14vw,10vh) scale(1.15)}}
+@keyframes drift2{to{transform:translate(-16vw,14vh) scale(.9)}}
+@keyframes drift3{to{transform:translate(-12vw,-16vh) scale(1.2)}}
+.grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.09;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E")}
 
-/* barre du haut */
-nav{display:flex;align-items:center;gap:12px;padding:22px 0}
-nav img{width:38px;height:38px}
-nav b{font:800 19px "Segoe UI Variable Display","Segoe UI",sans-serif}
-nav span{flex:1}
-nav a{color:var(--dim);text-decoration:none;font-weight:600;font-size:14px;padding:8px 12px;border-radius:10px}
-nav a:hover{color:var(--text);background:#ffffff0f}
+/* ---- le verre ---- */
+.glass{position:relative;background:linear-gradient(145deg,var(--glass-hi),var(--glass) 42%,rgba(255,255,255,.03));
+  border:1px solid var(--edge);border-radius:var(--r);
+  -webkit-backdrop-filter:blur(26px) saturate(170%);backdrop-filter:blur(26px) saturate(170%);
+  box-shadow:inset 0 1px 0 var(--edge-hi),inset 0 -1px 0 rgba(255,255,255,.04),0 30px 70px -30px rgba(0,0,0,.75)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.glass{background:rgba(22,24,36,.94)}}
+/* reflet qui suit la souris */
+.shine::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(360px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.13),transparent 60%)}
+.shine:hover::before{opacity:1}
 
-/* hero */
-header{position:relative}
-.hero{text-align:center;padding:54px 0 30px}
-.hero h1{font-size:clamp(40px,7.4vw,84px);font-weight:900}
-.hero p.sub{color:var(--dim);font-size:clamp(17px,2.2vw,21px);max-width:660px;margin:22px auto 0}
-.cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:34px}
-.btn{display:inline-flex;align-items:center;gap:10px;padding:16px 28px;border-radius:16px;font-weight:800;font-size:17px;text-decoration:none;transition:transform .15s,box-shadow .15s}
-.btn.main{background:var(--grad);color:#0d0b1c;box-shadow:0 10px 40px -8px #8b7cff99}
-.btn.main:hover{transform:translateY(-2px);box-shadow:0 16px 50px -8px #8b7cffcc}
-.btn.ghost{border:1px solid var(--line);background:#ffffff08}
-.btn.ghost:hover{border-color:var(--c2)}
+/* ---- barre du haut : une pastille de verre flottante ---- */
+.nav{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:50;width:min(860px,calc(100% - 24px));
+  display:flex;align-items:center;gap:6px;padding:8px 8px 8px 16px;border-radius:999px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font:800 17px var(--display);letter-spacing:-.02em;margin-right:auto}
+.brand svg{width:30px;height:30px;margin:-2px 0}
+.nav a.l{color:var(--dim);text-decoration:none;font-weight:600;font-size:14px;padding:8px 13px;border-radius:999px;transition:color .2s,background .2s}
+.nav a.l:hover{color:var(--text);background:rgba(255,255,255,.08)}
+.nav .dl{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:#fff;color:#0b0b14;font-weight:800;font-size:14px;text-decoration:none;transition:transform .15s}
+.nav .dl:hover{transform:scale(1.04)}
+.nav .dl svg{width:15px;height:15px}
+@media (max-width:760px){.nav a.l{display:none}}
+@media (max-width:380px){.nav{padding-left:12px}.brand{font-size:15px;gap:7px}.brand svg{width:26px;height:26px}.nav .dl{padding:9px 13px;font-size:13px}}
+
+/* ---- hero ---- */
+.hero{text-align:center;padding:150px 0 0}
+.chip{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--dim)}
+.chip b{width:8px;height:8px;border-radius:50%;background:#6dffb0;box-shadow:0 0 0 0 #6dffb088;animation:ping 2.2s infinite}
+@keyframes ping{70%,100%{box-shadow:0 0 0 9px #6dffb000}}
+.hero h1{font-size:clamp(40px,6vw,84px);font-weight:900;margin-top:26px}
+.hero h1 span.w{display:inline-block;animation:rise .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i)*70ms)}
+@keyframes rise{from{opacity:0;transform:translateY(.5em) rotate(3deg);filter:blur(8px)}}
+.hero p.sub{color:var(--dim);font-size:clamp(17px,2.1vw,21px);max-width:640px;margin:24px auto 0}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:17px 30px;border-radius:999px;font-weight:800;font-size:17px;text-decoration:none;transition:transform .18s,box-shadow .18s,border-color .18s}
+.btn.main{background:var(--grad);color:#0d0b1c;box-shadow:0 14px 50px -10px #8b7cffb0,inset 0 1px 0 #ffffff80}
+.btn.main:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 20px 60px -10px #8b7cffe0,inset 0 1px 0 #ffffff80}
+.btn.ghost{border-radius:999px;padding:16px 26px;font-size:16px}
+.btn.ghost:hover{border-color:var(--edge-hi)}
 .btn svg{width:20px;height:20px}
-.meta{color:var(--dim);font-size:14px;margin-top:16px}
+.meta{color:var(--faint);font-size:14px;margin-top:18px}
 
-/* encart : l'avertissement de Windows au premier lancement */
-.warn{max-width:640px;margin:26px auto 0;padding:18px 22px;text-align:left;border-radius:18px;border:1px solid #5ee7ff3d;background:#5ee7ff0d;display:flex;gap:16px;align-items:flex-start}
-.warn .ico{flex:none;width:40px;height:40px;border-radius:12px;background:var(--grad);display:grid;place-items:center;font-size:20px}
-.warn h3{font-size:16px;font-weight:800;line-height:1.3}
-.warn p{color:var(--dim);font-size:14.5px;margin-top:4px}
-.warn ol{margin:10px 0 0;padding:0;counter-reset:w;display:flex;flex-wrap:wrap;gap:8px 18px}
-.warn li{list-style:none;counter-increment:w;font-size:14.5px;display:flex;align-items:center;gap:8px}
-.warn li::before{content:counter(w);flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:#ffffff1a;font-weight:800;font-size:12px}
-.warn li b{font-weight:700}
-@media (max-width:520px){.warn{padding:16px}.warn .ico{display:none}}
+/* la scene : la video dans un cadre de verre, avec un lecteur en verre pose dessus */
+.stage{position:relative;max-width:1040px;margin:64px auto 0;padding:10px;border-radius:36px}
+.stage::after{content:"";position:absolute;inset:auto 8% -40px;height:120px;z-index:-1;background:var(--grad);filter:blur(70px);opacity:.45}
+.stage video{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:27px;background:#0c0e16}
+.player{position:absolute;left:50%;bottom:-30px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;
+  padding:8px 10px;border-radius:999px;width:min(560px,calc(100% - 28px));background:linear-gradient(145deg,rgba(40,42,60,.72),rgba(18,19,30,.62))}
+.player button{flex:none;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;transition:background .2s}
+.player button:hover{background:rgba(255,255,255,.12)}
+.player button svg{width:20px;height:20px;fill:currentColor}
+.track{flex:1;min-width:0;display:flex;align-items:center;gap:11px;padding:6px 12px 6px 6px;border-radius:999px;background:rgba(0,0,0,.34);position:relative;overflow:hidden}
+.track .cover{flex:none;width:34px;height:34px;border-radius:10px;background:linear-gradient(180deg,#3a2a6b,#ff7a8a 62%,#ffc46b)}
+.track .t{min-width:0;text-align:left;line-height:1.25}
+.track .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track .t i{display:block;font-style:normal;font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track .bar{position:absolute;left:52px;right:16px;bottom:3px;height:2px;border-radius:2px;background:rgba(255,255,255,.14)}
+.track .bar u{display:block;height:100%;width:0;border-radius:2px;background:var(--grad)}
+.player .on{color:var(--c1)}
+.stage-note{color:var(--faint);font-size:13px;margin-top:52px}
 
-/* ecran de demo anime */
-.screen{position:relative;margin:54px auto 0;max-width:980px;aspect-ratio:16/9;border-radius:22px;overflow:hidden;border:1px solid #ffffff1f;
-  background:radial-gradient(120% 90% at 70% 110%,#27405a 0,#16202e 45%,#0c1118 100%);box-shadow:0 40px 120px -30px #000,0 0 0 8px #ffffff08}
-.screen video{display:block;width:100%;height:100%;object-fit:cover}
-.screen-note{color:var(--dim);font-size:13px;margin-top:14px}
+/* bandeau : l'avertissement de Windows */
+.warn{max-width:760px;margin:26px auto 0;padding:16px 22px;text-align:left;display:flex;gap:16px;align-items:center;border-radius:22px}
+.warn svg{flex:none;width:30px;height:30px;color:var(--c1)}
+.warn h3{font-size:15.5px;font-weight:800;letter-spacing:-.01em;line-height:1.3}
+.warn p{color:var(--dim);font-size:14.5px;margin-top:2px}
+.warn p b{color:var(--text);font-weight:700}
 
-section{padding:84px 0 0}
-section>h2{font-size:clamp(28px,4.4vw,44px);font-weight:900;text-align:center}
-section>p.lead{color:var(--dim);text-align:center;max-width:620px;margin:14px auto 0}
+/* ---- sections ---- */
+section,section.wrap{padding-top:130px}
+.eyebrow{display:block;text-align:center;font-size:13px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--c1);margin-bottom:16px}
+section h2{font-size:clamp(32px,5.4vw,64px);font-weight:900;text-align:center}
+p.lead{color:var(--dim);text-align:center;max-width:600px;margin:18px auto 0;font-size:17px}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.8,.2,1),transform .8s cubic-bezier(.2,.8,.2,1)}
+.reveal.in{opacity:1;transform:none}
 
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:40px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;transition:border-color .2s,transform .2s}
-.card:hover{border-color:#8b7cff88;transform:translateY(-3px)}
-.card .ico{width:44px;height:44px;border-radius:13px;background:var(--grad);display:grid;place-items:center;font-size:22px;margin-bottom:16px}
-.card h3{font-size:18px;font-weight:800;margin-bottom:6px}
-.card p{color:var(--dim);font-size:15px}
+/* ---- carrousel de cartes en 3D ---- */
+#styles{overflow-x:clip}
+.flow{--cw:clamp(236px,34vw,400px);--step:clamp(118px,23vw,262px);position:relative;height:calc(var(--cw)*.75 + 104px);margin-top:56px;perspective:1500px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.fcard{position:absolute;left:50%;top:0;width:var(--cw);padding:8px 8px 0;border-radius:30px;cursor:pointer;
+  transition:transform .7s cubic-bezier(.2,.8,.2,1),opacity .7s;will-change:transform}
+.fcard img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:23px;pointer-events:none}
+.fcard .cap{height:88px;display:flex;flex-direction:column;justify-content:center;text-align:center;padding:0 10px}
+.fcard h3{font-size:clamp(17px,2vw,22px);font-weight:800;letter-spacing:-.02em}
+.fcard p{color:var(--dim);font-size:clamp(13px,1.4vw,15.5px);margin-top:3px}
+.fcard::after{content:"";position:absolute;inset:0;border-radius:inherit;background:#05060b;opacity:var(--dark,0);transition:opacity .7s;pointer-events:none}
+.fcard .pic{position:relative;overflow:hidden;border-radius:23px}
+.fcard.secret img{filter:blur(5px) saturate(1.2);transform:scale(1.06)}
+.fcard.secret .pic b{position:absolute;inset:0;display:grid;place-items:center;font:900 clamp(60px,9vw,110px) var(--display);color:#fff;text-shadow:0 0 40px #ff6fb5}
+.flowbar{display:flex;align-items:center;gap:8px;width:min(640px,100%);margin:34px auto 0;padding:8px;border-radius:999px}
+.flowbar button{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.07);transition:background .2s}
+.flowbar button:hover{background:rgba(255,255,255,.16)}
+.flowbar button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.flowbar p{flex:1;text-align:center;color:var(--dim);font-size:14.5px;line-height:1.4;padding:0 6px;min-height:2.8em;display:grid;place-items:center}
+.dots{display:flex;gap:7px;justify-content:center;margin-top:18px}
+.dots i{width:7px;height:7px;border-radius:99px;background:rgba(255,255,255,.22);transition:width .4s,background .4s}
+.dots i.on{width:26px;background:#fff}
+@media (max-width:600px){.flowbar{border-radius:26px}}
 
-.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:40px}
-.mode{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px}
-.mini{aspect-ratio:16/8;border-radius:12px;background:#0a0b10;border:1px solid var(--line);position:relative;overflow:hidden;margin-bottom:16px}
-.mini b{position:absolute;height:9%;border-radius:99px;background:#ffffff40}
-.mini b.on{background:var(--grad);height:12%}
-.mode h3{font-size:18px;font-weight:800}
-.mode p{color:var(--dim);font-size:15px;margin-top:4px}
-.cursor{position:absolute;width:1.4%;height:16%;background:var(--c3);animation:blink 1s steps(2) infinite}
-@keyframes blink{50%{opacity:0}}
+/* ---- grille de fonctions ---- */
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-top:56px}
+.tile{padding:28px;overflow:hidden;display:flex;flex-direction:column;min-height:250px}
+.tile h3{font-size:21px;font-weight:800;letter-spacing:-.02em;margin-top:auto;padding-top:22px}
+.tile p{color:var(--dim);font-size:15px;margin-top:6px}
+.s2{grid-column:span 2}.s3{grid-column:span 3}.s4{grid-column:span 4}
+@media (max-width:900px){.bento{grid-template-columns:repeat(2,1fr)}.s2,.s3{grid-column:span 1}.s4{grid-column:span 2}}
+@media (max-width:600px){.bento{grid-template-columns:1fr}.s2,.s3,.s4{grid-column:span 1}.tile{min-height:0}}
+/* mot a mot */
+.kara{font:900 clamp(26px,4.2vw,50px)/1.15 var(--display);letter-spacing:-.03em;display:flex;flex-wrap:wrap;gap:0 .28em}
+.kara span{color:rgba(255,255,255,.2);animation:sing 6.5s infinite;animation-delay:calc(var(--i)*.42s)}
+@keyframes sing{0%{color:rgba(255,255,255,.2);transform:none;text-shadow:none}4%{color:#fff;transform:translateY(-.06em) scale(1.06);text-shadow:0 0 30px #8b7cff}9%,66%{color:#fff;transform:none;text-shadow:0 0 22px #8b7cff88}76%,100%{color:rgba(255,255,255,.2);text-shadow:none}}
+/* couleurs de la pochette */
+.swatch{display:flex;align-items:center;gap:14px}
+.swatch .cv{width:84px;height:84px;border-radius:20px;background:linear-gradient(180deg,#3a2a6b,#ff7a8a 62%,#ffc46b);box-shadow:0 14px 34px -12px #ff7a8a}
+.swatch .dots3{display:flex;flex-direction:column;gap:8px}
+.swatch .dots3 i{display:block;width:44px;height:20px;border-radius:99px}
+.swatch .arrow{color:var(--faint);font-size:22px}
+/* le beat */
+.eq{display:flex;align-items:flex-end;gap:7px;height:92px}
+.eq i{flex:1;height:100%;border-radius:6px 6px 2px 2px;background:var(--grad);transform-origin:bottom;animation:eq 1s ease-in-out infinite alternate;animation-delay:calc(var(--i)*-.137s)}
+@keyframes eq{from{transform:scaleY(.18)}to{transform:scaleY(1)}}
+/* zones du jeu */
+.mini{position:relative;aspect-ratio:16/8.4;border-radius:16px;background:rgba(0,0,0,.34);border:1px solid var(--edge);overflow:hidden}
+.mini .z{position:absolute;border:1.5px dashed #ff6f8f;background:#ff6f8f1c;border-radius:7px}
+.mini .l{position:absolute;height:9%;border-radius:99px;background:var(--grad)}
+.mini .l.d{background:rgba(255,255,255,.3)}
+/* traduction */
+.trad b{display:block;font:900 clamp(24px,3vw,32px)/1.15 var(--display);letter-spacing:-.03em}
+.trad i{display:block;color:var(--dim);font-size:16px;margin-top:8px}
+/* applis */
+.apps{display:flex;flex-wrap:wrap;gap:8px}
+.apps span{padding:9px 15px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--edge);font-weight:650;font-size:14.5px}
+.big-ico{width:54px;height:54px;color:var(--c1)}
 
-.shots{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;margin-top:40px;align-items:start}
-.shots figure{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden}
-.shots img{display:block;width:100%;height:auto}
-.shots figcaption{padding:14px 18px;color:var(--dim);font-size:14px}
-@media (max-width:820px){.shots{grid-template-columns:1fr}}
+/* ---- le panneau ---- */
+.duo{display:grid;grid-template-columns:1fr 1.15fr;gap:48px;align-items:center}
+.duo h2{text-align:left;font-size:clamp(32px,4.6vw,56px)}
+.duo .eyebrow{text-align:left}
+.duo ul{list-style:none;margin-top:26px;display:grid;gap:14px}
+.duo li{display:flex;gap:12px;color:var(--dim);font-size:16.5px}
+.duo li::before{content:"";flex:none;width:9px;height:9px;margin-top:9px;border-radius:50%;background:var(--grad)}
+.duo li b{color:var(--text);font-weight:700}
+.shot{padding:10px;border-radius:30px}
+.shot.in{transform:perspective(1400px) rotateY(-9deg) rotateX(3deg)}
+.shot.in:hover{transform:perspective(1400px) rotateY(-2deg)}
+.shot img{border-radius:21px;width:100%}
+@media (max-width:860px){.duo{grid-template-columns:1fr;gap:34px}.duo h2,.duo .eyebrow{text-align:center}.shot.in,.shot.in:hover{transform:none}}
 
-.steps{counter-reset:s;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:40px}
-.steps li{list-style:none;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;counter-increment:s}
-.steps li::before{content:counter(s);display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--grad);color:#0d0b1c;font-weight:900;margin-bottom:14px}
-.steps h3{font-size:17px;font-weight:800;margin-bottom:4px}
-.steps p{color:var(--dim);font-size:15px}
-kbd{font:700 12px "Cascadia Code",Consolas,monospace;background:#1b1e28;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:2px 7px;color:var(--text)}
+/* ---- etapes ---- */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:56px;counter-reset:s}
+.steps li{list-style:none;padding:28px;counter-increment:s}
+.steps li::after{content:"0" counter(s);display:block;order:-1;font:900 64px/1 var(--display);letter-spacing:-.05em;color:transparent;-webkit-text-stroke:1.5px rgba(255,255,255,.34);margin-bottom:20px}
+.steps li{display:flex;flex-direction:column}
+.steps h3{font-size:20px;font-weight:800;letter-spacing:-.02em}
+.steps p{color:var(--dim);font-size:15px;margin-top:6px}
+kbd{font:700 12px "Cascadia Code",Consolas,monospace;background:rgba(255,255,255,.1);border:1px solid var(--edge);border-bottom-width:2px;border-radius:7px;padding:2px 7px;color:var(--text)}
 
-.faq{max-width:780px;margin:40px auto 0}
-details{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:0 22px;margin-bottom:10px}
-summary{cursor:pointer;font-weight:700;padding:18px 0;list-style:none;display:flex;justify-content:space-between;gap:16px}
-summary::after{content:"+";color:var(--c2);font-weight:900;font-size:20px;line-height:1}
-details[open] summary::after{content:"–"}
-details p{color:var(--dim);padding:0 0 18px;font-size:15px}
+/* ---- questions ---- */
+.faq{max-width:800px;margin:56px auto 0;display:grid;gap:10px}
+details.glass{border-radius:22px;padding:0 24px}
+summary{cursor:pointer;font-weight:700;font-size:16.5px;padding:20px 0;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";flex:none;width:11px;height:11px;border-right:2.2px solid var(--dim);border-bottom:2.2px solid var(--dim);transform:rotate(45deg) translate(-3px,-3px);transition:transform .3s}
+details[open] summary::after{transform:rotate(225deg) translate(-3px,-3px)}
+details p{color:var(--dim);padding:0 0 20px;font-size:15.5px}
 
-.final{text-align:center;margin:90px auto 0;padding:56px 24px;border-radius:28px;border:1px solid #ffffff1f;
-  background:radial-gradient(80% 140% at 50% 0,#8b7cff33,transparent 70%),var(--card)}
-.final h2{font-size:clamp(26px,4vw,40px);font-weight:900}
-footer{color:var(--dim);font-size:13px;text-align:center;padding:44px 0 50px}
+/* ---- fin ---- */
+.final{text-align:center;margin:130px auto 0;padding:76px 24px;border-radius:44px;overflow:hidden}
+.final::after{content:"";position:absolute;inset:-40% 10% auto;height:80%;background:var(--grad);filter:blur(90px);opacity:.3;pointer-events:none}
+.final>*{position:relative;z-index:1}
+.final svg.mark{width:74px;height:74px;margin:0 auto 26px}
+.final h2{font-size:clamp(40px,7.6vw,96px);font-weight:900;line-height:1.04;letter-spacing:-.03em}
+footer{color:var(--faint);font-size:13px;text-align:center;padding:56px 0 60px}
 footer a{color:var(--dim)}
+
+/* message apres un clic sur Telecharger */
+.toast{position:fixed;left:50%;bottom:20px;z-index:60;width:min(560px,calc(100% - 24px));padding:16px 18px 16px 20px;border-radius:24px;display:flex;gap:14px;align-items:flex-start;
+  transform:translate(-50%,160%);visibility:hidden;transition:transform .6s cubic-bezier(.2,.9,.2,1),visibility 0s .6s;background:linear-gradient(145deg,rgba(44,46,66,.86),rgba(20,21,33,.82))}
+.toast.show{transform:translate(-50%,0);visibility:visible;transition-delay:0s}
+.toast h3{font-size:15.5px;font-weight:800;letter-spacing:-.01em;line-height:1.3}
+.toast p{color:var(--dim);font-size:14px;margin-top:3px}
+.toast p b{color:var(--text)}
+.toast button{flex:none;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.1);font-size:18px;line-height:1}
+
+@media (max-width:600px){
+  .hero{padding-top:120px}
+  .player button.opt{display:none}
+  .warn{align-items:flex-start}
+  section,section.wrap{padding-top:96px}
+  .final{margin-top:96px;padding:56px 18px;border-radius:32px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .reveal{opacity:1;transform:none}
+  .kara span{color:#fff}
+  html{scroll-behavior:auto}
+}
 </style>
 </head>
 <body>
-<header>
-  <div class="glow"><i></i><i></i><i></i></div>
-  <div class="wrap">
-    <nav>
-      <img src="img/logo.png" alt="">
-      <b>FollowTheLyrics</b><span></span>
-      <a href="#fonctions">Fonctions</a>
-      <a href="#faq">Questions</a>
-      <a href="https://github.com/War3l/FollowTheLyrics">GitHub</a>
-    </nav>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="lg" x1="14" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5EE7FF"/><stop offset=".5" stop-color="#8B7CFF"/><stop offset="1" stop-color="#FF6FB5"/>
+    </linearGradient>
+    <!-- le logo : un triangle de lecture fendu par un trait -->
+    <symbol id="mark" viewBox="0 0 64 64">
+      <g fill="url(#lg)" stroke="url(#lg)" stroke-width="4" stroke-linejoin="round">
+        <polygon points="16,10 16,27 48,27"/><polygon points="16,54 16,37 48,37"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div class="grain" aria-hidden="true"></div>
 
-    <div class="hero">
-      <h1>Les paroles de ta musique,<br><span class="grad">par-dessus tes jeux.</span></h1>
-      <p class="sub">FollowTheLyrics affiche les paroles en rythme, mot à mot, aux couleurs de la pochette. Tu lances ta musique, tu joues, c'est tout.</p>
-      <div class="cta">
-        <a class="btn main" href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
-          Télécharger pour Windows
-        </a>
-        <a class="btn ghost" href="https://github.com/War3l/FollowTheLyrics">Voir le code</a>
-      </div>
-      <p class="meta"><span id="ver">Dernière version</span> · Windows 10 et 11 · gratuit · aucun compte à connecter</p>
+<nav class="nav glass" aria-label="Navigation">
+  <a class="brand" href="#top"><svg aria-hidden="true"><use href="#mark"/></svg>FollowTheLyrics</a>
+  <a class="l" href="#styles">Styles</a>
+  <a class="l" href="#fonctions">Fonctions</a>
+  <a class="l" href="#faq">Questions</a>
+  <a class="l" href="https://github.com/War3l/FollowTheLyrics">GitHub</a>
+  <a class="dl" data-dl href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>Télécharger
+  </a>
+</nav>
 
-      <div class="warn">
-        <div class="ico">🛡️</div>
-        <div>
-          <h3>Windows affiche « Windows a protégé votre ordinateur » ?</h3>
-          <p>C'est normal au premier lancement : le logiciel est gratuit et n'a pas de signature payante. Pour l'ouvrir :</p>
-          <ol>
-            <li><span>Clique sur <b>Informations complémentaires</b></span></li>
-            <li><span>Puis sur <b>Exécuter quand même</b></span></li>
-          </ol>
+<header id="top">
+  <div class="wrap hero">
+    <span class="chip glass"><b></b><span id="ver">Gratuit · pour Windows</span></span>
+    <h1><span class="w" style="--i:0">Les</span> <span class="w" style="--i:1">paroles</span> <span class="w" style="--i:2">de</span> <span class="w" style="--i:3">ta</span> <span class="w" style="--i:4">musique,</span><br><span class="w grad" style="--i:6">par-dessus</span> <span class="w grad" style="--i:7">tes</span> <span class="w grad" style="--i:8">jeux.</span></h1>
+    <p class="sub">FollowTheLyrics affiche les paroles en rythme, mot à mot, aux couleurs de la pochette. Tu lances ta musique, tu joues, c'est tout.</p>
+    <div class="cta">
+      <a class="btn main" data-dl href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+        Télécharger pour Windows
+      </a>
+      <a class="btn ghost glass" href="https://github.com/War3l/FollowTheLyrics">Voir le code</a>
+    </div>
+    <p class="meta">Windows 10 et 11 · gratuit · aucun compte à connecter</p>
+
+    <div class="stage glass">
+      <video id="demo" src="img/demo.mp4" poster="img/demo.jpg" muted loop playsinline preload="metadata"
+             aria-label="Démonstration : les paroles s'affichent mot à mot par-dessus un jeu"></video>
+      <div class="player glass">
+        <button id="pl-restart" class="opt" aria-label="Revenir au début"><svg viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 1 1v4.7l9.4-5.5A1 1 0 0 1 18 6v12a1 1 0 0 1-1.6.8L7 13.3V18a1 1 0 0 1-2 0V6a1 1 0 0 1 1-1z"/></svg></button>
+        <button id="pl-toggle" aria-label="Mettre en pause"><svg viewBox="0 0 24 24"><path id="pl-icon" d="M7 4.5h3.2v15H7zM13.8 4.5H17v15h-3.2z"/></svg></button>
+        <div class="track">
+          <span class="cover"></span>
+          <div class="t"><b>Monte le son</b><i>Morceau de démonstration</i></div>
+          <div class="bar"><u id="pl-bar"></u></div>
         </div>
+        <span class="on opt" title="Paroles affichées" style="width:42px;height:42px;display:grid;place-items:center"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M5 4h14a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-6.200l-4.600 3.400a.75.75 0 0 1-1.200-.6V18H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zm2 5.200a1 1 0 0 0 0 2h10a1 1 0 0 0 0-2zm0 3.600a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2z"/></svg></span>
       </div>
+    </div>
+    <p class="stage-note">Le vrai rendu de l'appli, filmé sur un décor de démonstration.</p>
 
-      <div class="screen">
-        <video id="demo" src="img/demo.mp4" poster="img/demo.jpg" muted loop playsinline preload="metadata"
-               aria-label="Démonstration : les paroles s'affichent mot à mot par-dessus un jeu"></video>
+    <div class="warn glass">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7.5 3v5.600c0 4.400-3 8.200-7.500 9.400-4.500-1.200-7.500-5-7.500-9.400V6z"/><path d="M9 12l2.200 2.200L15.200 10"/></svg>
+      <div>
+        <h3>Windows affiche « Windows a protégé votre ordinateur » ?</h3>
+        <p>C'est normal au premier lancement : clique sur <b>Informations complémentaires</b>, puis sur <b>Exécuter quand même</b>.</p>
       </div>
-      <p class="screen-note">Le vrai rendu de l'appli, filmé sur un décor de démonstration.</p>
     </div>
   </div>
 </header>
 
-<main class="wrap">
-  <section id="fonctions">
-    <h2>Comme un <span class="grad">edit</span>, en direct</h2>
-    <p class="lead">Pas une simple ligne de texte dans un coin : les paroles bougent avec la musique.</p>
-    <div class="grid">
-      <div class="card"><div class="ico">🎤</div><h3>Mot à mot</h3><p>Chaque mot s'allume au moment où il est chanté, comme sur Spotify ou Apple Music.</p></div>
-      <div class="card"><div class="ico">🎨</div><h3>Couleurs de la pochette</h3><p>Le texte et son halo prennent les trois couleurs les plus marquantes de l'album.</p></div>
-      <div class="card"><div class="ico">🥁</div><h3>Ça pulse sur le beat</h3><p>Le texte grossit sur la grosse caisse, le refrain s'affiche plus grand, les mots tenus tremblent.</p></div>
-      <div class="card"><div class="ico">🎮</div><h3>Pensé pour jouer</h3><p>Les paroles évitent la minimap, la barre de sorts et le chat. Profils prêts pour League of Legends, Cyberpunk 2077 et World of Warcraft.</p></div>
-      <div class="card"><div class="ico">💥</div><h3>Le titre en géant</h3><p>Quand le chanteur prononce le titre du morceau, il s'affiche en très grand.</p></div>
-      <div class="card"><div class="ico">🌍</div><h3>Traduction</h3><p>Une traduction française discrète sous chaque ligne, pour les chansons étrangères.</p></div>
-      <div class="card"><div class="ico">🎧</div><h3>Toutes tes applis</h3><p>Spotify, YouTube Music, Deezer, Apple Music, ou n'importe quel lecteur que Windows reconnaît.</p></div>
-      <div class="card"><div class="ico">🛡️</div><h3>Sans risque</h3><p>Rien n'est injecté dans le jeu, donc aucun souci d'anti-cheat. Aucun compte de musique n'est demandé.</p></div>
+<main>
+  <section id="styles">
+    <div class="wrap reveal">
+      <span class="eyebrow">Les styles</span>
+      <h2>Choisis <span class="grad">ton</span> affichage</h2>
+      <p class="lead">Chaque carte est une vraie capture de l'appli. Fais-les défiler.</p>
+    </div>
+    <div class="flow reveal" id="flow" role="group" aria-roledescription="carrousel" aria-label="Les styles d'affichage">
+      <article class="fcard glass" data-desc="Les lignes surgissent à un endroit différent de l'écran, mots empilés et penchés en 3D sur les côtés.">
+        <div class="pic"><img src="img/cartes/edit.jpg" alt="Mode Edit : les mots d'une ligne empilés sur le côté de l'écran" width="800" height="600"></div>
+        <div class="cap"><h3>Edit</h3><p>Chaque ligne surgit ailleurs</p></div>
+      </article>
+      <article class="fcard glass" data-desc="Les lignes défilent en haut de l'écran, à gauche, au centre ou à droite. Simple et discret.">
+        <div class="pic"><img src="img/cartes/classique.jpg" alt="Mode Classique : une ligne de paroles centrée en haut de l'écran" width="800" height="600" loading="lazy"></div>
+        <div class="cap"><h3>Classique</h3><p>Comme sur Spotify</p></div>
+      </article>
+      <article class="fcard glass" data-desc="Les lettres s'écrivent une à une au fil du chant, avec un curseur qui avance.">
+        <div class="pic"><img src="img/cartes/machine.jpg" alt="Mode Machine à écrire : une ligne en train de s'écrire avec un curseur" width="800" height="600" loading="lazy"></div>
+        <div class="cap"><h3>Machine à écrire</h3><p>Lettre après lettre</p></div>
+      </article>
+      <article class="fcard glass" data-desc="Quand le chanteur prononce le titre du morceau, il s'affiche en très grand au milieu de l'écran.">
+        <div class="pic"><img src="img/cartes/titre.jpg" alt="Le titre du morceau affiché en très grand" width="800" height="600" loading="lazy"></div>
+        <div class="cap"><h3>Le titre en géant</h3><p>Quand il est chanté</p></div>
+      </article>
+      <article class="fcard glass secret" data-desc="Quelques morceaux cachent un spectacle spécial. On ne te dit pas lesquels.">
+        <div class="pic"><img src="img/cartes/surprise.jpg" alt="Un spectacle caché, volontairement flouté" width="800" height="600" loading="lazy"><b aria-hidden="true">?</b></div>
+        <div class="cap"><h3>Easter eggs</h3><p>À toi de les trouver</p></div>
+      </article>
+    </div>
+    <div class="wrap reveal">
+      <div class="flowbar glass">
+        <button id="flow-prev" aria-label="Carte précédente"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <p id="flow-desc" aria-live="polite"></p>
+        <button id="flow-next" aria-label="Carte suivante"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <div class="dots" id="flow-dots" aria-hidden="true"></div>
     </div>
   </section>
 
-  <section>
-    <h2>Trois façons de les afficher</h2>
-    <div class="modes">
-      <div class="mode"><div class="mini"><b style="left:6%;top:16%;width:28%"></b><b class="on" style="left:6%;top:32%;width:44%"></b></div><h3>Classique</h3><p>Les lignes défilent en haut de l'écran : à gauche, au centre ou à droite.</p></div>
-      <div class="mode"><div class="mini"><b class="on" style="left:8%;top:18%;width:34%;transform:rotate(-4deg)"></b><b style="left:58%;top:14%;width:30%;transform:rotate(3deg)"></b><b style="left:38%;top:42%;width:24%;transform:rotate(-2deg)"></b></div><h3>Edit</h3><p>Chaque ligne surgit à un endroit différent, légèrement penchée.</p></div>
-      <div class="mode"><div class="mini"><b style="left:25%;top:16%;width:42%"></b><b class="on" style="left:25%;top:32%;width:30%"></b><i class="cursor" style="left:56.5%;top:30%"></i></div><h3>Machine à écrire</h3><p>Les lettres s'écrivent une à une au fil du chant, avec un curseur.</p></div>
+  <section id="fonctions" class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">Les fonctions</span>
+      <h2>Comme un <span class="grad">edit</span>, en direct</h2>
+      <p class="lead">Pas une ligne de texte dans un coin : les paroles bougent avec la musique.</p>
+    </div>
+    <div class="bento">
+      <div class="tile glass shine s4 reveal">
+        <div class="kara" aria-hidden="true"><span style="--i:0">Chaque</span><span style="--i:1">mot</span><span style="--i:2">s'allume</span><span style="--i:3">quand</span><span style="--i:4">il</span><span style="--i:5">est</span><span style="--i:6">chanté</span></div>
+        <h3>Mot à mot</h3><p>Chaque mot s'allume au moment où il est chanté, comme sur Spotify ou Apple Music.</p>
+      </div>
+      <div class="tile glass shine s2 reveal">
+        <div class="swatch" aria-hidden="true"><span class="cv"></span><span class="arrow">→</span><span class="dots3"><i style="background:#ff7a8a"></i><i style="background:#ffc46b"></i><i style="background:#6a4bd6"></i></span></div>
+        <h3>Couleurs de la pochette</h3><p>Le texte et son halo prennent les trois couleurs les plus marquantes de l'album.</p>
+      </div>
+      <div class="tile glass shine s2 reveal">
+        <div class="eq" aria-hidden="true"><i style="--i:0"></i><i style="--i:5"></i><i style="--i:2"></i><i style="--i:7"></i><i style="--i:3"></i><i style="--i:9"></i><i style="--i:1"></i><i style="--i:6"></i><i style="--i:4"></i><i style="--i:8"></i></div>
+        <h3>Ça pulse sur le beat</h3><p>Le texte grossit sur la grosse caisse, le refrain s'affiche plus grand, les mots tenus tremblent.</p>
+      </div>
+      <div class="tile glass shine s2 reveal">
+        <div class="mini" aria-hidden="true">
+          <i class="z" style="right:3%;bottom:5%;width:20%;height:36%"></i><i class="z" style="left:31%;bottom:5%;width:38%;height:14%"></i><i class="z" style="left:3%;bottom:5%;width:22%;height:28%"></i>
+          <i class="l d" style="left:8%;top:14%;width:26%"></i><i class="l" style="left:8%;top:28%;width:40%"></i><i class="l d" style="right:8%;top:20%;width:24%"></i>
+        </div>
+        <h3>Pensé pour jouer</h3><p>Les paroles évitent la minimap, la barre de sorts et le chat. Tu peux dessiner tes propres zones.</p>
+      </div>
+      <div class="tile glass shine s2 reveal">
+        <div class="trad" aria-hidden="true"><b class="grad">Turn the music up</b><i>Monte le son</i></div>
+        <h3>Traduction</h3><p>Une traduction française discrète sous chaque ligne, pour les chansons étrangères.</p>
+      </div>
+      <div class="tile glass shine s3 reveal">
+        <div class="apps" aria-hidden="true"><span>Spotify</span><span>YouTube Music</span><span>Deezer</span><span>Apple Music</span><span>Tidal</span><span>ton navigateur</span></div>
+        <h3>Toutes tes applis</h3><p>N'importe quel lecteur que Windows reconnaît. Les paroles sont trouvées toutes seules.</p>
+      </div>
+      <div class="tile glass shine s3 reveal">
+        <svg class="big-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7.5 3v5.600c0 4.400-3 8.200-7.500 9.400-4.500-1.200-7.500-5-7.500-9.400V6z"/><path d="M9 12l2.200 2.200L15.200 10"/></svg>
+        <h3>Sans risque</h3><p>Rien n'est injecté dans le jeu, donc aucun souci d'anti-cheat. Aucun compte de musique n'est demandé.</p>
+      </div>
     </div>
   </section>
 
-  <section>
-    <h2>Tout se règle en direct</h2>
-    <p class="lead">Un panneau de contrôle pour le mode, les couleurs, la police, la taille et les sources de musique.</p>
-    <div class="shots">
-      <figure><img src="img/panel.png" alt="Le panneau de contrôle de FollowTheLyrics" loading="lazy"><figcaption>Le panneau : musique en cours, mode d'affichage, apparence.</figcaption></figure>
-      <figure><img src="img/titre.png" alt="Le titre du morceau affiché en géant" loading="lazy"><figcaption>Le titre en géant, aux couleurs de la pochette.</figcaption></figure>
+  <section class="wrap">
+    <div class="duo">
+      <div class="reveal">
+        <span class="eyebrow">Le panneau</span>
+        <h2>Tout se règle <span class="grad">en direct</span></h2>
+        <ul>
+          <li><span><b>Le style</b> : mode, police, taille, couleurs, effets.</span></li>
+          <li><span><b>La musique</b> : quelles applis écouter, décalage des paroles.</span></li>
+          <li><span><b>Le jeu</b> : les zones à éviter, les raccourcis clavier.</span></li>
+        </ul>
+      </div>
+      <div class="shot glass reveal"><img src="img/panel.png" alt="Le panneau de contrôle de FollowTheLyrics" loading="lazy"></div>
     </div>
   </section>
 
-  <section>
-    <h2>Prêt en une minute</h2>
+  <section class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">Installation</span>
+      <h2>Prêt en une minute</h2>
+    </div>
     <ol class="steps">
-      <li><h3>Télécharge et lance</h3><p>Un seul fichier <b>FollowTheLyrics.exe</b>. Au premier lancement, il propose de s'installer avec une icône dans le menu Démarrer.</p></li>
-      <li><h3>Mets ta musique</h3><p>Les paroles sont trouvées toutes seules et gardées en mémoire pour la prochaine écoute.</p></li>
-      <li><h3>Joue en fenêtré sans bordure</h3><p>C'est le mode d'affichage qui laisse les paroles passer devant le jeu. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> les masque à tout moment.</p></li>
+      <li class="glass shine reveal"><h3>Télécharge et lance</h3><p>Un seul fichier <b>FollowTheLyrics.exe</b>. Au premier lancement, il propose de s'installer avec une icône dans le menu Démarrer.</p></li>
+      <li class="glass shine reveal"><h3>Mets ta musique</h3><p>Les paroles sont trouvées toutes seules et gardées en mémoire pour la prochaine écoute.</p></li>
+      <li class="glass shine reveal"><h3>Joue en fenêtré sans bordure</h3><p>C'est le mode qui laisse les paroles passer devant le jeu. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> les masque à tout moment.</p></li>
     </ol>
   </section>
 
-  <section id="faq">
-    <h2>Questions fréquentes</h2>
-    <div class="faq">
-      <details><summary>Windows affiche « Windows a protégé votre ordinateur »</summary><p>C'est normal pour un petit logiciel qui n'a pas de signature payante. Clique sur « Informations complémentaires », puis « Exécuter quand même ». Le code est entièrement visible sur GitHub.</p></details>
-      <details><summary>Est-ce que je risque un ban dans mon jeu ?</summary><p>FollowTheLyrics est une simple fenêtre transparente posée au-dessus du jeu, comme une fenêtre Discord. Il ne lit pas la mémoire du jeu et n'y injecte rien. Il demande seulement à Windows quel programme est au premier plan.</p></details>
-      <details><summary>Les paroles n'apparaissent pas par-dessus mon jeu</summary><p>Le jeu est sûrement en plein écran exclusif : Windows n'autorise alors aucune fenêtre par-dessus. Passe-le en « fenêtré sans bordure » dans ses options vidéo. Le logiciel te prévient quand il détecte ce cas.</p></details>
-      <details><summary>Certaines chansons n'ont pas de paroles mot à mot</summary><p>Tout dépend de ce qui existe pour le morceau. Quand le découpage mot à mot n'est pas disponible, les paroles s'affichent ligne par ligne. Quelques titres rares n'ont pas de paroles du tout.</p></details>
-      <details><summary>D'où viennent les paroles ?</summary><p>De NetEase Cloud Music et de LRCLIB, et la traduction de Google Traduction. Ces services ne sont pas officiels et peuvent changer.</p></details>
-      <details><summary>Est-ce que ça fait baisser les FPS ?</summary><p>L'écran n'est redessiné que lorsque quelque chose bouge, et seulement autour du texte.</p></details>
+  <section id="faq" class="wrap">
+    <div class="reveal">
+      <span class="eyebrow">Questions</span>
+      <h2>Les questions fréquentes</h2>
+    </div>
+    <div class="faq reveal">
+      <details class="glass"><summary>Windows affiche « Windows a protégé votre ordinateur »</summary><p>C'est normal pour un petit logiciel qui n'a pas de signature payante. Clique sur « Informations complémentaires », puis « Exécuter quand même ». Le code est entièrement visible sur GitHub.</p></details>
+      <details class="glass"><summary>Est-ce que je risque un ban dans mon jeu ?</summary><p>FollowTheLyrics est une simple fenêtre transparente posée au-dessus du jeu, comme une fenêtre Discord. Il ne lit pas la mémoire du jeu et n'y injecte rien. Il demande seulement à Windows quel programme est au premier plan.</p></details>
+      <details class="glass"><summary>Les paroles n'apparaissent pas par-dessus mon jeu</summary><p>Le jeu est sûrement en plein écran exclusif : Windows n'autorise alors aucune fenêtre par-dessus. Passe-le en « fenêtré sans bordure » dans ses options vidéo. Le logiciel te prévient quand il détecte ce cas.</p></details>
+      <details class="glass"><summary>Certaines chansons n'ont pas de paroles mot à mot</summary><p>Tout dépend de ce qui existe pour le morceau. Quand le découpage mot à mot n'est pas disponible, les paroles s'affichent ligne par ligne. Quelques titres rares n'ont pas de paroles du tout.</p></details>
+      <details class="glass"><summary>D'où viennent les paroles ?</summary><p>De NetEase Cloud Music et de LRCLIB, et la traduction de Google Traduction. Ces services ne sont pas officiels et peuvent changer.</p></details>
+      <details class="glass"><summary>Est-ce que ça fait baisser les FPS ?</summary><p>L'écran n'est redessiné que lorsque quelque chose bouge, et seulement autour du texte.</p></details>
     </div>
   </section>
 
-  <div class="final">
-    <h2>Monte le son.</h2>
-    <div class="cta">
-      <a class="btn main" href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
-        Télécharger FollowTheLyrics
-      </a>
+  <div class="wrap">
+    <div class="final glass reveal">
+      <svg class="mark" aria-hidden="true"><use href="#mark"/></svg>
+      <h2>Monte <span class="grad">le son.</span></h2>
+      <div class="cta">
+        <a class="btn main" data-dl href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+          Télécharger FollowTheLyrics
+        </a>
+      </div>
+      <p class="meta"><a href="https://github.com/War3l/FollowTheLyrics/releases">Toutes les versions</a></p>
     </div>
-    <p class="meta"><a href="https://github.com/War3l/FollowTheLyrics/releases">Toutes les versions</a></p>
   </div>
 </main>
 
@@ -234,27 +454,120 @@ footer a{color:var(--dim)}
   Projet indépendant, sans lien avec Spotify, Apple, YouTube, Riot Games, CD Projekt ou Blizzard.
 </footer>
 
+<div class="toast glass" id="toast" role="status">
+  <div>
+    <h3>Le téléchargement démarre.</h3>
+    <p>Si Windows affiche un écran bleu, clique sur <b>Informations complémentaires</b>, puis sur <b>Exécuter quand même</b>.</p>
+  </div>
+  <button id="toast-x" aria-label="Fermer">×</button>
+</div>
+
 <script>
-// Affiche le numero et le poids de la derniere version publiee sur GitHub.
-fetch("https://api.github.com/repos/War3l/FollowTheLyrics/releases/latest")
-  .then(function (r) { return r.ok ? r.json() : null; })
-  .then(function (d) {
-    if (!d || !d.tag_name) return;
-    var txt = "Version " + d.tag_name.replace(/^v/, "");
-    var exe = (d.assets || []).filter(function (a) { return /\.exe$/i.test(a.name); })[0];
-    if (exe) txt += " · " + Math.round(exe.size / 1048576) + " Mo";
-    document.getElementById("ver").textContent = txt;
-  })
-  .catch(function () {});
-</script>
-<script>
-// la demo se lance toute seule, sauf si la personne a demande moins d'animations
-(function(){
-  var v=document.getElementById("demo");
-  if(!v)return;
-  if(window.matchMedia&&matchMedia("(prefers-reduced-motion:reduce)").matches){v.controls=true;return;}
-  var p=v.play();
-  if(p&&p.catch)p.catch(function(){v.controls=true;});
+(function () {
+  var calm = window.matchMedia && matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+  // Numero et poids de la derniere version publiee sur GitHub.
+  fetch("https://api.github.com/repos/War3l/FollowTheLyrics/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.tag_name) return;
+      var txt = "Version " + d.tag_name.replace(/^v/, "");
+      var exe = (d.assets || []).filter(function (a) { return /\.exe$/i.test(a.name); })[0];
+      if (exe) txt += " · " + Math.round(exe.size / 1048576) + " Mo";
+      document.getElementById("ver").textContent = txt + " · gratuit";
+    })
+    .catch(function () {});
+
+  // Le lecteur en verre pilote la video de demo.
+  var v = document.getElementById("demo"), icon = document.getElementById("pl-icon"), bar = document.getElementById("pl-bar");
+  var toggle = document.getElementById("pl-toggle");
+  var PAUSE = "M7 4.5h3.2v15H7zM13.8 4.5H17v15h-3.2z", PLAY = "M8 5.2v13.6a.8.8 0 0 0 1.2.7l11-6.800a.8.8 0 0 0 0-1.400l-11-6.800a.8.8 0 0 0-1.200.7z";
+  function sync() {
+    icon.setAttribute("d", v.paused ? PLAY : PAUSE);
+    toggle.setAttribute("aria-label", v.paused ? "Lancer la démo" : "Mettre en pause");
+  }
+  v.addEventListener("play", sync);
+  v.addEventListener("pause", sync);
+  toggle.addEventListener("click", function () { if (v.paused) v.play(); else v.pause(); });
+  document.getElementById("pl-restart").addEventListener("click", function () { v.currentTime = 0; v.play(); });
+  (function tick() {
+    if (v.duration) bar.style.width = (100 * v.currentTime / v.duration) + "%";
+    requestAnimationFrame(tick);
+  })();
+  if (!calm) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+  sync();
+
+  // Carrousel de cartes en 3D.
+  var flow = document.getElementById("flow"), cards = [].slice.call(flow.querySelectorAll(".fcard"));
+  var desc = document.getElementById("flow-desc"), dots = document.getElementById("flow-dots");
+  var n = cards.length, active = 0, half = Math.floor(n / 2), timer = null;
+  cards.forEach(function () { dots.appendChild(document.createElement("i")); });
+  function place() {
+    cards.forEach(function (c, i) {
+      var d = ((i - active + n + half) % n) - half, a = Math.abs(d);
+      c.style.transform = "translateX(calc(-50% + " + d + " * var(--step))) translateZ(" + (-a * 150) + "px) rotateY(" + (d * -30) + "deg)";
+      c.style.zIndex = 10 - a;
+      c.style.setProperty("--dark", a === 0 ? 0 : a === 1 ? 0.42 : 0.66);
+      c.setAttribute("aria-hidden", a === 0 ? "false" : "true");
+      dots.children[i].className = a === 0 ? "on" : "";
+    });
+    desc.textContent = cards[active].getAttribute("data-desc");
+  }
+  function go(i) { active = (i + n) % n; place(); }
+  function auto(on) {
+    clearInterval(timer);
+    if (on && !calm) timer = setInterval(function () { go(active + 1); }, 4200);
+  }
+  var stopped = false;
+  function stop() { stopped = true; auto(false); }
+  cards.forEach(function (c, i) { c.addEventListener("click", function () { go(i); stop(); }); });
+  document.getElementById("flow-prev").addEventListener("click", function () { go(active - 1); stop(); });
+  document.getElementById("flow-next").addEventListener("click", function () { go(active + 1); stop(); });
+  flow.tabIndex = 0;
+  flow.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowLeft") { go(active - 1); stop(); }
+    if (e.key === "ArrowRight") { go(active + 1); stop(); }
+  });
+  var x0 = null;
+  flow.addEventListener("pointerdown", function (e) { x0 = e.clientX; });
+  window.addEventListener("pointerup", function (e) {
+    if (x0 === null) return;
+    var dx = e.clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) { go(active + (dx < 0 ? 1 : -1)); stop(); }
+  });
+  place();
+
+  // Apparition des blocs a l'arrivee dans l'ecran ; le carrousel ne tourne que s'il est visible.
+  var blocks = [].slice.call(document.querySelectorAll(".reveal"));
+  if ("IntersectionObserver" in window && !calm) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    blocks.forEach(function (b) { io.observe(b); });
+    new IntersectionObserver(function (es) { if (!stopped) auto(es[0].isIntersecting); }, { threshold: 0.4 }).observe(flow);
+  } else {
+    blocks.forEach(function (b) { b.classList.add("in"); });
+  }
+
+  // Reflet qui suit la souris sur les tuiles de verre.
+  [].forEach.call(document.querySelectorAll(".shine"), function (el) {
+    el.addEventListener("pointermove", function (e) {
+      var r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", (e.clientX - r.left) + "px");
+      el.style.setProperty("--my", (e.clientY - r.top) + "px");
+    });
+  });
+
+  // Apres un clic sur Telecharger : rappel des deux clics a faire dans Windows.
+  var toast = document.getElementById("toast"), hide = null;
+  [].forEach.call(document.querySelectorAll("[data-dl]"), function (a) {
+    a.addEventListener("click", function () {
+      toast.classList.add("show");
+      clearTimeout(hide);
+      hide = setTimeout(function () { toast.classList.remove("show"); }, 16000);
+    });
+  });
+  document.getElementById("toast-x").addEventListener("click", function () { toast.classList.remove("show"); });
 })();
 </script>
 </body>
