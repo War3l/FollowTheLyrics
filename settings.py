@@ -37,34 +37,39 @@ _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _RUN_NAME = APP_NAME
 
 
-def launch_command(minimized=False):
+def launch_command(minimized=False, exe=None):
     """La commande qui relance l'appli (le .exe, ou pythonw + script)."""
-    if FROZEN:
-        cmd = f'"{sys.executable}"'
+    if exe or FROZEN:
+        cmd = f'"{exe or sys.executable}"'
     else:
-        exe = sys.executable
-        pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")
-        cmd = f'"{pyw if os.path.exists(pyw) else exe}" "{os.path.join(HERE, "overlay.py")}"'
+        py = sys.executable
+        pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
+        cmd = f'"{pyw if os.path.exists(pyw) else py}" "{os.path.join(HERE, "overlay.py")}"'
     return cmd + (" --minimized" if minimized else "")
 
 
-def autostart_enabled():
+def autostart_command():
+    """La commande inscrite pour le demarrage avec Windows ('' s'il est coupe)."""
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
             value, _ = winreg.QueryValueEx(k, _RUN_NAME)
-        return bool(value)
+        return str(value or "")
     except Exception:
-        return False
+        return ""
 
 
-def set_autostart(on):
+def autostart_enabled():
+    return bool(autostart_command())
+
+
+def set_autostart(on, exe=None):
     """Lance (ou non) l'appli a l'ouverture de session, reduite pres de l'heure."""
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
             if on:
-                winreg.SetValueEx(k, _RUN_NAME, 0, winreg.REG_SZ, launch_command(minimized=True))
+                winreg.SetValueEx(k, _RUN_NAME, 0, winreg.REG_SZ, launch_command(minimized=True, exe=exe))
             else:
                 try:
                     winreg.DeleteValue(k, _RUN_NAME)
@@ -103,17 +108,28 @@ def refresh_autostart():
         pass
 
 
-def create_desktop_shortcut():
+def desktop_link():
+    """Chemin du raccourci « FollowTheLyrics » sur le bureau ('' si le bureau est introuvable)."""
+    try:
+        from PyQt6.QtCore import QStandardPaths
+        desktop = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+        return os.path.join(desktop, APP_NAME + ".lnk") if desktop else ""
+    except Exception:
+        return ""
+
+
+def create_desktop_shortcut(exe=None):
     """Raccourci « FollowTheLyrics » sur le bureau (seulement pour le .exe)."""
-    if not FROZEN:
+    if not (exe or FROZEN):
         return False
     try:
-        from PyQt6.QtCore import QFile, QStandardPaths
-        desktop = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
-        link = os.path.join(desktop, APP_NAME + ".lnk")
+        from PyQt6.QtCore import QFile
+        link = desktop_link()
+        if not link:
+            return False
         if os.path.exists(link):
             os.remove(link)
-        return bool(QFile.link(sys.executable, link))
+        return bool(QFile.link(exe or sys.executable, link))
     except Exception:
         return False
 

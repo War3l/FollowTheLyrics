@@ -116,7 +116,7 @@ def main():
         "--hidden-import", "pyaudiowpatch", "--hidden-import", "welcome",
         "--collect-submodules", "winrt",
         "--hidden-import", "updater", "--hidden-import", "zone_editor",
-        "--hidden-import", "panel", "--hidden-import", "widgets", "--hidden-import", "hotkeys", "--hidden-import", "easter",
+        "--hidden-import", "panel", "--hidden-import", "widgets", "--hidden-import", "hotkeys", "--hidden-import", "easter", "--hidden-import", "install",
         "--add-data", f"{os.path.join(HERE, 'VERSION')}{os.pathsep}.",
     ]
     # Bibliotheques C++ de Microsoft, version la plus recente, a la racine du paquet :
@@ -143,7 +143,8 @@ def main():
         print(f"\nOK : dist\\{NAME}.exe ({os.path.getsize(exe) / 1e6:.0f} Mo)")
         if was_running:
             print("Relance de l'appli.")
-            subprocess.Popen([exe], cwd=os.path.dirname(exe))
+            # FTL_PORTABLE : on veut voir CE .exe, pas la copie installee sur le PC
+            subprocess.Popen([exe], cwd=os.path.dirname(exe), env=dict(os.environ, FTL_PORTABLE="1"))
     else:
         print("\nEchec de la construction.")
     shutil.rmtree(os.path.join(HERE, "__pycache__"), ignore_errors=True)
