@@ -6,6 +6,7 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPaint
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from panel import BG, CARD_BORDER, DIM, FIELD, TEXT, Toggle, icon_pixmap, make_icon, ui_font
+import install
 from settings import FROZEN, autostart_enabled
 
 ACCENT = QColor("#8B7CFF")
@@ -44,8 +45,8 @@ class Badge(QWidget):
 
 
 class Welcome(QWidget):
-    """Fenetre sans bordure, centree : 3 etapes, 2 options, 1 bouton."""
-    finished = pyqtSignal(bool, bool)  # (lancer avec Windows, raccourci bureau)
+    """Fenetre sans bordure, centree : 3 etapes, quelques options, 1 bouton."""
+    finished = pyqtSignal(bool, bool, bool)  # (lancer avec Windows, raccourci bureau, installer)
 
     def __init__(self):
         super().__init__()
@@ -53,7 +54,8 @@ class Welcome(QWidget):
         self.setWindowIcon(make_icon())
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(660, 700 if FROZEN else 640)
+        self.can_install = FROZEN and not install.running_installed()
+        self.setFixedSize(660, 640 + (60 if FROZEN else 0) + (72 if self.can_install else 0))
         self._drag = None
         self._done = False
 
@@ -104,6 +106,11 @@ class Welcome(QWidget):
         if FROZEN:
             lay.addSpacing(28)
             lay.addLayout(self._option("Créer un raccourci sur le bureau", self.shortcut))
+        self.setup = Toggle()
+        self.setup.setChecked(self.can_install)
+        if self.can_install:
+            lay.addSpacing(28)
+            lay.addLayout(self._option("Installer sur ce PC (icône dans le menu Démarrer)", self.setup))
         lay.addStretch(1)
 
         go = QPushButton("C'est parti")
@@ -157,7 +164,7 @@ class Welcome(QWidget):
         # fonds des deux lignes d'options
         p.setPen(QPen(QColor(CARD_BORDER), 1))
         p.setBrush(QColor(FIELD))
-        for t in (self.autostart, self.shortcut):
+        for t in (self.autostart, self.shortcut, self.setup):
             if t.isVisible():
                 y = t.geometry().center().y()
                 p.drawRoundedRect(QRectF(44, y - 22, r.width() - 86, 44), 12, 12)
@@ -197,11 +204,12 @@ class Welcome(QWidget):
         if self._done:
             return
         self._done = True
-        self.finished.emit(self.autostart.isChecked(), FROZEN and self.shortcut.isChecked())
+        self.finished.emit(self.autostart.isChecked(), FROZEN and self.shortcut.isChecked(),
+                           self.can_install and self.setup.isChecked())
         self.close()
 
     def closeEvent(self, e):
         if not self._done:  # fermee autrement (Alt+F4) : on ne change rien, mais on continue
             self._done = True
-            self.finished.emit(autostart_enabled(), False)
+            self.finished.emit(autostart_enabled(), False, False)
         e.accept()

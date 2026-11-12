@@ -1915,15 +1915,17 @@ class App:
         self.welcome.raise_()
         self.welcome.activateWindow()
 
-    def on_welcome(self, autostart, shortcut):
+    def on_welcome(self, autostart, shortcut, setup=False):
         import settings
+        self.cfg["welcomed"] = True
+        save_config(self.cfg)
+        self.welcome = None
+        if setup and self.install_here(autostart, shortcut):
+            return  # la copie installee prend le relais
         if autostart != settings.autostart_enabled():
             settings.set_autostart(autostart)
         if shortcut:
             settings.create_desktop_shortcut()
-        self.cfg["welcomed"] = True
-        save_config(self.cfg)
-        self.welcome = None
         if not self.quitting:
             self.panel.sync_from_cfg()
             self.show_panel()
@@ -2116,6 +2118,34 @@ class App:
         self.panel.raise_()
         self.panel.activateWindow()
 
+    # ---- installation sur le PC ------------------------------------------------
+    def install_here(self, autostart=None, shortcut=False):
+        """Installe ce .exe sur le PC puis passe la main a la copie installee.
+        -> False si la copie a echoue (on continue alors d'ici, comme avant)."""
+        import install
+        import settings
+        try:
+            exe = install.install()
+        except Exception as e:
+            install.message(f"L'installation n'a pas pu se faire ({e}).\n\n"
+                            "L'appli continue de marcher depuis ce fichier.", 0x30)
+            return False
+        if autostart is None:
+            autostart = settings.autostart_enabled()
+        settings.set_autostart(bool(autostart), exe=exe)
+        link = settings.desktop_link()
+        if shortcut or (link and os.path.exists(link)):  # un raccourci existant suit l'appli
+            settings.create_desktop_shortcut(exe=exe)
+        install.launch(exe, "--installed")
+        self.quit()
+        return True
+
+    def uninstall(self):
+        """Bouton « Desinstaller » du panneau."""
+        import install
+        if install.run_uninstall():
+            self.quit()
+
     def quit(self):
         """Quitter pour de vrai (le panneau accepte alors de se fermer)."""
         self.quitting = True
@@ -2272,6 +2302,10 @@ def main():
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--updated", default="")  # lance par l'ancienne version apres une mise a jour
     ap.add_argument("--minimized", action="store_true")  # demarrage avec Windows : pas de panneau
+    ap.add_argument("--installed", action="store_true")  # lance par le .exe qui vient de s'installer
+    ap.add_argument("--uninstall", action="store_true")  # bouton Desinstaller de Windows
+    ap.add_argument("--quiet", action="store_true")      # ... sans poser de question
+    ap.add_argument("--purge", action="store_true")      # ... en effacant aussi les reglages
     ap.add_argument("--selftest")  # dossier : verifie que le .exe demarre, sans rien deranger
     ap.add_argument("--snapshot")
     ap.add_argument("--at", type=float, default=7.0)
@@ -2301,10 +2335,32 @@ def main():
     if args.selftest:
         selftest(app, args.selftest)
         return
-    server = take_over_instance()
+    import install
     import settings
+    if args.uninstall:
+        if install.is_installed() and (args.quiet or install.message(
+                "Désinstaller FollowTheLyrics de ce PC ?", 0x24) == 6):
+            take_over_instance()  # ferme l'appli si elle tourne
+            keep = not args.purge
+            if not args.quiet:
+                keep = install.message("Garder tes réglages et tes zones pour une prochaine installation ?",
+                                       0x24) == 6
+            folders = install.uninstall(keep_data=keep)
+            if not args.quiet:
+                install.message("FollowTheLyrics a été désinstallé.")
+            install.delete_later(folders)
+        os._exit(0)
+    if install.hand_over():  # une copie est installee : c'est elle qui tourne
+        os._exit(0)
+    server = take_over_instance()
     if settings.FROZEN:
-        settings.refresh_autostart()  # le .exe a peut-etre ete deplace
+        if install.running_installed():
+            try:
+                install.register()  # version a jour dans « Applications installees »
+            except Exception:
+                pass
+        if not os.environ.get("FTL_TEST_INSTANCE"):  # un essai ne touche pas au vrai demarrage
+            settings.refresh_autostart()  # le .exe a peut-etre ete deplace
     a = App(app, demo=args.demo, minimized=args.minimized, updated=args.updated)
     if server is not None:
         # une nouvelle version se lance : celle-ci lui laisse la place
