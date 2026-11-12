@@ -16,10 +16,15 @@ DEFAULT_ACCENT = QColor("#8B7CFF")
 UI = {"accent": QColor(DEFAULT_ACCENT)}  # couleur d'accent du panneau (celle de la pochette)
 
 BG = "#0b0c11"
-SIDE = "#0f1017"
-CARD = "#14161e"
-CARD_BORDER = "#222533"
-FIELD = "#1b1e28"
+# Le verre : du blanc presque transparent (#AARRGGBB), pose sur le fond colore du panneau.
+CARD = "#0fffffff"
+CARD_BORDER = "#26ffffff"
+FIELD = "#16ffffff"
+# Les memes roles en opaque, pour ce qui n'a pas de fond colore derriere (editeur de zones).
+SOLID_CARD = "#14161e"
+SOLID_BORDER = "#222533"
+SOLID_FIELD = "#1b1e28"
+BRAND = ("#5EE7FF", "#8B7CFF", "#FF6FB5")  # les trois couleurs du logo
 TEXT = "#eceef4"
 DIM = "#8b91a3"
 
@@ -38,6 +43,49 @@ def alpha(c, a):
     c = QColor(c)
     c.setAlpha(int(a))
     return c
+
+
+def qss(c):
+    """Couleur (meme transparente) ecrite pour une feuille de style Qt."""
+    c = QColor(c)
+    return f"rgba({c.red()},{c.green()},{c.blue()},{c.alphaF():.3f})"
+
+
+def enable_backdrop(hwnd):
+    """Demande a Windows 11 son verre depoli (acrylique) derriere la fenetre : tout ce que
+    la fenetre laisse transparent montre alors, floute, ce qu'il y a derriere elle.
+    -> True si Windows a accepte."""
+    import ctypes
+    import sys
+    try:
+        if sys.getwindowsversion().build < 22621:  # arrive avec Windows 11 22H2
+            return False
+
+        class MARGINS(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_int), ("right", ctypes.c_int), ("top", ctypes.c_int), ("bottom", ctypes.c_int)]
+
+        dwm = ctypes.windll.dwmapi
+        hwnd = ctypes.c_void_p(int(hwnd))
+        margins = MARGINS(-1, -1, -1, -1)  # toute la fenetre
+        dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
+        kind = ctypes.c_int(3)  # DWMSBT_TRANSIENTWINDOW : acrylique
+        return dwm.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(kind), ctypes.sizeof(kind)) == 0
+    except Exception:
+        return False
+
+
+def dark_caption(hwnd):
+    """Barre de titre sombre, assortie au panneau, meme si Windows colore les barres de titre
+    avec la couleur d'accent de l'utilisateur (Windows 11 ; sans effet avant)."""
+    import ctypes
+    try:
+        dwm = ctypes.windll.dwmapi
+        hwnd = ctypes.c_void_p(int(hwnd))
+        for attr, bgr in ((35, 0x00150E0D), (34, 0x00342C2B), (36, 0x00F4EEEC)):  # fond, bord, texte
+            val = ctypes.c_uint(bgr)
+            dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(val), ctypes.sizeof(val))
+    except Exception:
+        pass
 
 
 def ui_font(px, weight=QFont.Weight.Normal, family="Segoe UI Variable Text"):
@@ -290,7 +338,7 @@ class Toggle(QAbstractButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         t = self._pos
         p.setPen(Qt.PenStyle.NoPen)
-        track = mix("#2a2e3b", UI["accent"], t)
+        track = mix("#30ffffff", UI["accent"], t)
         if not self.isEnabled():
             track = mix(track, BG, 0.6)
         p.setBrush(track)
@@ -579,7 +627,7 @@ class ProgressView(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w = self.width()
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#272a36"))
+        p.setBrush(QColor("#28ffffff"))
         p.drawRoundedRect(QRectF(0, 6, w, 5), 2.5, 2.5)
         if self.dur > 0:
             frac = max(0.0, min(1.0, self.pos / self.dur))
@@ -674,8 +722,8 @@ class ModeCard(Hover, QAbstractButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         acc = UI["accent"]
         r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        p.setPen(QPen(mix(mix(CARD_BORDER, "#3b4052", self._hover), acc, self._sel), 1 + self._sel))
-        p.setBrush(mix(mix(FIELD, "#20232f", self._hover), acc, 0.16 * self._sel))
+        p.setPen(QPen(mix(mix(CARD_BORDER, "#58ffffff", self._hover), acc, self._sel), 1 + self._sel))
+        p.setBrush(mix(mix(FIELD, "#24ffffff", self._hover), acc, 0.16 * self._sel))
         p.drawRoundedRect(r, 15, 15)
 
         scr = QRectF(r.left() + 12, r.top() + 12, r.width() - 24, 96)
@@ -773,8 +821,8 @@ class ColorCard(Hover, QAbstractButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         acc = UI["accent"]
         r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        p.setPen(QPen(mix(mix(CARD_BORDER, "#3b4052", self._hover), acc, self._sel), 1 + self._sel))
-        p.setBrush(mix(mix(FIELD, "#20232f", self._hover), acc, 0.16 * self._sel))
+        p.setPen(QPen(mix(mix(CARD_BORDER, "#58ffffff", self._hover), acc, self._sel), 1 + self._sel))
+        p.setBrush(mix(mix(FIELD, "#24ffffff", self._hover), acc, 0.16 * self._sel))
         p.drawRoundedRect(r, 15, 15)
         cols = [QColor(c) for c in self.colors_fn()] or [QColor("white")]
         font = ui_font(27, QFont.Weight.Black, "Segoe UI Variable Display")
@@ -969,7 +1017,7 @@ class HotkeyButton(Hover, QWidget):
             p.setBrush(QColor(FIELD))
         else:
             p.setPen(QPen(mix(CARD_BORDER, acc, self._hover * 0.85), 1))
-            p.setBrush(mix(FIELD, "#222634", self._hover))
+            p.setBrush(mix(FIELD, "#26ffffff", self._hover))
         p.drawRoundedRect(r, 11, 11)
         cy = r.center().y()
         if self.listening:

@@ -170,7 +170,7 @@ DEFAULTS = {
     "mode": "edit", "position": "left", "color": "album", "font": "Segoe UI Variable Display",
     "style": "kinetic", "scale": 1.0, "offset": 0.0,
     "translation": True, "beat": True, "card": True, "particles": True, "easter": True, "tilt": True, "stack": True,
-    "title_drop": "always", "sources_blocked": [], "welcomed": False,
+    "title_drop": "always", "sources_blocked": [], "welcomed": False, "glass": True,
 }
 
 
