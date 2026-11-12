@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushBut
                              QWidget)
 
 import games
-from panel import BG, CARD, CARD_BORDER, DIM, FIELD, TEXT, make_icon, ui_font
+from panel import BG, DIM, TEXT, make_icon, ui_font
+from widgets import SOLID_BORDER as CARD_BORDER, SOLID_CARD as CARD, SOLID_FIELD as FIELD  # fenetre opaque
 
 ACCENT = "#8B7CFF"
 HANDLE = 9          # demi-taille des poignees (pixels)
