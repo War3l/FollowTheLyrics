@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 import hotkeys
-from settings import (COLORS, MODES, POSITIONS, RECOMMENDED_FONTS, STYLES, TITLE_DROP, app_label,
+from settings import (COLORS, FROZEN, MODES, POSITIONS, RECOMMENDED_FONTS, STYLES, TITLE_DROP, app_label,
                       autostart_enabled, set_autostart)
 from widgets import (BG, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, SIDE, TEXT, UI,  # noqa: F401
                      ColorCard, CoverView, Equalizer, HotkeyButton, MiniPlayer, ModeCard, NavTile,
@@ -727,6 +727,22 @@ class Panel(QWidget):
         start.add_row("Lancer avec Windows", self.autostart,
                       "Démarre tout seul à l'allumage du PC, discrètement près de l'heure.")
 
+        cards = [start]
+        if FROZEN:
+            import install
+            setup = Card("Installation")
+            if install.running_installed():
+                b = button("Désinstaller")
+                b.clicked.connect(self.app.uninstall)
+                setup.add_row("Installée sur ce PC", b, "L'appli est dans le menu Démarrer et dans les "
+                              "applications installées de Windows.")
+            else:
+                b = button("Installer")
+                b.clicked.connect(lambda: self.app.install_here())
+                setup.add_row("Installer sur ce PC", b, "Range l'appli à sa place avec une icône dans le menu "
+                              "Démarrer. Tu pourras ensuite jeter le fichier téléchargé.")
+            cards.append(setup)
+
         upd = Card("Mises à jour")
         self.check_btn = button("Rechercher une mise à jour")
         self.check_btn.clicked.connect(self.on_check_click)
@@ -738,7 +754,7 @@ class Panel(QWidget):
         site = button("Ouvrir le site")
         site.clicked.connect(lambda: os.startfile(SITE_URL))
         about.add_row("FollowTheLyrics", site, "Les paroles de ta musique, par-dessus tes jeux. Gratuit et libre.")
-        return [start, upd, about]
+        return cards + [upd, about]
 
     # ---- polices -----------------------------------------------------------
     def populate_fonts(self):

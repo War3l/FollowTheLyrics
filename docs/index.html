@@ -66,31 +66,8 @@ header{position:relative}
 /* ecran de demo anime */
 .screen{position:relative;margin:54px auto 0;max-width:980px;aspect-ratio:16/9;border-radius:22px;overflow:hidden;border:1px solid #ffffff1f;
   background:radial-gradient(120% 90% at 70% 110%,#27405a 0,#16202e 45%,#0c1118 100%);box-shadow:0 40px 120px -30px #000,0 0 0 8px #ffffff08}
-.screen::before{content:"";position:absolute;inset:0;background:
-  linear-gradient(#ffffff08 1px,transparent 1px) 0 0/100% 9%,linear-gradient(90deg,#ffffff06 1px,transparent 1px) 0 0/6% 100%;
-  mask-image:linear-gradient(transparent 45%,#000);-webkit-mask-image:linear-gradient(transparent 45%,#000)}
-.hud{position:absolute;border:1px solid #ffffff22;background:#00000055;border-radius:8px}
-.hud.map{right:2%;bottom:3%;width:17%;aspect-ratio:1}
-.hud.bar{left:30%;bottom:3%;width:40%;height:9%}
-.hud.chat{left:2%;bottom:3%;width:20%;height:22%}
-.tag{position:absolute;left:2%;top:3.2%;font-size:clamp(9px,1.1vw,12px);color:#ffffff66;letter-spacing:.14em;text-transform:uppercase}
-.ly{position:absolute;font-family:"Segoe UI Variable Display","Segoe UI",sans-serif;font-weight:900;white-space:nowrap;opacity:0;
-  font-size:clamp(15px,3.3vw,40px);color:transparent;
-  filter:drop-shadow(0 0 14px #8b7cffcc) drop-shadow(0 0 34px #8b7cff77);animation:pop 12s infinite}
-.ly span,.ly.d{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-.ly span{display:inline-block;white-space:pre;animation:word 12s infinite both}
-.ly.a{left:7%;top:13%;transform:rotate(-3deg);animation-delay:0s}
-.ly.b{right:6%;top:24%;transform:rotate(2deg);animation-delay:3s}
-.ly.c{left:22%;top:9%;transform:rotate(-1.5deg);animation-delay:6s}
-.ly.d{left:50%;top:22%;font-size:clamp(26px,8vw,96px);animation-delay:9s;animation-name:drop}
-.ly.b span,.ly.b{animation-delay:3s}.ly.c span,.ly.c{animation-delay:6s}
-.ly.a span:nth-child(2){animation-delay:.35s}.ly.a span:nth-child(3){animation-delay:.7s}.ly.a span:nth-child(4){animation-delay:1.05s}
-.ly.b span:nth-child(2){animation-delay:3.35s}.ly.b span:nth-child(3){animation-delay:3.7s}.ly.b span:nth-child(4){animation-delay:4.05s}
-.ly.c span:nth-child(2){animation-delay:6.35s}.ly.c span:nth-child(3){animation-delay:6.7s}.ly.c span:nth-child(4){animation-delay:7.05s}
-@keyframes pop{0%{opacity:0}2%,24%{opacity:1}30%,100%{opacity:0}}
-@keyframes word{0%{opacity:0;transform:translateY(.5em) scale(.8)}3%{opacity:1;transform:translateY(-.06em) scale(1.08)}5%,100%{opacity:1;transform:none}}
-@keyframes drop{0%{opacity:0;transform:translateX(-50%) scale(.6) rotate(-4deg)}3%{opacity:1;transform:translateX(-50%) scale(1.06) rotate(-4deg)}5%,20%{opacity:1;transform:translateX(-50%) scale(1) rotate(-4deg)}25%,100%{opacity:0;transform:translateX(-50%) scale(1.05) rotate(-4deg)}}
-@media (prefers-reduced-motion:reduce){.ly,.ly span{animation:none;opacity:1}.ly.b,.ly.c,.ly.d{display:none}}
+.screen video{display:block;width:100%;height:100%;object-fit:cover}
+.screen-note{color:var(--dim);font-size:13px;margin-top:14px}
 
 section{padding:84px 0 0}
 section>h2{font-size:clamp(28px,4.4vw,44px);font-weight:900;text-align:center}
@@ -176,14 +153,11 @@ footer a{color:var(--dim)}
         </div>
       </div>
 
-      <div class="screen" aria-hidden="true">
-        <div class="tag">En jeu · fenêtré sans bordure</div>
-        <div class="hud map"></div><div class="hud bar"></div><div class="hud chat"></div>
-        <div class="ly a"><span>Je&nbsp;</span><span>joue&nbsp;</span><span>la&nbsp;</span><span>nuit</span></div>
-        <div class="ly b"><span>Je&nbsp;</span><span>perds&nbsp;</span><span>le&nbsp;</span><span>temps</span></div>
-        <div class="ly c"><span>Garde&nbsp;</span><span>le&nbsp;</span><span>rythme,&nbsp;</span><span>encore</span></div>
-        <div class="ly d">MONTE LE SON</div>
+      <div class="screen">
+        <video id="demo" src="img/demo.mp4" poster="img/demo.jpg" muted loop playsinline preload="metadata"
+               aria-label="Démonstration : les paroles s'affichent mot à mot par-dessus un jeu"></video>
       </div>
+      <p class="screen-note">Le vrai rendu de l'appli, filmé sur un décor de démonstration.</p>
     </div>
   </div>
 </header>
@@ -225,7 +199,7 @@ footer a{color:var(--dim)}
   <section>
     <h2>Prêt en une minute</h2>
     <ol class="steps">
-      <li><h3>Télécharge et lance</h3><p>Un seul fichier <b>FollowTheLyrics.exe</b>, rien à installer.</p></li>
+      <li><h3>Télécharge et lance</h3><p>Un seul fichier <b>FollowTheLyrics.exe</b>. Au premier lancement, il propose de s'installer avec une icône dans le menu Démarrer.</p></li>
       <li><h3>Mets ta musique</h3><p>Les paroles sont trouvées toutes seules et gardées en mémoire pour la prochaine écoute.</p></li>
       <li><h3>Joue en fenêtré sans bordure</h3><p>C'est le mode d'affichage qui laisse les paroles passer devant le jeu. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> les masque à tout moment.</p></li>
     </ol>
@@ -272,6 +246,16 @@ fetch("https://api.github.com/repos/War3l/FollowTheLyrics/releases/latest")
     document.getElementById("ver").textContent = txt;
   })
   .catch(function () {});
+</script>
+<script>
+// la demo se lance toute seule, sauf si la personne a demande moins d'animations
+(function(){
+  var v=document.getElementById("demo");
+  if(!v)return;
+  if(window.matchMedia&&matchMedia("(prefers-reduced-motion:reduce)").matches){v.controls=true;return;}
+  var p=v.play();
+  if(p&&p.catch)p.catch(function(){v.controls=true;});
+})();
 </script>
 </body>
 </html>
