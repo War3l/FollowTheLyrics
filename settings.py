@@ -170,7 +170,7 @@ DEFAULTS = {
     "mode": "edit", "position": "left", "color": "album", "font": "Segoe UI Variable Display",
     "style": "kinetic", "scale": 1.0, "offset": 0.0,
     "translation": True, "beat": True, "card": True, "particles": True, "easter": True, "tilt": True, "stack": True,
-    "title_drop": "always", "sources_blocked": [], "welcomed": False, "glass": True,
+    "title_drop": "always", "sources_blocked": [], "sites_off": [], "sites_other": False, "welcomed": False, "glass": True,
 }
 
 
@@ -183,8 +183,9 @@ def load_config():
         pass
     if cfg.get("style") == "pop":
         cfg["style"] = "kinetic"
-    if not isinstance(cfg.get("sources_blocked"), list):
-        cfg["sources_blocked"] = []
+    for key in ("sources_blocked", "sites_off"):
+        if not isinstance(cfg.get(key), list):
+            cfg[key] = []
     for key, allowed in (("mode", MODES), ("position", POSITIONS), ("color", COLORS), ("style", STYLES),
                          ("title_drop", TITLE_DROP)):
         if cfg.get(key) not in allowed:

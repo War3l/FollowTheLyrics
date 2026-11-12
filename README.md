@@ -116,3 +116,5 @@ python -m venv .venv
 - `welcome.py` : l'écran de bienvenue. `build.py` : la fabrication du `.exe` et de son icône.
 - `settings.py` : les réglages (sauvés dans `config.json`).
 - `media.py`, `lyrics.py`, `games.py`, `audio.py` : musique en cours, paroles, jeux, beats.
+- `sites.py` : quand le son vient d'un navigateur, reconnaît le site (YouTube Music, Spotify, SoundCloud…)
+  et ignore le reste (Netflix, vidéos).
