@@ -5,6 +5,7 @@ Tout s'applique en direct ; les briques dessinees a la main sont dans widgets.py
 """
 import ctypes
 import os
+import sys
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QLinearGradient, QPainter, QPen, QRadialGradient
@@ -17,7 +18,8 @@ from PyQt6.QtWidgets import (
 import hotkeys
 from settings import (COLORS, FROZEN, MODES, POSITIONS, RECOMMENDED_FONTS, STYLES, TITLE_DROP, app_label,
                       autostart_enabled, set_autostart)
-from widgets import (BG, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, SIDE, TEXT, UI,  # noqa: F401
+from widgets import (BG, BRAND, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, TEXT, UI,  # noqa: F401
+                     dark_caption, enable_backdrop, mix, qss,
                      ColorCard, CoverView, Equalizer, HotkeyButton, MiniPlayer, ModeCard, NavTile,
                      ProgressView, Segmented, SideNav, Toggle, alpha, fmt_time, icon_pixmap,
                      make_anim, make_icon, run_anim, ui_font)
@@ -49,11 +51,11 @@ class FontPreview(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         g = QLinearGradient(r.topLeft(), r.bottomRight())
-        g.setColorAt(0, QColor("#1d2b22"))
-        g.setColorAt(1, QColor("#33424e"))
+        g.setColorAt(0, QColor(0, 0, 0, 104))  # un petit ecran sombre dans le verre
+        g.setColorAt(1, QColor(0, 0, 0, 56))
         p.setPen(QPen(QColor(CARD_BORDER), 1))
         p.setBrush(QBrush(g))
-        p.drawRoundedRect(r, 16, 16)
+        p.drawRoundedRect(r, 20, 20)
         p.setPen(QColor(255, 255, 255, 120))
         p.setFont(ui_font(11, QFont.Weight.Bold))
         p.drawText(r.adjusted(16, 10, 0, 0), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "APERÇU")
@@ -164,6 +166,15 @@ class Panel(QWidget):
         self.setMinimumSize(1020, 660)
         self._accent_name = None
         self._cover_src = None
+        # Verre : sous Windows 11 la fenetre est transparente et Windows floute ce qu'il y a derriere.
+        self._can_glass = sys.getwindowsversion().build >= 22621
+        self._glass_ok = False  # Windows a-t-il accepte ?
+        if self._can_glass:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._aura = [QColor(c) for c in BRAND]  # couleurs des lueurs du fond (celles de la pochette)
+        self._aura_from = list(self._aura)
+        self._aura_to = list(self._aura)
+        self._aura_anim = make_anim(self, self._aura_step, 900)
         self._building = True
         self._key_note = ""
 
@@ -728,6 +739,14 @@ class Panel(QWidget):
                       "Démarre tout seul à l'allumage du PC, discrètement près de l'heure.")
 
         cards = [start]
+        if self._can_glass:
+            look = Card("Apparence")
+            self.glass = Toggle()
+            self.glass.setChecked(bool(self.app.cfg.get("glass", True)))
+            self.glass.toggled.connect(lambda v: None if self._building else self.set("glass", bool(v)))
+            look.add_row("Panneau en verre", self.glass,
+                         "Laisse voir, flouté, ce qu'il y a derrière cette fenêtre.")
+            cards.append(look)
         if FROZEN:
             import install
             setup = Card("Installation")
@@ -825,6 +844,8 @@ class Panel(QWidget):
             return
         self.app.set_cfg(key, value)
         self.sync_from_cfg()
+        if key == "glass":
+            self.update()
 
     def sync_from_cfg(self):
         cfg = self.app.cfg
@@ -929,6 +950,18 @@ class Panel(QWidget):
         if accent.name() != self._accent_name:
             self.apply_style(accent)
             self.preview.update()
+        aura = [QColor(c) for c in (o.accent[:3] if o.cover_img is not None and len(o.accent) >= 3 else BRAND)]
+        if [c.name() for c in aura] != [c.name() for c in self._aura_to]:
+            self._aura_from, self._aura_to = list(self._aura), aura  # fondu vers les nouvelles couleurs
+            run_anim(self._aura_anim, 0.0, 1.0)
+
+    def _aura_step(self, v):
+        self._aura = [mix(a, b, v) for a, b in zip(self._aura_from, self._aura_to)]
+        self.update()
+
+    def glass_on(self):
+        """Vrai si le fond laisse voir, floute, ce qu'il y a derriere la fenetre."""
+        return self._glass_ok and bool(self.app.cfg.get("glass", True))
 
     # ---- style ---------------------------------------------------------------
     def apply_style(self, accent: QColor):
@@ -937,17 +970,21 @@ class Panel(QWidget):
         a = accent.name()
         r, g, b = accent.red(), accent.green(), accent.blue()
         ft = '"Segoe UI Variable Text"'
+        # verre : plus clair en haut a gauche, comme eclaire de la
+        glass = ("qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.105), "
+                 "stop:0.45 rgba(255,255,255,0.055), stop:1 rgba(255,255,255,0.03))")
+        edge, field = qss(CARD_BORDER), qss(FIELD)
         fd = '"Segoe UI Variable Display"'
         self.setStyleSheet(f"""
-            QWidget#Panel {{ background: {BG}; }}
-            QFrame#Side {{ background: rgba(15,16,23,0.82); border: none; border-right: 1px solid {CARD_BORDER}; }}
+            QWidget#Panel {{ background: transparent; }}
+            QFrame#Side {{ background: rgba(255,255,255,0.035); border: none; border-right: 1px solid rgba(255,255,255,0.10); }}
             QWidget#Content {{ background: transparent; }}
             QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; }}
             QStackedWidget {{ background: transparent; }}
             QLabel {{ color: {TEXT}; background: transparent; }}
-            QFrame[role="card"] {{ background: {CARD}; border: 1px solid {CARD_BORDER}; border-radius: 18px; }}
-            QFrame[role="power"] {{ background: {CARD}; border: 1px solid {CARD_BORDER}; border-radius: 13px; }}
-            QFrame[role="sep"] {{ background: {CARD_BORDER}; border: none; }}
+            QFrame[role="card"] {{ background: {glass}; border: 1px solid {edge}; border-radius: 22px; }}
+            QFrame[role="power"] {{ background: {glass}; border: 1px solid {edge}; border-radius: 15px; }}
+            QFrame[role="sep"] {{ background: rgba(255,255,255,0.09); border: none; }}
             QLabel[role="brand"] {{ font: 800 17px {fd}; }}
             QLabel[role="pagetitle"] {{ font: 800 30px {fd}; }}
             QLabel[role="pagehint"] {{ color: {DIM}; font: 14px {ft}; }}
@@ -968,12 +1005,12 @@ class Panel(QWidget):
             QLabel[role="badge"] {{ font: 700 10px {ft}; padding: 3px 9px; border-radius: 9px;
                                     color: #b9bdc9; background: rgba(185,189,201,0.12); border: 1px solid rgba(185,189,201,0.35); }}
             QLabel[role="badge"][kind="word"] {{ color: {a}; background: rgba({r},{g},{b},0.14); border: 1px solid rgba({r},{g},{b},0.6); }}
-            QPushButton[role="ghost"] {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
-                                         padding: 9px 16px; border-radius: 10px; font: 600 13px {ft}; }}
-            QPushButton[role="ghost"]:hover {{ border-color: {a}; background: #222634; }}
+            QPushButton[role="ghost"] {{ background: {field}; color: {TEXT}; border: 1px solid {edge};
+                                         padding: 9px 16px; border-radius: 12px; font: 600 13px {ft}; }}
+            QPushButton[role="ghost"]:hover {{ border-color: {a}; background: rgba(255,255,255,0.15); }}
             QPushButton[role="ghost"]:pressed {{ background: rgba({r},{g},{b},0.2); }}
             QPushButton[role="ghost"]:disabled {{ color: #5a5f6e; }}
-            QPushButton[role="round"] {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
+            QPushButton[role="round"] {{ background: {field}; color: {TEXT}; border: 1px solid {edge};
                                          min-width: 38px; max-width: 38px; min-height: 38px; max-height: 38px;
                                          border-radius: 19px; font: 700 18px {fd}; padding: 0 0 3px 0; }}
             QPushButton[role="round"]:hover {{ border-color: {a}; color: {a}; }}
@@ -982,25 +1019,25 @@ class Panel(QWidget):
                                         font: 600 12px {ft}; }}
             QPushButton[role="link"]:hover {{ color: {a}; }}
             QPushButton[role="main"] {{ background: {a}; color: {BG}; border: none; padding: 10px 20px;
-                                        border-radius: 10px; font: 800 13px {ft}; }}
+                                        border-radius: 12px; font: 800 13px {ft}; }}
             QPushButton[role="main"]:hover {{ background: rgba({r},{g},{b},0.86); }}
             QPushButton[role="main"]:disabled {{ background: rgba({r},{g},{b},0.3); color: #c7cbd6; }}
             QFrame[role="update"] {{ background: rgba({r},{g},{b},0.13); border: 1px solid rgba({r},{g},{b},0.6);
                                      border-radius: 14px; }}
-            QLineEdit {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER}; border-radius: 10px;
+            QLineEdit {{ background: rgba(0,0,0,0.26); color: {TEXT}; border: 1px solid {edge}; border-radius: 12px;
                          padding: 9px 12px; font: 14px {ft}; selection-background-color: {a}; }}
             QLineEdit:focus {{ border-color: {a}; }}
-            QListWidget {{ background: #101219; color: {TEXT}; border: 1px solid {CARD_BORDER}; border-radius: 12px;
+            QListWidget {{ background: rgba(0,0,0,0.24); color: {TEXT}; border: 1px solid {edge}; border-radius: 14px;
                            padding: 6px; outline: none; }}
             QListWidget::item {{ padding: 4px 10px; border-radius: 8px; }}
-            QListWidget::item:hover {{ background: #1b1e29; }}
+            QListWidget::item:hover {{ background: rgba(255,255,255,0.08); }}
             QListWidget::item:selected {{ background: rgba({r},{g},{b},0.22); color: white; }}
-            QSlider::groove:horizontal {{ height: 6px; background: #262a36; border-radius: 3px; }}
+            QSlider::groove:horizontal {{ height: 6px; background: rgba(255,255,255,0.15); border-radius: 3px; }}
             QSlider::sub-page:horizontal {{ background: {a}; border-radius: 3px; }}
             QSlider::handle:horizontal {{ background: white; width: 18px; height: 18px; margin: -6px 0; border-radius: 9px; }}
             QScrollBar:vertical {{ background: transparent; width: 8px; margin: 2px; }}
-            QScrollBar::handle:vertical {{ background: #2a2e3b; border-radius: 4px; min-height: 30px; }}
-            QScrollBar::handle:vertical:hover {{ background: #3a3f50; }}
+            QScrollBar::handle:vertical {{ background: rgba(255,255,255,0.16); border-radius: 4px; min-height: 30px; }}
+            QScrollBar::handle:vertical:hover {{ background: rgba(255,255,255,0.30); }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
             QLabel[role="warn"] {{ color: #ffcf7a; background: rgba(255,170,60,0.10); border: 1px solid rgba(255,170,60,0.45);
@@ -1011,19 +1048,24 @@ class Panel(QWidget):
         self.update()
 
     def paintEvent(self, _):
-        """Fond sombre avec une lueur aux couleurs de la pochette."""
+        """Le fond : une teinte sombre (a moitie transparente quand le verre de Windows est la),
+        puis trois lueurs aux couleurs de la pochette. Les cartes de verre se posent dessus."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor(BG))
-        acc = UI["accent"]
-        g = QRadialGradient(QPointF(self.width() * 0.10, 0), self.width() * 0.62)
-        g.setColorAt(0, alpha(acc, 58))
-        g.setColorAt(1, alpha(acc, 0))
-        p.fillRect(self.rect(), QBrush(g))
-        g2 = QRadialGradient(QPointF(self.width(), self.height()), self.width() * 0.5)
-        g2.setColorAt(0, alpha(acc, 24))
-        g2.setColorAt(1, alpha(acc, 0))
-        p.fillRect(self.rect(), QBrush(g2))
+        glass = self.glass_on()
+        if self._can_glass:
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            p.fillRect(self.rect(), QColor(9, 10, 16, 138 if glass else 255))
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        else:
+            p.fillRect(self.rect(), QColor(BG))
+        w, h = self.width(), self.height()
+        for (cx, cy, radius, strength), col in zip(((0.06, 0.0, 0.66, 92), (1.0, 0.16, 0.56, 66),
+                                                    (0.56, 1.08, 0.62, 58)), self._aura):
+            g = QRadialGradient(QPointF(w * cx, h * cy), w * radius)
+            g.setColorAt(0, alpha(col, strength))
+            g.setColorAt(1, alpha(col, 0))
+            p.fillRect(self.rect(), QBrush(g))
 
     def showEvent(self, e):
         super().showEvent(e)
@@ -1032,6 +1074,9 @@ class Panel(QWidget):
             ctypes.windll.dwmapi.DwmSetWindowAttribute(int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val))
         except Exception:
             pass
+        if self._can_glass and not self._glass_ok:
+            self._glass_ok = enable_backdrop(self.winId())
+        dark_caption(self.winId())
         self.refresh()
 
     def closeEvent(self, e):
