@@ -22,6 +22,7 @@ class NowPlaying:
     position: float      # secondes, estimee "maintenant"
     playing: bool
     app: str
+    site: str = ""   # site de musique, si le son vient d'un navigateur
 
     @property
     def key(self):
@@ -51,33 +52,51 @@ def list_sources(manager) -> list[str]:
         return []
 
 
-async def _pick_session(manager, blocked=()):
+def _is_playing(s) -> bool:
+    try:
+        info = s.get_playback_info()
+        return bool(info and info.playback_status == PlaybackStatus.PLAYING)
+    except Exception:
+        return False
+
+
+async def _pick_session(manager, blocked=(), guard=None):
+    """La session a suivre, avec ses infos et son site : (session, props, site).
+    Priorite : une session qui joue, sinon la session "courante", sinon les autres.
+    Avec `guard`, un navigateur n'est retenu que s'il joue sur un site de musique accepte."""
     sessions = [s for s in manager.get_sessions() if _app_id(s) not in blocked]
     if not sessions:
-        return None
-    # Priorite : une session qui joue, sinon la session "courante"
-    for s in sessions:
-        info = s.get_playback_info()
-        if info and info.playback_status == PlaybackStatus.PLAYING:
-            return s
-    cur = manager.get_current_session()
-    if cur is not None and _app_id(cur) not in blocked:
-        return cur
-    return sessions[0]
+        return None, None, ""
+    try:
+        cur = _app_id(manager.get_current_session())
+    except Exception:
+        cur = None
+    order = sorted(sessions, key=lambda s: (not _is_playing(s), _app_id(s) != cur))
+    for s in order:
+        try:
+            props = await s.try_get_media_properties_async()
+        except Exception:
+            props = None
+        site = ""
+        if guard is not None and props is not None:
+            ok, site = guard.allows(_app_id(s), props.title or "", props.artist or "")
+            if not ok:
+                continue
+        return s, props, site
+    return None, None, ""
 
 
 async def get_manager():
     return await SessionManager.request_async()
 
 
-async def get_now_playing(manager=None, blocked=()) -> NowPlaying | None:
+async def get_now_playing(manager=None, blocked=(), guard=None) -> NowPlaying | None:
     if manager is None:
         manager = await get_manager()
-    session = await _pick_session(manager, blocked)
+    session, props, site = await _pick_session(manager, blocked, guard)
     if session is None:
         return None
 
-    props = await session.try_get_media_properties_async()
     info = session.get_playback_info()
     tl = session.get_timeline_properties()
     if props is None or not props.title:
@@ -106,19 +125,19 @@ async def get_now_playing(manager=None, blocked=()) -> NowPlaying | None:
         position=position,
         playing=playing,
         app=session.source_app_user_model_id or "",
+        site=site,
     )
 
 
-async def get_thumbnail(manager=None, blocked=()) -> bytes | None:
+async def get_thumbnail(manager=None, blocked=(), guard=None) -> bytes | None:
     """Image de la pochette (album) fournie par l'appli qui joue, en octets (JPEG/PNG)."""
     from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
     if manager is None:
         manager = await get_manager()
-    session = await _pick_session(manager, blocked)
+    session, props, _site = await _pick_session(manager, blocked, guard)
     if session is None:
         return None
-    props = await session.try_get_media_properties_async()
     if props is None or props.thumbnail is None:
         return None
     stream = await props.thumbnail.open_read_async()

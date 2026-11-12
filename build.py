@@ -116,7 +116,7 @@ def main():
         "--hidden-import", "pyaudiowpatch", "--hidden-import", "welcome",
         "--collect-submodules", "winrt",
         "--hidden-import", "updater", "--hidden-import", "zone_editor",
-        "--hidden-import", "panel", "--hidden-import", "widgets", "--hidden-import", "hotkeys", "--hidden-import", "easter", "--hidden-import", "install",
+        "--hidden-import", "panel", "--hidden-import", "widgets", "--hidden-import", "hotkeys", "--hidden-import", "easter", "--hidden-import", "install", "--hidden-import", "sites",
         "--add-data", f"{os.path.join(HERE, 'VERSION')}{os.pathsep}.",
     ]
     # Bibliotheques C++ de Microsoft, version la plus recente, a la racine du paquet :

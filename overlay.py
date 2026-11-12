@@ -255,12 +255,15 @@ class MediaWorker(QThread):
     translated = pyqtSignal(object)
     cover = pyqtSignal(object, object)
     sources = pyqtSignal(object)  # applis qui diffusent un media en ce moment
+    browsers = pyqtSignal(object)  # navigateur -> (site reconnu, suivi ou non)
     COVER_READS = (0.8, 3.5)
     MAX_DURATION = 20 * 60  # plus long = film, video ou mix : on ne cherche pas de paroles
     RETRY_DELAYS = (10, 30, 60, 120, 300)  # nouvelles tentatives apres un souci de reseau
 
-    def __init__(self, blocked=()):
+    def __init__(self, blocked=(), sites_off=(), sites_other=False):
         super().__init__()
+        from sites import SiteGuard
+        self.guard = SiteGuard(sites_off, sites_other)  # quels sites suivre dans un navigateur
         self._stop = False
         self._cache = {}
         self._retry = {}     # cle -> (heure de la prochaine tentative, nb d'essais)
@@ -276,14 +279,19 @@ class MediaWorker(QThread):
         pool = ThreadPoolExecutor(max_workers=2)
         last_key = None
         last_sources = None
+        last_seen = None
         changed_at, cover_step, last_cover = 0.0, 0, None
         while not self._stop:
             blocked = frozenset(self.blocked)
             try:
-                np = loop.run_until_complete(get_now_playing(manager, blocked))
+                np = loop.run_until_complete(get_now_playing(manager, blocked, self.guard))
             except Exception:
                 np = None
             self.track.emit(np)
+            seen = dict(self.guard.seen)
+            if seen != last_seen:
+                last_seen = seen
+                self.browsers.emit(seen)
             src = list_sources(manager)
             if src != last_sources:
                 last_sources = src
@@ -306,7 +314,7 @@ class MediaWorker(QThread):
                     and now - changed_at >= self.COVER_READS[cover_step]:
                 cover_step += 1
                 try:
-                    data = loop.run_until_complete(get_thumbnail(manager, blocked))
+                    data = loop.run_until_complete(get_thumbnail(manager, blocked, self.guard))
                 except Exception:
                     data = None
                 if data and data != last_cover:
@@ -1723,8 +1731,11 @@ class App:
         self.demo_timer.timeout.connect(self.demo_step)
 
         self.sources = []  # applis vues cette session (pour le panneau)
-        self.worker = MediaWorker(self.cfg.get("sources_blocked", []))
+        self.browsers = {}  # navigateur -> (site reconnu, suivi ou non)
+        self.worker = MediaWorker(self.cfg.get("sources_blocked", []), self.cfg.get("sites_off", []),
+                                  self.cfg.get("sites_other", False))
         self.worker.sources.connect(self.w_sources)
+        self.worker.browsers.connect(self.w_browsers)
         self.worker.track.connect(self.w_track)
         self.worker.lyrics.connect(self.w_lyrics)
         self.worker.translated.connect(self.w_translated)
@@ -1950,6 +1961,22 @@ class App:
         for a in ids:
             if a not in self.sources:
                 self.sources.append(a)
+
+    def w_browsers(self, seen):
+        self.browsers = dict(seen)
+
+    def set_site_enabled(self, site_id, enabled):
+        """Cocher / decocher un site de musique (ou "les autres sites") pour les navigateurs."""
+        import sites
+        if site_id == sites.OTHER:
+            self.cfg["sites_other"] = bool(enabled)
+        else:
+            off = set(self.cfg.get("sites_off", []))
+            (off.discard if enabled else off.add)(site_id)
+            self.cfg["sites_off"] = sorted(off)
+        save_config(self.cfg)
+        self.worker.guard.off = set(self.cfg.get("sites_off", []))
+        self.worker.guard.other = bool(self.cfg.get("sites_other", False))
 
     def set_source_enabled(self, app_id, enabled):
         """Cocher / decocher une appli dans le panneau : elle est ecoutee ou ignoree."""
@@ -2230,6 +2257,7 @@ def selftest(app, out_dir):
             o = a.overlay
             report.append(f"paroles={len(o.lines)} piste={o.track.title if o.track else None}")
             report.append(f"sources={a.sources}")
+            report.append(f"navigateurs={a.browsers}")
             report.append(f"reel={a.real_track.title if a.real_track else None}")
             if a.welcome is not None:
                 a.welcome.grab().save(os.path.join(out_dir, "selftest_welcome.png"))

@@ -11,11 +11,12 @@ from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QLinearGradient, QPainter, QPen, QRadialGradient
 from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtWidgets import (
-    QButtonGroup, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QButtonGroup, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPushButton, QScrollArea, QSlider, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 import hotkeys
+import sites
 from settings import (COLORS, FROZEN, MODES, POSITIONS, RECOMMENDED_FONTS, STYLES, TITLE_DROP, app_label,
                       autostart_enabled, set_autostart)
 from widgets import (BG, BRAND, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, TEXT, UI,  # noqa: F401
@@ -567,12 +568,53 @@ class Panel(QWidget):
     # ---- page Musique ---------------------------------------------------------------
     def build_music(self):
         src = Card("Applis écoutées",
-                   "Décoche celles qui ne servent pas à la musique (par exemple le navigateur où tu regardes "
-                   "des vidéos). Les médias de plus de 20 minutes sont toujours ignorés.")
+                   "Décoche celles qui ne servent pas à la musique. Les médias de plus de 20 minutes sont "
+                   "toujours ignorés.")
         self.sources_box = QVBoxLayout()
         self.sources_box.setSpacing(12)
         src.lay.addLayout(self.sources_box)
         self._sources_shown = None
+
+        web = Card("Sites de musique dans le navigateur",
+                   "Quand le son vient de Chrome, Opera, Brave, Edge, Firefox… seuls ces sites affichent des "
+                   "paroles. Netflix, Twitch et les autres vidéos sont ignorés.")
+        self.web_state = QLabel()
+        self.web_state.setProperty("role", "hint")
+        self.web_state.setWordWrap(True)
+        self.web_state.hide()
+        web.add(self.web_state)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(34)
+        grid.setVerticalSpacing(12)
+        off = set(self.app.cfg.get("sites_off", []))
+        self.site_toggles = {}
+        for i, (sid, label, _rx) in enumerate(sites.SITES):
+            t = Toggle()
+            t.setChecked(sid not in off)
+            t.toggled.connect(lambda v, s=sid: self.app.set_site_enabled(s, bool(v)))
+            self.site_toggles[sid] = t
+            name = QLabel(label)
+            name.setProperty("role", "rowtitle")
+            cell = QHBoxLayout()
+            cell.setContentsMargins(0, 0, 0, 0)
+            cell.addWidget(name, 1)
+            cell.addWidget(t)
+            grid.addLayout(cell, i // 2, i % 2)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        web.lay.addLayout(grid)
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setProperty("role", "sep")
+        web.add(sep)
+        other = Toggle()
+        other.setChecked(bool(self.app.cfg.get("sites_other", False)))
+        other.toggled.connect(lambda v: self.app.set_site_enabled(sites.OTHER, bool(v)))
+        self.site_toggles[sites.OTHER] = other
+        web.add_row("Tous les autres sites", other,
+                    "À activer seulement si ta musique vient d'un site absent de la liste : les vidéos "
+                    "seront de nouveau suivies.")
+        self._web_shown = None
 
         lyr = Card("Paroles")
         self.opt["translation"] = Toggle()
@@ -591,7 +633,23 @@ class Panel(QWidget):
         self.offset_row = lyr.add_row("Calage des paroles", hbox(reset, later, self.offset_lbl, earlier, stretch=False), " ")
         for key, t in self.opt.items():
             t.toggled.connect(lambda v, k=key: self.set(k, bool(v)))
-        return [src, lyr]
+        return [src, web, lyr]
+
+    def refresh_web(self):
+        """Dit ce que l'appli a reconnu dans le navigateur en ce moment."""
+        seen = tuple(sorted(getattr(self.app, "browsers", {}).items()))
+        if seen == self._web_shown:
+            return
+        self._web_shown = seen
+        lines = []
+        for app_id, (sid, ok) in seen:
+            who = app_label(app_id)
+            if sid == sites.OTHER:
+                lines.append(f"{who} : site non reconnu, " + ("suivi quand même" if ok else "ignoré"))
+            else:
+                lines.append(f"{who} : {sites.SITE_NAMES.get(sid, sid)}" + ("" if ok else ", ignoré"))
+        self.web_state.setText("En ce moment — " + " · ".join(lines))
+        self.web_state.setVisible(bool(lines))
 
     def refresh_sources(self):
         blocked = list(self.app.cfg.get("sources_blocked", []))
@@ -890,6 +948,7 @@ class Panel(QWidget):
             return
         o = self.app.overlay
         self.refresh_sources()
+        self.refresh_web()
         t = o.track
         if t is not None:
             self.np_title.setText(t.title)
