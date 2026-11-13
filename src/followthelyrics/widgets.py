@@ -1,14 +1,35 @@
+import ctypes
+import logging
 import math
+import sys
 import time
 
-from PyQt6.QtCore import QEasingCurve, QPointF, QRectF, QSize, Qt, QTimer, QVariantAnimation, pyqtSignal
-from PyQt6.QtGui import (
-    QBrush, QColor, QFont, QFontMetricsF, QIcon, QLinearGradient, QPainter, QPainterPath, QPen,
-    QPixmap, QRadialGradient,
-)
-from PyQt6.QtWidgets import QAbstractButton, QSizePolicy, QWidget
+from PyQt6.QtCore import QEasingCurve
+from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import QSize
+from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QVariantAnimation
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QBrush
+from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFontMetricsF
+from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QLinearGradient
+from PyQt6.QtGui import QPainter
+from PyQt6.QtGui import QPainterPath
+from PyQt6.QtGui import QPen
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QRadialGradient
+from PyQt6.QtWidgets import QAbstractButton
+from PyQt6.QtWidgets import QSizePolicy
+from PyQt6.QtWidgets import QWidget
 
-import hotkeys
+from followthelyrics import hotkeys
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ACCENT = QColor("#8B7CFF")
 UI = {"accent": QColor(DEFAULT_ACCENT)}
@@ -28,8 +49,12 @@ DIM = "#8b91a3"
 def mix(a, b, t):
     a, b = QColor(a), QColor(b)
     t = max(0.0, min(1.0, t))
-    return QColor(int(a.red() + (b.red() - a.red()) * t), int(a.green() + (b.green() - a.green()) * t),
-                  int(a.blue() + (b.blue() - a.blue()) * t), int(a.alpha() + (b.alpha() - a.alpha()) * t))
+    return QColor(
+        int(a.red() + (b.red() - a.red()) * t),
+        int(a.green() + (b.green() - a.green()) * t),
+        int(a.blue() + (b.blue() - a.blue()) * t),
+        int(a.alpha() + (b.alpha() - a.alpha()) * t),
+    )
 
 
 def alpha(c, a):
@@ -44,35 +69,45 @@ def qss(c):
 
 
 def enable_backdrop(hwnd):
-    import ctypes
-    import sys
     try:
         if sys.getwindowsversion().build < 22621:
             return False
 
         class MARGINS(ctypes.Structure):
-            _fields_ = [("left", ctypes.c_int), ("right", ctypes.c_int), ("top", ctypes.c_int), ("bottom", ctypes.c_int)]
+            _fields_ = [
+                ("left", ctypes.c_int),
+                ("right", ctypes.c_int),
+                ("top", ctypes.c_int),
+                ("bottom", ctypes.c_int),
+            ]
 
         dwm = ctypes.windll.dwmapi
         hwnd = ctypes.c_void_p(int(hwnd))
         margins = MARGINS(-1, -1, -1, -1)
         dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
         kind = ctypes.c_int(3)
-        return dwm.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(kind), ctypes.sizeof(kind)) == 0
+        return (
+            dwm.DwmSetWindowAttribute(
+                hwnd, 38, ctypes.byref(kind), ctypes.sizeof(kind)
+            )
+            == 0
+        )
     except Exception:
+        logger.debug("enable_backdrop failed", exc_info=True)
         return False
 
 
 def dark_caption(hwnd):
-    import ctypes
     try:
         dwm = ctypes.windll.dwmapi
         hwnd = ctypes.c_void_p(int(hwnd))
         for attr, bgr in ((35, 0x00150E0D), (34, 0x00342C2B), (36, 0x00F4EEEC)):
             val = ctypes.c_uint(bgr)
-            dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(val), ctypes.sizeof(val))
+            dwm.DwmSetWindowAttribute(
+                hwnd, attr, ctypes.byref(val), ctypes.sizeof(val)
+            )
     except Exception:
-        pass
+        logger.debug("dark_caption failed", exc_info=True)
 
 
 def ui_font(px, weight=QFont.Weight.Normal, family="Segoe UI Variable Text"):
@@ -104,11 +139,10 @@ def run_anim(a, start, end):
 
 def ease_out_back(t):
     t = max(0.0, min(1.0, t)) - 1.0
-    return 1.0 + 2.70158 * t ** 3 + 1.70158 * t ** 2
+    return 1.0 + 2.70158 * t**3 + 1.70158 * t**2
 
 
 class Hover:
-
     def init_hover(self):
         self._hover = 0.0
         self._hover_anim = make_anim(self, self._set_hover, 150)
@@ -216,6 +250,7 @@ def draw_icon(p, name, rect, color, width=1.7):
         p.drawLine(QPointF(5, 7.5), QPointF(9, 7.5))
         p.drawLine(QPointF(5, 10.8), QPointF(12.5, 10.8))
     elif name == "style":
+
         def star(cx, cy, r):
             s = QPainterPath(QPointF(cx, cy - r))
             s.quadTo(QPointF(cx, cy), QPointF(cx + r, cy))
@@ -223,6 +258,7 @@ def draw_icon(p, name, rect, color, width=1.7):
             s.quadTo(QPointF(cx, cy), QPointF(cx - r, cy))
             s.quadTo(QPointF(cx, cy), QPointF(cx, cy - r))
             p.drawPath(s)
+
         star(8.2, 11, 6.2)
         star(15.2, 5, 3)
     elif name == "music":
@@ -267,7 +303,9 @@ def draw_keycaps(p, names, x, cy, dim=False):
     for i, name in enumerate(names):
         if i:
             p.setPen(QColor(DIM))
-            p.drawText(QRectF(x, cy - 12, 14, 24), Qt.AlignmentFlag.AlignCenter, "+")
+            p.drawText(
+                QRectF(x, cy - 12, 14, 24), Qt.AlignmentFlag.AlignCenter, "+"
+            )
             x += 14
         w = max(26.0, fm.horizontalAdvance(name) + 16)
         r = QRectF(x, cy - 12, w, 24)
@@ -284,7 +322,6 @@ def draw_keycaps(p, names, x, cy, dim=False):
 
 
 class Toggle(QAbstractButton):
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCheckable(True)
@@ -343,7 +380,12 @@ class Segmented(QWidget):
         self.update()
 
     def seg_rect(self, i):
-        return QRectF(self.PAD + sum(self.widths[:i]), self.PAD, self.widths[i], self.H - 2 * self.PAD)
+        return QRectF(
+            self.PAD + sum(self.widths[:i]),
+            self.PAD,
+            self.widths[i],
+            self.H - 2 * self.PAD,
+        )
 
     def set_value(self, key):
         if key not in self.keys:
@@ -391,12 +433,19 @@ class Segmented(QWidget):
         acc = UI["accent"]
         p.setPen(QPen(QColor(CARD_BORDER), 1))
         p.setBrush(QColor(FIELD))
-        p.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 11, 11)
-        lo = max(0, min(len(self.keys) - 1, int(math.floor(self._x))))
+        p.drawRoundedRect(
+            QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 11, 11
+        )
+        lo = max(0, min(len(self.keys) - 1, math.floor(self._x)))
         hi = min(len(self.keys) - 1, lo + 1)
         f = self._x - lo
         a, b = self.seg_rect(lo), self.seg_rect(hi)
-        pill = QRectF(a.left() + (b.left() - a.left()) * f, a.top(), a.width() + (b.width() - a.width()) * f, a.height())
+        pill = QRectF(
+            a.left() + (b.left() - a.left()) * f,
+            a.top(),
+            a.width() + (b.width() - a.width()) * f,
+            a.height(),
+        )
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(acc if on else mix(FIELD, acc, 0.28))
         p.drawRoundedRect(pill, 8, 8)
@@ -404,7 +453,9 @@ class Segmented(QWidget):
         for i, label in enumerate(self.labels):
             near = max(0.0, 1.0 - abs(self._x - i))
             if on:
-                col = mix("#c2c6d2" if i != self._hover_i else "#ffffff", BG, near)
+                col = mix(
+                    "#c2c6d2" if i != self._hover_i else "#ffffff", BG, near
+                )
             else:
                 col = QColor("#565b6b")
             p.setPen(col)
@@ -479,23 +530,40 @@ class SideNav(QWidget):
         if 0 <= self._hover_i != self.index:
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor(255, 255, 255, 12))
-            p.drawRoundedRect(QRectF(0, self._hover_i * step, w, self.ITEM_H), 11, 11)
+            p.drawRoundedRect(
+                QRectF(0, self._hover_i * step, w, self.ITEM_H), 11, 11
+            )
         pill = QRectF(0, self._y * step, w, self.ITEM_H)
         p.setPen(QPen(alpha(acc, 90), 1))
         p.setBrush(alpha(acc, 38))
         p.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), 11, 11)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(acc)
-        p.drawRoundedRect(QRectF(0, pill.top() + 11, 3.5, self.ITEM_H - 22), 1.75, 1.75)
+        p.drawRoundedRect(
+            QRectF(0, pill.top() + 11, 3.5, self.ITEM_H - 22), 1.75, 1.75
+        )
         for i, (key, text, icon) in enumerate(self.items):
             near = max(0.0, 1.0 - abs(self._y - i))
-            base = QColor("#d7dae3") if i == self._hover_i else QColor("#9aa0b1")
+            base = (
+                QColor("#d7dae3") if i == self._hover_i else QColor("#9aa0b1")
+            )
             col = mix(base, "#ffffff", near)
             y = i * step
             draw_icon(p, icon, QRectF(15, y + 12, 20, 20), mix(base, acc, near))
             p.setPen(col)
-            p.setFont(ui_font(14, QFont.Weight.Bold if i == self.index else QFont.Weight.DemiBold))
-            p.drawText(QRectF(48, y, w - 60, self.ITEM_H), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+            p.setFont(
+                ui_font(
+                    14,
+                    QFont.Weight.Bold
+                    if i == self.index
+                    else QFont.Weight.DemiBold,
+                )
+            )
+            p.drawText(
+                QRectF(48, y, w - 60, self.ITEM_H),
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                text,
+            )
             if key in self.badges:
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(acc)
@@ -503,7 +571,6 @@ class SideNav(QWidget):
 
 
 class CoverView(QWidget):
-
     def __init__(self, size, radius=18, parent=None):
         super().__init__(parent)
         self.setFixedSize(size, size)
@@ -536,7 +603,9 @@ class CoverView(QWidget):
         p.fillRect(r, QColor("#161822"))
         p.fillRect(r, QBrush(g))
         p.setPen(QColor(255, 255, 255, 170))
-        p.setFont(ui_font(int(r.width() * 0.32), QFont.Weight.Bold, "Segoe UI Symbol"))
+        p.setFont(
+            ui_font(int(r.width() * 0.32), QFont.Weight.Bold, "Segoe UI Symbol")
+        )
         p.drawText(r, Qt.AlignmentFlag.AlignCenter, "♪")
 
     def paintEvent(self, _):
@@ -554,7 +623,6 @@ class CoverView(QWidget):
 
 
 class Equalizer(QWidget):
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(20, 16)
@@ -569,7 +637,12 @@ class Equalizer(QWidget):
         for i in range(4):
             h = 4.0
             if self.playing:
-                h = 4 + 11 * (0.5 + 0.5 * math.sin(t * (5.2 + i * 1.7) + i * 1.9)) ** 1.4
+                h = (
+                    4
+                    + 11
+                    * (0.5 + 0.5 * math.sin(t * (5.2 + i * 1.7) + i * 1.9))
+                    ** 1.4
+                )
             p.drawRoundedRect(QRectF(i * 5.2, 16 - h, 3.2, h), 1.6, 1.6)
 
 
@@ -598,12 +671,19 @@ class ProgressView(QWidget):
             p.drawEllipse(QPointF(max(5.0, min(w - 5.0, w * frac)), 8.5), 5, 5)
         p.setPen(QColor(DIM))
         p.setFont(ui_font(11))
-        p.drawText(QRectF(0, 16, w / 2, 18), Qt.AlignmentFlag.AlignLeft, fmt_time(self.pos) if self.dur else "")
-        p.drawText(QRectF(w / 2, 16, w / 2, 18), Qt.AlignmentFlag.AlignRight, fmt_time(self.dur) if self.dur else "")
+        p.drawText(
+            QRectF(0, 16, w / 2, 18),
+            Qt.AlignmentFlag.AlignLeft,
+            fmt_time(self.pos) if self.dur else "",
+        )
+        p.drawText(
+            QRectF(w / 2, 16, w / 2, 18),
+            Qt.AlignmentFlag.AlignRight,
+            fmt_time(self.dur) if self.dur else "",
+        )
 
 
 class MiniPlayer(Hover, QAbstractButton):
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_hover()
@@ -642,17 +722,26 @@ class MiniPlayer(Hover, QAbstractButton):
         f1 = ui_font(13, QFont.Weight.Bold)
         p.setFont(f1)
         p.setPen(QColor(TEXT))
-        p.drawText(QRectF(62, 11, tw, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                   QFontMetricsF(f1).elidedText(self.title, Qt.TextElideMode.ElideRight, tw))
+        p.drawText(
+            QRectF(62, 11, tw, 18),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            QFontMetricsF(f1).elidedText(
+                self.title, Qt.TextElideMode.ElideRight, tw
+            ),
+        )
         f2 = ui_font(12)
         p.setFont(f2)
         p.setPen(QColor(DIM))
-        p.drawText(QRectF(62, 31, tw, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                   QFontMetricsF(f2).elidedText(self.artist, Qt.TextElideMode.ElideRight, tw))
+        p.drawText(
+            QRectF(62, 31, tw, 18),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            QFontMetricsF(f2).elidedText(
+                self.artist, Qt.TextElideMode.ElideRight, tw
+            ),
+        )
 
 
 class ModeCard(Hover, QAbstractButton):
-
     def __init__(self, key, title, desc, parent=None):
         super().__init__(parent)
         self.init_hover()
@@ -660,11 +749,18 @@ class ModeCard(Hover, QAbstractButton):
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumSize(170, 196)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self._sel = 0.0
         self._sel_anim = make_anim(self, self._set_sel, 200)
-        self.toggled.connect(lambda on: run_anim(self._sel_anim, self._sel, 1.0 if on else 0.0)
-                             if self.isVisible() else self._set_sel(1.0 if on else 0.0))
+        self.toggled.connect(
+            lambda on: (
+                run_anim(self._sel_anim, self._sel, 1.0 if on else 0.0)
+                if self.isVisible()
+                else self._set_sel(1.0 if on else 0.0)
+            )
+        )
 
     def _set_sel(self, v):
         self._sel = v
@@ -678,8 +774,15 @@ class ModeCard(Hover, QAbstractButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         acc = UI["accent"]
         r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        p.setPen(QPen(mix(mix(CARD_BORDER, "#58ffffff", self._hover), acc, self._sel), 1 + self._sel))
-        p.setBrush(mix(mix(FIELD, "#24ffffff", self._hover), acc, 0.16 * self._sel))
+        p.setPen(
+            QPen(
+                mix(mix(CARD_BORDER, "#58ffffff", self._hover), acc, self._sel),
+                1 + self._sel,
+            )
+        )
+        p.setBrush(
+            mix(mix(FIELD, "#24ffffff", self._hover), acc, 0.16 * self._sel)
+        )
         p.drawRoundedRect(r, 15, 15)
 
         scr = QRectF(r.left() + 12, r.top() + 12, r.width() - 24, 96)
@@ -712,14 +815,26 @@ class ModeCard(Hover, QAbstractButton):
             bar(12, 48 - slide, w * 0.40, alpha(dim, 34), 5)
             bar(12, 63 - slide, w * 0.30, alpha(dim, 34 * slide / 15), 5)
         elif self.key == "edit":
-            slots = ((12, 22, 0.36, -5), (w * 0.52, 34, 0.38, 4), (w * 0.2, 66, 0.44, -2), (w * 0.44, 78, 0.34, 3))
+            slots = (
+                (12, 22, 0.36, -5),
+                (w * 0.52, 34, 0.38, 4),
+                (w * 0.2, 66, 0.44, -2),
+                (w * 0.44, 78, 0.34, 3),
+            )
             k = int(now / 1.05) % len(slots)
             local = (now % 1.05) / 1.05
             x, y, length, rot = slots[k]
             grow = ease_out_back(local * 3.5)
             fade = 1.0 if local < 0.82 else max(0.0, (1 - local) / 0.18)
             bar(x, y, w * length * grow, alpha(dim, 62 * fade), 8, rot)
-            bar(x, y, w * length * grow * min(1.0, local / 0.7), alpha(acc, 255 * fade), 8, rot)
+            bar(
+                x,
+                y,
+                w * length * grow * min(1.0, local / 0.7),
+                alpha(acc, 255 * fade),
+                8,
+                rot,
+            )
         else:
             t = (now % 2.8) / 2.8
             steps = 11
@@ -729,13 +844,25 @@ class ModeCard(Hover, QAbstractButton):
             bar(w * 0.22, 46, length, acc, 7)
             if int(now * 2.6) % 2 == 0 or shown < steps:
                 p.setBrush(QColor("white"))
-                p.drawRoundedRect(QRectF(scr.left() + w * 0.22 + length + 3, scr.top() + 39, 2.5, 14), 1, 1)
+                p.drawRoundedRect(
+                    QRectF(
+                        scr.left() + w * 0.22 + length + 3,
+                        scr.top() + 39,
+                        2.5,
+                        14,
+                    ),
+                    1,
+                    1,
+                )
         p.restore()
 
         p.setPen(QColor(TEXT))
         p.setFont(ui_font(15, QFont.Weight.Bold, "Segoe UI Variable Display"))
-        p.drawText(QRectF(r.left() + 14, scr.bottom() + 10, r.width() - 50, 22),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.title)
+        p.drawText(
+            QRectF(r.left() + 14, scr.bottom() + 10, r.width() - 50, 22),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.title,
+        )
         c = QPointF(r.right() - 22, scr.bottom() + 21)
         p.setPen(QPen(mix("#3b4052", acc, self._sel), 1.6))
         p.setBrush(Qt.BrushStyle.NoBrush)
@@ -746,12 +873,16 @@ class ModeCard(Hover, QAbstractButton):
             p.drawEllipse(c, 4.6 * self._sel, 4.6 * self._sel)
         p.setPen(QColor(DIM))
         p.setFont(ui_font(12))
-        p.drawText(QRectF(r.left() + 14, scr.bottom() + 36, r.width() - 28, 40),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap, self.desc)
+        p.drawText(
+            QRectF(r.left() + 14, scr.bottom() + 36, r.width() - 28, 40),
+            Qt.AlignmentFlag.AlignLeft
+            | Qt.AlignmentFlag.AlignTop
+            | Qt.TextFlag.TextWordWrap,
+            self.desc,
+        )
 
 
 class ColorCard(Hover, QAbstractButton):
-
     def __init__(self, key, title, desc, colors_fn, parent=None):
         super().__init__(parent)
         self.init_hover()
@@ -760,11 +891,18 @@ class ColorCard(Hover, QAbstractButton):
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(116)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         self._sel = 0.0
         self._sel_anim = make_anim(self, self._set_sel, 200)
-        self.toggled.connect(lambda on: run_anim(self._sel_anim, self._sel, 1.0 if on else 0.0)
-                             if self.isVisible() else self._set_sel(1.0 if on else 0.0))
+        self.toggled.connect(
+            lambda on: (
+                run_anim(self._sel_anim, self._sel, 1.0 if on else 0.0)
+                if self.isVisible()
+                else self._set_sel(1.0 if on else 0.0)
+            )
+        )
 
     def _set_sel(self, v):
         self._sel = v
@@ -775,8 +913,15 @@ class ColorCard(Hover, QAbstractButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         acc = UI["accent"]
         r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
-        p.setPen(QPen(mix(mix(CARD_BORDER, "#58ffffff", self._hover), acc, self._sel), 1 + self._sel))
-        p.setBrush(mix(mix(FIELD, "#24ffffff", self._hover), acc, 0.16 * self._sel))
+        p.setPen(
+            QPen(
+                mix(mix(CARD_BORDER, "#58ffffff", self._hover), acc, self._sel),
+                1 + self._sel,
+            )
+        )
+        p.setBrush(
+            mix(mix(FIELD, "#24ffffff", self._hover), acc, 0.16 * self._sel)
+        )
         p.drawRoundedRect(r, 15, 15)
         cols = [QColor(c) for c in self.colors_fn()] or [QColor("white")]
         font = ui_font(27, QFont.Weight.Black, "Segoe UI Variable Display")
@@ -807,23 +952,30 @@ class ColorCard(Hover, QAbstractButton):
             p.drawEllipse(c, 4.6 * self._sel, 4.6 * self._sel)
         p.setPen(QColor(TEXT))
         p.setFont(ui_font(14, QFont.Weight.Bold))
-        p.drawText(QRectF(r.left() + 18, r.top() + 62, r.width() - 36, 20),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.title)
+        p.drawText(
+            QRectF(r.left() + 18, r.top() + 62, r.width() - 36, 20),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.title,
+        )
         p.setPen(QColor(DIM))
         p.setFont(ui_font(12))
-        p.drawText(QRectF(r.left() + 18, r.top() + 83, r.width() - 36, 18),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.desc)
+        p.drawText(
+            QRectF(r.left() + 18, r.top() + 83, r.width() - 36, 18),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.desc,
+        )
 
 
 class NavTile(Hover, QAbstractButton):
-
     def __init__(self, icon, caption, parent=None):
         super().__init__(parent)
         self.init_hover()
         self.icon, self.caption, self.value = icon, caption, ""
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(84)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
 
     def set_value(self, text):
         if text != self.value:
@@ -835,7 +987,11 @@ class NavTile(Hover, QAbstractButton):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         acc = UI["accent"]
         h = self._hover
-        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5 - 2 * (1 - h)).translated(0, 2 * (1 - h))
+        r = (
+            QRectF(self.rect())
+            .adjusted(0.5, 0.5, -0.5, -0.5 - 2 * (1 - h))
+            .translated(0, 2 * (1 - h))
+        )
         p.setPen(QPen(mix(CARD_BORDER, acc, h * 0.8), 1))
         p.setBrush(mix(CARD, mix(CARD, acc, 0.12), h))
         p.drawRoundedRect(r, 16, 16)
@@ -847,15 +1003,27 @@ class NavTile(Hover, QAbstractButton):
         tw = r.width() - 104
         p.setPen(QColor(DIM))
         p.setFont(ui_font(12, QFont.Weight.DemiBold))
-        p.drawText(QRectF(box.right() + 12, r.center().y() - 21, tw, 18),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.caption)
+        p.drawText(
+            QRectF(box.right() + 12, r.center().y() - 21, tw, 18),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.caption,
+        )
         f = ui_font(15, QFont.Weight.Bold)
         p.setFont(f)
         p.setPen(QColor(TEXT))
-        p.drawText(QRectF(box.right() + 12, r.center().y() - 1, tw, 22),
-                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                   QFontMetricsF(f).elidedText(self.value, Qt.TextElideMode.ElideRight, tw))
-        draw_icon(p, "chevron", QRectF(r.right() - 30 + 3 * h, r.center().y() - 9, 18, 18), mix(DIM, acc, h))
+        p.drawText(
+            QRectF(box.right() + 12, r.center().y() - 1, tw, 22),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            QFontMetricsF(f).elidedText(
+                self.value, Qt.TextElideMode.ElideRight, tw
+            ),
+        )
+        draw_icon(
+            p,
+            "chevron",
+            QRectF(r.right() - 30 + 3 * h, r.center().y() - 9, 18, 18),
+            mix(DIM, acc, h),
+        )
 
 
 class HotkeyButton(Hover, QWidget):
@@ -932,13 +1100,15 @@ class HotkeyButton(Hover, QWidget):
         if not self.listening:
             return super().keyPressEvent(e)
         if e.isAutoRepeat():
-            return
+            return None
         vk, mods = int(e.nativeVirtualKey()), self._mods(e)
         if vk == 0x1B:
             return self.finish()
         if vk in (0x08, 0x2E) and not mods:
             return self.finish("")
-        held = [hotkeys.PRETTY.get(n, n) for n, flag in hotkeys.MODS if mods & flag]
+        held = [
+            hotkeys.PRETTY.get(n, n) for n, flag in hotkeys.MODS if mods & flag
+        ]
         if not vk or vk in hotkeys.MODIFIER_VKS:
             self.live, self.note = held, ""
         elif not hotkeys.allowed(mods, vk):
@@ -946,11 +1116,16 @@ class HotkeyButton(Hover, QWidget):
         else:
             return self.finish(hotkeys.make(mods, vk))
         self.update()
+        return None
 
     def keyReleaseEvent(self, e):
         if self.listening and not e.isAutoRepeat():
             mods = self._mods(e)
-            self.live = [hotkeys.PRETTY.get(n, n) for n, flag in hotkeys.MODS if mods & flag]
+            self.live = [
+                hotkeys.PRETTY.get(n, n)
+                for n, flag in hotkeys.MODS
+                if mods & flag
+            ]
             self.update()
 
     def paintEvent(self, _):
@@ -975,22 +1150,37 @@ class HotkeyButton(Hover, QWidget):
                 x = draw_keycaps(p, self.live, r.left() + 12, cy)
                 p.setPen(acc)
                 p.setFont(ui_font(13, QFont.Weight.DemiBold))
-                p.drawText(QRectF(x + 8, r.top(), 60, r.height()), Qt.AlignmentFlag.AlignVCenter, "+ …")
+                p.drawText(
+                    QRectF(x + 8, r.top(), 60, r.height()),
+                    Qt.AlignmentFlag.AlignVCenter,
+                    "+ …",
+                )
             else:
                 p.setPen(QColor(255, 190, 110) if self.note else acc)
                 p.setFont(ui_font(13, QFont.Weight.DemiBold))
-                p.drawText(r.adjusted(14, 0, -10, 0), Qt.AlignmentFlag.AlignVCenter,
-                           self.note or "Appuie sur les touches…")
+                p.drawText(
+                    r.adjusted(14, 0, -10, 0),
+                    Qt.AlignmentFlag.AlignVCenter,
+                    self.note or "Appuie sur les touches…",
+                )
         elif self.combo:
             draw_keycaps(p, hotkeys.key_names(self.combo), r.left() + 12, cy)
         else:
             p.setPen(QColor(DIM))
             p.setFont(ui_font(13))
-            p.drawText(r.adjusted(14, 0, -10, 0), Qt.AlignmentFlag.AlignVCenter, "Aucun · clique pour choisir")
+            p.drawText(
+                r.adjusted(14, 0, -10, 0),
+                Qt.AlignmentFlag.AlignVCenter,
+                "Aucun · clique pour choisir",
+            )
         if not self.listening and self._hover > 0.05 and self.combo:
             p.setPen(alpha(acc, 255 * self._hover))
             p.setFont(ui_font(12, QFont.Weight.DemiBold))
-            p.drawText(r.adjusted(0, 0, -12, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, "Modifier")
+            p.drawText(
+                r.adjusted(0, 0, -12, 0),
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                "Modifier",
+            )
 
     def sizeHint(self):
         return QSize(250, 42)

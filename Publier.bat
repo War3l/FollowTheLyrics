@@ -1,15 +1,15 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-set /p CUR=<VERSION
+set /p CUR=<src\followthelyrics\VERSION
 echo Version actuelle : %CUR%
 set /p V=Nouvelle version (exemple 1.1.0) : 
 if "%V%"=="" goto :fin
 set /p NOTES=Quoi de neuf (une phrase) : 
 if "%NOTES%"=="" set NOTES=Mise a jour %V%
 
->VERSION echo %V%
-".venv\Scripts\python.exe" build.py
+>src\followthelyrics\VERSION echo %V%
+".venv\Scripts\python.exe" tools\build.py
 if errorlevel 1 goto :echec
 if not exist "dist\FollowTheLyrics.exe" goto :echec
 

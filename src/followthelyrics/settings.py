@@ -1,28 +1,38 @@
+import contextlib
 import json
+import logging
 import os
 import sys
 
+from PyQt6.QtCore import QFile
+from PyQt6.QtCore import QStandardPaths
+
+if sys.platform == "win32":
+    import winreg
+
+logger = logging.getLogger(__name__)
+
 APP_NAME = "FollowTheLyrics"
 OLD_NAMES = ("LyricsOverlay", "Lyrics Overlay")
-HERE = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 FROZEN = bool(getattr(sys, "frozen", False))
 
 
 def _data_dir():
     if not FROZEN:
-        return HERE
+        return os.environ.get("FTL_DATA_DIR") or PROJECT_ROOT
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     path = os.path.join(base, APP_NAME)
     old = os.path.join(base, "LyricsOverlay")
     try:
         if os.path.isdir(old) and not os.path.exists(path):
             os.rename(old, path)
-    except Exception:
+    except OSError:
         pass
-    try:
+    with contextlib.suppress(OSError):
         os.makedirs(path, exist_ok=True)
-    except Exception:
-        pass
     return path
 
 
@@ -39,17 +49,16 @@ def launch_command(minimized=False, exe=None):
     else:
         py = sys.executable
         pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
-        cmd = f'"{pyw if os.path.exists(pyw) else py}" "{os.path.join(HERE, "overlay.py")}"'
+        cmd = f'"{pyw if os.path.exists(pyw) else py}" -m followthelyrics'
     return cmd + (" --minimized" if minimized else "")
 
 
 def autostart_command():
     try:
-        import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
             value, _ = winreg.QueryValueEx(k, _RUN_NAME)
         return str(value or "")
-    except Exception:
+    except OSError:
         return ""
 
 
@@ -59,25 +68,35 @@ def autostart_enabled():
 
 def set_autostart(on, exe=None):
     try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE
+        ) as k:
             if on:
-                winreg.SetValueEx(k, _RUN_NAME, 0, winreg.REG_SZ, launch_command(minimized=True, exe=exe))
+                winreg.SetValueEx(
+                    k,
+                    _RUN_NAME,
+                    0,
+                    winreg.REG_SZ,
+                    launch_command(minimized=True, exe=exe),
+                )
             else:
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     winreg.DeleteValue(k, _RUN_NAME)
-                except FileNotFoundError:
-                    pass
         return True
-    except Exception:
+    except OSError:
+        logger.debug("set_autostart failed", exc_info=True)
         return False
 
 
 def refresh_autostart():
     was_old = False
     try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE) as k:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            _RUN_KEY,
+            0,
+            winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,
+        ) as k:
             for old in OLD_NAMES:
                 try:
                     winreg.QueryValueEx(k, old)
@@ -85,27 +104,30 @@ def refresh_autostart():
                     was_old = True
                 except FileNotFoundError:
                     pass
-    except Exception:
-        pass
+    except OSError:
+        logger.debug("refresh_autostart failed", exc_info=True)
     if was_old or autostart_enabled():
         set_autostart(True)
     try:
-        from PyQt6.QtCore import QStandardPaths
-        desktop = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+        desktop = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DesktopLocation
+        )
         old_link = os.path.join(desktop, "Lyrics Overlay.lnk")
         if os.path.exists(old_link):
             os.remove(old_link)
             create_desktop_shortcut()
     except Exception:
-        pass
+        logger.debug("refresh_autostart failed", exc_info=True)
 
 
 def desktop_link():
     try:
-        from PyQt6.QtCore import QStandardPaths
-        desktop = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+        desktop = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DesktopLocation
+        )
         return os.path.join(desktop, APP_NAME + ".lnk") if desktop else ""
     except Exception:
+        logger.debug("desktop_link failed", exc_info=True)
         return ""
 
 
@@ -113,7 +135,6 @@ def create_desktop_shortcut(exe=None):
     if not (exe or FROZEN):
         return False
     try:
-        from PyQt6.QtCore import QFile
         link = desktop_link()
         if not link:
             return False
@@ -121,12 +142,20 @@ def create_desktop_shortcut(exe=None):
             os.remove(link)
         return bool(QFile.link(exe or sys.executable, link))
     except Exception:
+        logger.debug("create_desktop_shortcut failed", exc_info=True)
         return False
 
+
 MODES = {
-    "classic": ("Classique", "Les lignes défilent dans un coin, comme sur Spotify."),
+    "classic": (
+        "Classique",
+        "Les lignes défilent dans un coin, comme sur Spotify.",
+    ),
     "edit": ("Edit", "Chaque ligne surgit à un endroit différent de l'écran."),
-    "typewriter": ("Machine à écrire", "Les lettres s'écrivent au fil du chant."),
+    "typewriter": (
+        "Machine à écrire",
+        "Les lettres s'écrivent au fil du chant.",
+    ),
 }
 POSITIONS = {"left": "Gauche", "center": "Centre", "right": "Droite"}
 COLORS = {"album": "Couleurs de l'album", "white": "Blanc lumineux"}
@@ -136,29 +165,71 @@ TITLE_DROP = {"always": "Toujours", "desktop": "Hors jeu", "never": "Jamais"}
 
 def app_label(app_id: str) -> str:
     low = app_id.lower()
-    for needle, name in (("spotify", "Spotify"), ("operagx", "Opera GX"), ("opera", "Opera"),
-                         ("chrome", "Google Chrome"), ("msedge", "Microsoft Edge"), ("firefox", "Firefox"),
-                         ("brave", "Brave"), ("deezer", "Deezer"), ("applemusic", "Apple Music"),
-                         ("itunes", "iTunes"), ("zunemusic", "Lecteur multimédia"), ("vlc", "VLC"),
-                         ("tidal", "Tidal"), ("amazon", "Amazon Music"), ("discord", "Discord"),
-                         ("riotclient", "Riot Client")):
+    for needle, name in (
+        ("spotify", "Spotify"),
+        ("operagx", "Opera GX"),
+        ("opera", "Opera"),
+        ("chrome", "Google Chrome"),
+        ("msedge", "Microsoft Edge"),
+        ("firefox", "Firefox"),
+        ("brave", "Brave"),
+        ("deezer", "Deezer"),
+        ("applemusic", "Apple Music"),
+        ("itunes", "iTunes"),
+        ("zunemusic", "Lecteur multimédia"),
+        ("vlc", "VLC"),
+        ("tidal", "Tidal"),
+        ("amazon", "Amazon Music"),
+        ("discord", "Discord"),
+        ("riotclient", "Riot Client"),
+    ):
         if needle in low:
             return name
-    name = app_id.split("!")[0].split("\\")[-1]
+    name = app_id.split("!", maxsplit=1)[0].rsplit("\\", maxsplit=1)[-1]
     return name[:-4] if name.lower().endswith(".exe") else name
 
+
 RECOMMENDED_FONTS = [
-    "Segoe UI Variable Display", "Bahnschrift", "Segoe UI Black", "Arial Black", "Impact",
-    "Franklin Gothic Heavy", "Gill Sans Ultra Bold", "Montserrat", "Poppins", "Inter",
-    "Ink Free", "Segoe Print", "Cascadia Code", "Consolas", "Courier New", "Georgia",
+    "Segoe UI Variable Display",
+    "Bahnschrift",
+    "Segoe UI Black",
+    "Arial Black",
+    "Impact",
+    "Franklin Gothic Heavy",
+    "Gill Sans Ultra Bold",
+    "Montserrat",
+    "Poppins",
+    "Inter",
+    "Ink Free",
+    "Segoe Print",
+    "Cascadia Code",
+    "Consolas",
+    "Courier New",
+    "Georgia",
     "Trebuchet MS",
 ]
 
 DEFAULTS = {
-    "mode": "edit", "position": "left", "color": "album", "font": "Segoe UI Variable Display",
-    "style": "kinetic", "scale": 1.0, "offset": 0.0,
-    "translation": True, "beat": True, "card": True, "particles": True, "easter": True, "tilt": True, "stack": True,
-    "title_drop": "always", "sources_blocked": [], "sites_off": [], "sites_other": False, "welcomed": False, "glass": True,
+    "mode": "edit",
+    "position": "left",
+    "color": "album",
+    "font": "Segoe UI Variable Display",
+    "style": "kinetic",
+    "scale": 1.0,
+    "offset": 0.0,
+    "translation": True,
+    "beat": True,
+    "card": True,
+    "particles": True,
+    "easter": True,
+    "tilt": True,
+    "stack": True,
+    "title_drop": "always",
+    "sources_blocked": [],
+    "sites_off": [],
+    "sites_other": False,
+    "welcomed": False,
+    "glass": True,
 }
 
 
@@ -167,21 +238,26 @@ def load_config():
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
             cfg.update(json.load(f))
-    except Exception:
+    except (OSError, ValueError):
         pass
     if cfg.get("style") == "pop":
         cfg["style"] = "kinetic"
     for key in ("sources_blocked", "sites_off"):
         if not isinstance(cfg.get(key), list):
             cfg[key] = []
-    for key, allowed in (("mode", MODES), ("position", POSITIONS), ("color", COLORS), ("style", STYLES),
-                         ("title_drop", TITLE_DROP)):
+    for key, allowed in (
+        ("mode", MODES),
+        ("position", POSITIONS),
+        ("color", COLORS),
+        ("style", STYLES),
+        ("title_drop", TITLE_DROP),
+    ):
         if cfg.get(key) not in allowed:
             cfg[key] = DEFAULTS[key]
     try:
         cfg["scale"] = min(1.6, max(0.7, float(cfg["scale"])))
         cfg["offset"] = float(cfg["offset"])
-    except Exception:
+    except (TypeError, ValueError):
         cfg["scale"], cfg["offset"] = 1.0, 0.0
     for old in ("theme",):
         cfg.pop(old, None)
@@ -192,5 +268,5 @@ def save_config(cfg):
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
-    except Exception:
-        pass
+    except OSError:
+        logger.warning("save_config failed", exc_info=True)

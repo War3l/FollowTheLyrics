@@ -1,21 +1,29 @@
-import io
 import os
 import random
 import sys
-
-root, out = sys.argv[1], sys.argv[2]
-sys.path.insert(0, root)
-os.chdir(root)
 from types import SimpleNamespace
 
-from PyQt6.QtCore import QBuffer, QPointF, QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QImage, QLinearGradient, QPainter, QRadialGradient
+from PyQt6.QtCore import QBuffer
+from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QBrush
+from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QImage
+from PyQt6.QtGui import QLinearGradient
+from PyQt6.QtGui import QPainter
+from PyQt6.QtGui import QRadialGradient
 from PyQt6.QtWidgets import QApplication
 
+from followthelyrics import demo_lyrics
+from followthelyrics import games
+from followthelyrics import overlay
+from followthelyrics import settings
+
+root, out = sys.argv[1], sys.argv[2]
+os.chdir(root)
+
+
 app = QApplication(sys.argv)
-import games
-import overlay
-from settings import DEFAULTS
 
 S, SH = 960, 720
 
@@ -40,9 +48,15 @@ def backdrop(colors, seed):
     r = random.Random(seed)
     for k, c in enumerate(colors * 2):
         col = QColor(c)
-        cx, cy, rad = r.uniform(0, S), r.uniform(0, SH), r.uniform(S * 0.45, S * 0.8)
+        cx, cy, rad = (
+            r.uniform(0, S),
+            r.uniform(0, SH),
+            r.uniform(S * 0.45, S * 0.8),
+        )
         g = QRadialGradient(QPointF(cx, cy), rad)
-        g.setColorAt(0, QColor(col.red(), col.green(), col.blue(), 120 if k < 3 else 60))
+        g.setColorAt(
+            0, QColor(col.red(), col.green(), col.blue(), 120 if k < 3 else 60)
+        )
         g.setColorAt(1, QColor(col.red(), col.green(), col.blue(), 0))
         p.fillRect(im.rect(), QBrush(g))
     shade = QLinearGradient(0, 0, 0, SH)
@@ -55,15 +69,19 @@ def backdrop(colors, seed):
 
 def make(name, at, colors, seed=3, track=None, lines=None, key=None, **cfg):
     fake = [0.0]
-    o = overlay.Overlay(dict(DEFAULTS, card=False, **cfg), games.DEFAULT_PROFILES, clock=lambda: fake[0],
-                        rng=random.Random(seed))
+    o = overlay.Overlay(
+        dict(settings.DEFAULTS, card=False, **cfg),
+        games.DEFAULT_PROFILES,
+        clock=lambda: fake[0],
+        rng=random.Random(seed),
+    )
     o.timer.stop()
     o.top_timer.stop()
     o.setGeometry(0, 0, S, SH)
     start = max(0.0, at - 8.0)
     if track is None:
-        o.on_track(overlay.demo_track(start))
-        o.on_lyrics(overlay.DEMO_KEY, overlay.DEMO_LINES)
+        o.on_track(demo_lyrics.demo_track(start))
+        o.on_lyrics(demo_lyrics.DEMO_KEY, demo_lyrics.DEMO_LINES)
     else:
         o.on_track(track)
         o.on_lyrics(o.track_key, lines)
@@ -76,22 +94,76 @@ def make(name, at, colors, seed=3, track=None, lines=None, key=None, **cfg):
     im = backdrop(colors, seed)
     o.render(im)
     path = os.path.join(out, name + ".jpg")
-    im.scaledToWidth(800, Qt.TransformationMode.SmoothTransformation).save(path, "JPG", 84)
+    im.scaledToWidth(800, Qt.TransformationMode.SmoothTransformation).save(
+        path, "JPG", 84
+    )
     print(name, o.width(), o.height(), os.path.getsize(path), flush=True)
 
 
 seeds = [int(x) for x in sys.argv[3].split(",")] if len(sys.argv) > 3 else [3]
 for sd in seeds:
     tag = "" if len(seeds) == 1 else f"_{sd}"
-    make("classique" + tag, 7.6, ("#39d6ff", "#3b6cff", "#9fe8ff"), seed=sd, mode="classic", position="center", scale=1.6)
-    make("edit" + tag, 14.4, ("#8B7CFF", "#FF6FB5", "#5EE7FF"), seed=sd, mode="edit", scale=1.5)
-    make("machine" + tag, 7.2, ("#ffb347", "#ff7a3d", "#ffe29a"), seed=sd, mode="typewriter", position="center", scale=1.6)
-    make("titre" + tag, 9.5, ("#ff5fa2", "#ff9a3d", "#ffd36b"), seed=sd, mode="edit", scale=1.2)
-    L = overlay._demo_line
-    tr = SimpleNamespace(title="Firework", artist="Katy Perry", album="", duration=60, position=0.0, playing=True,
-                         app="test", key=("firework", "katy perry"))
-    ls = [L(1.0, "la la la firework"), L(3.0, "la la la firework"), L(5.0, "firework la la"),
-          L(7.0, "la la firework"), L(9.0, "mm firework"), L(20.0, "")]
+    make(
+        "classique" + tag,
+        7.6,
+        ("#39d6ff", "#3b6cff", "#9fe8ff"),
+        seed=sd,
+        mode="classic",
+        position="center",
+        scale=1.6,
+    )
+    make(
+        "edit" + tag,
+        14.4,
+        ("#8B7CFF", "#FF6FB5", "#5EE7FF"),
+        seed=sd,
+        mode="edit",
+        scale=1.5,
+    )
+    make(
+        "machine" + tag,
+        7.2,
+        ("#ffb347", "#ff7a3d", "#ffe29a"),
+        seed=sd,
+        mode="typewriter",
+        position="center",
+        scale=1.6,
+    )
+    make(
+        "titre" + tag,
+        9.5,
+        ("#ff5fa2", "#ff9a3d", "#ffd36b"),
+        seed=sd,
+        mode="edit",
+        scale=1.2,
+    )
+    L = demo_lyrics.demo_line
+    tr = SimpleNamespace(
+        title="Firework",
+        artist="Katy Perry",
+        album="",
+        duration=60,
+        position=0.0,
+        playing=True,
+        app="test",
+        key=("firework", "katy perry"),
+    )
+    ls = [
+        L(1.0, "la la la firework"),
+        L(3.0, "la la la firework"),
+        L(5.0, "firework la la"),
+        L(7.0, "la la firework"),
+        L(9.0, "mm firework"),
+        L(20.0, ""),
+    ]
     for at in (12.9,):
-        make(f"easter{tag}_{at}", at, ("#ffd36b", "#ff5fa2", "#8B7CFF"), seed=sd, track=tr, lines=ls, mode="edit")
+        make(
+            f"easter{tag}_{at}",
+            at,
+            ("#ffd36b", "#ff5fa2", "#8B7CFF"),
+            seed=sd,
+            track=tr,
+            lines=ls,
+            mode="edit",
+        )
 os._exit(0)
