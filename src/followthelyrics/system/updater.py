@@ -101,6 +101,7 @@ def swap(exe, new):
     old = exe + ".old"
     if os.path.exists(old):
         os.remove(old)
+    os.chmod(new, os.stat(exe).st_mode)
     os.replace(exe, old)
     try:
         os.replace(new, exe)

@@ -15,6 +15,8 @@ from followthelyrics.ui import widgets
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE = os.path.join(HERE, "src", "followthelyrics")
 NAME = "FollowTheLyrics"
+WINDOWS = sys.platform == "win32"
+EXE = NAME + ".exe" if WINDOWS else NAME
 
 
 def _version():
@@ -102,14 +104,88 @@ def close_running(exe):
     return True
 
 
-def main():
-    was_running = close_running(os.path.join(HERE, "dist", NAME + ".exe"))
-    work = os.path.join(HERE, "build")
-    os.makedirs(work, exist_ok=True)
+RUNTIME_DLLS = (
+    "msvcp140.dll",
+    "msvcp140_1.dll",
+    "msvcp140_2.dll",
+    "msvcp140_atomic_wait.dll",
+    "concrt140.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+)
+EXCLUDED_MODULES = (
+    "tkinter",
+    "unittest",
+    "pydoc",
+    "doctest",
+    "pdb",
+    "lib2to3",
+    "test",
+    "setuptools",
+    "pip",
+    "PyQt6.QtQml",
+    "PyQt6.QtQuick",
+    "PyQt6.QtPdf",
+    "PyQt6.QtSvg",
+    "PyQt6.QtBluetooth",
+    "PyQt6.QtMultimedia",
+    "PyQt6.QtSql",
+    "PyQt6.QtTest",
+    "PyQt6.QtOpenGL",
+    "PyQt6.QtDesigner",
+    "PyQt6.QtHelp",
+    "PyQt6.QtPrintSupport",
+    "PyQt6.QtXml",
+    "numpy.f2py",
+    "numpy.testing",
+    "numpy.tests",
+)
+
+
+def windows_options(work):
     ico = os.path.join(work, "icon.ico")
     ver = os.path.join(work, "version.txt")
     make_ico(ico)
     version_file(ver)
+    options = [
+        "--windowed",
+        "--icon",
+        ico,
+        "--version-file",
+        ver,
+        "--hidden-import",
+        "pyaudiowpatch",
+        "--collect-submodules",
+        "winrt",
+        "--exclude-module",
+        "PyQt6.QtDBus",
+    ]
+    sysdir = os.path.join(
+        os.environ.get("SYSTEMROOT", r"C:\Windows"), "System32"
+    )
+    for dll in RUNTIME_DLLS:
+        src = os.path.join(sysdir, dll)
+        if os.path.exists(src):
+            options += ["--add-binary", f"{src}{os.pathsep}."]
+    return options
+
+
+def linux_options():
+    return [
+        "--hidden-import",
+        "soundcard",
+        "--collect-data",
+        "soundcard",
+        "--collect-submodules",
+        "Xlib",
+    ]
+
+
+def main():
+    exe = os.path.join(HERE, "dist", EXE)
+    was_running = close_running(exe)
+    work = os.path.join(HERE, "build")
+    os.makedirs(work, exist_ok=True)
     cmd = [
         sys.executable,
         "-m",
@@ -117,13 +193,8 @@ def main():
         "--noconfirm",
         "--clean",
         "--onefile",
-        "--windowed",
         "--name",
         NAME,
-        "--icon",
-        ico,
-        "--version-file",
-        ver,
         "--distpath",
         os.path.join(HERE, "dist"),
         "--workpath",
@@ -132,65 +203,20 @@ def main():
         work,
         "--paths",
         os.path.join(HERE, "src"),
-        "--hidden-import",
-        "pyaudiowpatch",
-        "--collect-submodules",
-        "winrt",
         "--collect-submodules",
         "followthelyrics",
         "--add-data",
         f"{os.path.join(PACKAGE, 'VERSION')}{os.pathsep}followthelyrics",
     ]
-    sysdir = os.path.join(
-        os.environ.get("SYSTEMROOT", r"C:\Windows"), "System32"
-    )
-    for dll in (
-        "msvcp140.dll",
-        "msvcp140_1.dll",
-        "msvcp140_2.dll",
-        "msvcp140_atomic_wait.dll",
-        "concrt140.dll",
-        "vcruntime140.dll",
-        "vcruntime140_1.dll",
-    ):
-        src = os.path.join(sysdir, dll)
-        if os.path.exists(src):
-            cmd += ["--add-binary", f"{src}{os.pathsep}."]
-    for mod in (
-        "tkinter",
-        "unittest",
-        "pydoc",
-        "doctest",
-        "pdb",
-        "lib2to3",
-        "test",
-        "setuptools",
-        "pip",
-        "PyQt6.QtQml",
-        "PyQt6.QtQuick",
-        "PyQt6.QtPdf",
-        "PyQt6.QtSvg",
-        "PyQt6.QtBluetooth",
-        "PyQt6.QtMultimedia",
-        "PyQt6.QtDBus",
-        "PyQt6.QtSql",
-        "PyQt6.QtTest",
-        "PyQt6.QtOpenGL",
-        "PyQt6.QtDesigner",
-        "PyQt6.QtHelp",
-        "PyQt6.QtPrintSupport",
-        "PyQt6.QtXml",
-        "numpy.f2py",
-        "numpy.testing",
-        "numpy.tests",
-    ):
+    cmd += windows_options(work) if WINDOWS else linux_options()
+    for mod in EXCLUDED_MODULES:
         cmd += ["--exclude-module", mod]
     cmd.append(os.path.join(HERE, "tools", "pyinstaller_entry.py"))
     print("Construction en cours (2 a 4 minutes)...", flush=True)
     code = subprocess.call(cmd, cwd=HERE)
-    exe = os.path.join(HERE, "dist", NAME + ".exe")
     if code == 0 and os.path.exists(exe):
-        print(f"\nOK : dist\\{NAME}.exe ({os.path.getsize(exe) / 1e6:.0f} Mo)")
+        size = os.path.getsize(exe) / 1e6
+        print(f"\nOK : {os.path.relpath(exe, HERE)} ({size:.0f} Mo)")
         if was_running:
             print("Relance de l'appli.")
             subprocess.Popen(

@@ -75,6 +75,9 @@ class Keyboard(Protocol):
 
 
 Binding = tuple[int, int]
+MOD_ALT = 0x0001
+MOD_CTRL = 0x0002
+MOD_SHIFT = 0x0004
 
 
 class HotkeyBackend(Protocol):

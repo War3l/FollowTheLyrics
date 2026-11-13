@@ -1,6 +1,8 @@
 from PyQt6.QtCore import QObject
 from PyQt6.QtCore import pyqtSignal
 
+from followthelyrics.desktop import ports
+
 ACTIONS = [
     ("toggle", "Afficher / masquer les paroles", "Ctrl+Alt+L"),
     ("mode", "Changer de mode d'affichage", "Ctrl+Alt+M"),
@@ -14,7 +16,7 @@ ACTIONS = [
 DEFAULTS = {name: combo for name, _label, combo in ACTIONS}
 LABELS = {name: label for name, label, _combo in ACTIONS}
 
-MOD_ALT, MOD_CTRL, MOD_SHIFT = 0x0001, 0x0002, 0x0004
+MOD_ALT, MOD_CTRL, MOD_SHIFT = ports.MOD_ALT, ports.MOD_CTRL, ports.MOD_SHIFT
 MODS = (("Ctrl", MOD_CTRL), ("Alt", MOD_ALT), ("Shift", MOD_SHIFT))
 MODIFIER_VKS = {
     0x10,
