@@ -541,6 +541,7 @@ class App:
     def cleanup(self):
         self.quitting = True
         self.tray.hide()
+        self.overlay.remove_foreground_hook()
         if self.audio:
             self.audio.stop()
         self.hotkeys.stop()
