@@ -207,6 +207,12 @@ def main():
         "followthelyrics",
         "--add-data",
         f"{os.path.join(PACKAGE, 'VERSION')}{os.pathsep}followthelyrics",
+        "--add-data",
+        f"{os.path.join(PACKAGE, 'fonts', '*.otf')}{os.pathsep}"
+        f"{os.path.join('followthelyrics', 'fonts')}",
+        "--add-data",
+        f"{os.path.join(PACKAGE, 'fonts', '*.txt')}{os.pathsep}"
+        f"{os.path.join('followthelyrics', 'fonts')}",
     ]
     cmd += windows_options(work) if WINDOWS else linux_options()
     for mod in EXCLUDED_MODULES:

@@ -421,11 +421,14 @@ class App:
         if key != self.overlay.profile_key:
             self.overlay.set_profile(key, prof)
         excl = self.desktop.foreground.exclusive_fullscreen()
+        moved = self.overlay.set_elsewhere(excl)
         if excl and not self.exclusive:
             tip = i18n.tr(prof.get("conseil_plein_ecran") or "") or i18n.tr(
                 "Passe le jeu en « fenêtré sans bordure » dans ses options "
                 "vidéo."
             )
+            if moved:
+                tip = i18n.tr("Elles s'affichent sur ton autre écran. ") + tip
             self.exclusive_tip = tip
             try:
                 self.tray.showMessage(
