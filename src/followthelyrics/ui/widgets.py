@@ -1019,6 +1019,7 @@ class NavTile(Hover, QAbstractButton):
         super().__init__(parent)
         self.init_hover()
         self.glyph, self.caption, self.value = icon, caption, ""
+        self.logo = None
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(84)
         self.setSizePolicy(
@@ -1028,6 +1029,11 @@ class NavTile(Hover, QAbstractButton):
     def set_value(self, text):
         if text != self.value:
             self.value = text
+            self.update()
+
+    def set_logo(self, pixmap):
+        if pixmap is not self.logo:
+            self.logo = pixmap
             self.update()
 
     def paintEvent(self, _):
@@ -1045,14 +1051,20 @@ class NavTile(Hover, QAbstractButton):
         p.drawRoundedRect(r, 24, 24)
         box = QRectF(r.left() + 16, r.center().y() - 21, 42, 42)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(mix("#1cffffff", acc, h))
-        p.drawEllipse(box)
-        draw_icon(
-            p,
-            self.glyph,
-            box.adjusted(11, 11, -11, -11),
-            mix(TEXT, UI["ink"], h),
-        )
+        if self.logo is not None:
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            p.drawPixmap(
+                box.adjusted(5, 5, -5, -5), self.logo, QRectF(self.logo.rect())
+            )
+        else:
+            p.setBrush(mix("#1cffffff", acc, h))
+            p.drawEllipse(box)
+            draw_icon(
+                p,
+                self.glyph,
+                box.adjusted(11, 11, -11, -11),
+                mix(TEXT, UI["ink"], h),
+            )
         tw = r.width() - 104
         p.setPen(QColor(DIM))
         p.setFont(ui_font(12))
