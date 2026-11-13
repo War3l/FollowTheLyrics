@@ -105,7 +105,7 @@ def _read_capped(stream):
 def load_cover(url):
     parts = urllib.parse.urlsplit(url)
     if parts.scheme == "file":
-        path = urllib.parse.unquote(parts.path)
+        path = urllib.request.url2pathname(parts.path)
         if not os.path.isfile(path):
             return None
         with open(path, "rb") as f:
