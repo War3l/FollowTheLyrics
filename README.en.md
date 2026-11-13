@@ -1,5 +1,4 @@
-<p align="center"><img src="docs/img/logo.png" width="96" alt=""></p>
-<h1 align="center">FollowTheLyrics</h1>
+<p align="center"><img src="reseaux/banniere.png" alt="FollowTheLyrics"></p>
 <p align="center"><b>Your music's lyrics, right over your games.</b><br>
 Word by word, in time, in the colours of the album cover. Windows 10 and 11, and Linux.</p>
 <p align="center">
@@ -10,7 +9,7 @@ Word by word, in time, in the colours of the album cover. Windows 10 and 11, and
 <p align="center"><a href="README.md">Français</a> · <b>English</b></p>
 
 ![The track title shown huge](docs/img/titre.png)
-![The control panel](docs/img/panel.png)
+![The control panel](docs/img/panel-en.png)
 
 Works with Spotify, YouTube Music, Deezer, Apple Music… without signing in to any account.
 
