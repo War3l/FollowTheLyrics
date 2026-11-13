@@ -33,11 +33,11 @@ from PyQt6.QtWidgets import QStackedWidget
 from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
+from followthelyrics import version
 from followthelyrics.config import settings
 from followthelyrics.playback import sites
 from followthelyrics.system import hotkeys
 from followthelyrics.system import install
-from followthelyrics.system import updater
 from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
@@ -308,7 +308,7 @@ class Panel(QWidget):
         box.setSpacing(0)
         name = QLabel("FollowTheLyrics")
         name.setProperty("role", "brand")
-        self.version = updater.current_version()
+        self.version = version.current()
         ver = QLabel(f"version {self.version}")
         ver.setProperty("role", "hint")
         box.addWidget(name)

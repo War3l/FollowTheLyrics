@@ -94,8 +94,17 @@ Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci 
 ## Développer
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python overlay.py          (ou Lancer.bat ; Demo.bat pour des paroles de test)
+.venv\Scripts\python -m pip install -e ".[dev]"
+.venv\Scripts\python -m followthelyrics          (--demo pour des paroles de test)
+```
+`Lancer.bat` et `Demo.bat` font la même chose sans terminal.
+
+Vérifications, lancées aussi par la CI à chaque pull request :
+```
+ruff check src tests tools
+ruff format --check src tests tools
+mypy
+pytest
 ```
 - **Construire.bat** fabrique `dist/FollowTheLyrics.exe` (2 à 4 minutes).
 - **Publier.bat** publie une mise à jour : il demande le numéro de version, construit le `.exe`,
@@ -103,18 +112,19 @@ python -m venv .venv
   pointe toujours vers la dernière version. Il faut [GitHub CLI](https://cli.github.com) connecté (`gh auth login`).
 - Le site de présentation est dans `docs/` (GitHub Pages).
 
-## Fichiers
-- `overlay.py` : la fenêtre des paroles, l'appli, les raccourcis.
-- `panel.py` : le panneau de contrôle (un menu, une page par sujet). `widgets.py` : ses briques animées.
-- `hotkeys.py` : les raccourcis clavier modifiables.
-- `easter.py` : les easter eggs (certains morceaux déclenchent un spectacle à part).
-- `install.py` : installation sur le PC (menu Démarrer, « Applications installées », désinstallation).
-- `video_demo.py` : fabrique la vidéo de démo du site à partir du vrai rendu de l'appli.
-- `visuels_site.py` : fabrique les images des cartes du site, elles aussi tirées du vrai rendu.
-- `updater.py` : la mise à jour automatique. `zone_editor.py` : l'éditeur de zones.
-- `bootstrap.py` : le démarrage blindé du `.exe`.
-- `welcome.py` : l'écran de bienvenue. `build.py` : la fabrication du `.exe` et de son icône.
-- `settings.py` : les réglages (sauvés dans `config.json`).
-- `media.py`, `lyrics.py`, `games.py`, `audio.py` : musique en cours, paroles, jeux, beats.
-- `sites.py` : quand le son vient d'un navigateur, reconnaît le site (YouTube Music, Spotify, SoundCloud…)
-  et ignore le reste (Netflix, vidéos).
+## Organisation du code
+Le code vit dans `src/followthelyrics/`, rangé par responsabilité.
+Le détail (rôle de chaque module, flux de données, règles de dépendance) est dans
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+| Dossier | Rôle |
+|---|---|
+| `app.py` | assemble l'appli : overlay, panneau, icône de la barre des tâches, minuteries |
+| `config/` | réglages (`config.json`) et profils de jeux avec leurs zones interdites |
+| `lyrics/` | modèle d'une ligne, lecture des formats LRC et YRC, sources de paroles, cache, analyse (refrains, mots forts) |
+| `playback/` | musique en cours (Windows), reconnaissance du site du navigateur, détection des beats, fil de travail |
+| `overlay/` | la fenêtre des paroles et son rendu : animations, couleurs, effets, easter eggs |
+| `ui/` | panneau de contrôle, briques animées, écran de bienvenue, éditeur de zones |
+| `system/` | appels Windows, démarrage du `.exe`, installation, mises à jour, raccourcis clavier |
+| `tests/` | tests pytest, sans Windows ni réseau |
+| `tools/` | fabrication du `.exe`, vidéo et visuels du site, petits scripts de diagnostic |
