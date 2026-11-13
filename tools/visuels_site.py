@@ -1,5 +1,3 @@
-"""Visuels carres des cartes du site : le vrai rendu de l'overlay sur un fond de couleur.
-usage : visuels_site.py <dossier du projet> <dossier de sortie>"""
 import io
 import os
 import random
@@ -23,7 +21,6 @@ S, SH = 960, 720
 
 
 def cover_bytes(c1, c2, c3):
-    """Fausse pochette en trois couleurs : l'appli en tire ses couleurs."""
     im = QImage(300, 300, QImage.Format.Format_RGB32)
     p = QPainter(im)
     p.fillRect(0, 0, 300, 100, QColor(c1))
@@ -90,7 +87,6 @@ for sd in seeds:
     make("edit" + tag, 14.4, ("#8B7CFF", "#FF6FB5", "#5EE7FF"), seed=sd, mode="edit", scale=1.5)
     make("machine" + tag, 7.2, ("#ffb347", "#ff7a3d", "#ffe29a"), seed=sd, mode="typewriter", position="center", scale=1.6)
     make("titre" + tag, 9.5, ("#ff5fa2", "#ff9a3d", "#ffd36b"), seed=sd, mode="edit", scale=1.2)
-    # easter egg : le bouquet final, sans le mot (pour garder la surprise)
     L = overlay._demo_line
     tr = SimpleNamespace(title="Firework", artist="Katy Perry", album="", duration=60, position=0.0, playing=True,
                          app="test", key=("firework", "katy perry"))

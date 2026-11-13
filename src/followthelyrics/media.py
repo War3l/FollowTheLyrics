@@ -1,8 +1,3 @@
-"""Lecture de la musique en cours via les controles media de Windows (SMTC).
-
-Marche avec Spotify, YouTube Music (navigateur), Deezer, Apple Music...
-sans aucune connexion a un compte.
-"""
 import asyncio
 import time
 from dataclasses import dataclass
@@ -18,11 +13,11 @@ class NowPlaying:
     title: str
     artist: str
     album: str
-    duration: float      # secondes
-    position: float      # secondes, estimee "maintenant"
+    duration: float
+    position: float
     playing: bool
     app: str
-    site: str = ""   # site de musique, si le son vient d'un navigateur
+    site: str = ""
 
     @property
     def key(self):
@@ -30,7 +25,6 @@ class NowPlaying:
 
 
 def _clean_artist(artist: str) -> str:
-    # YouTube Music dans le navigateur renvoie parfois "Artiste - Topic"
     for suffix in (" - Topic", " - Sujet", "VEVO"):
         if artist.endswith(suffix):
             artist = artist[: -len(suffix)].strip()
@@ -45,7 +39,6 @@ def _app_id(session) -> str:
 
 
 def list_sources(manager) -> list[str]:
-    """Les applis qui diffusent un media en ce moment (Spotify, navigateur...)."""
     try:
         return sorted({_app_id(s) for s in manager.get_sessions() if _app_id(s)})
     except Exception:
@@ -61,9 +54,6 @@ def _is_playing(s) -> bool:
 
 
 async def _pick_session(manager, blocked=(), guard=None):
-    """La session a suivre, avec ses infos et son site : (session, props, site).
-    Priorite : une session qui joue, sinon la session "courante", sinon les autres.
-    Avec `guard`, un navigateur n'est retenu que s'il joue sur un site de musique accepte."""
     sessions = [s for s in manager.get_sessions() if _app_id(s) not in blocked]
     if not sessions:
         return None, None, ""
@@ -106,8 +96,6 @@ async def get_now_playing(manager=None, blocked=(), guard=None) -> NowPlaying | 
     position = tl.position.total_seconds() if tl else 0.0
     duration = (tl.end_time - tl.start_time).total_seconds() if tl else 0.0
 
-    # Windows donne la position au moment de la derniere mise a jour :
-    # on rattrape le temps ecoule depuis si la musique joue.
     if tl and playing:
         try:
             updated = tl.last_updated_time.timestamp()
@@ -130,7 +118,6 @@ async def get_now_playing(manager=None, blocked=(), guard=None) -> NowPlaying | 
 
 
 async def get_thumbnail(manager=None, blocked=(), guard=None) -> bytes | None:
-    """Image de la pochette (album) fournie par l'appli qui joue, en octets (JPEG/PNG)."""
     from winrt.windows.storage.streams import Buffer, InputStreamOptions
 
     if manager is None:

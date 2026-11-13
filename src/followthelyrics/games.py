@@ -1,8 +1,3 @@
-"""Detection du jeu au premier plan et zones de l'ecran a ne pas couvrir.
-
-Le logiciel demande juste a Windows quel programme est au premier plan :
-il ne touche pas au jeu (rien d'injecte), donc aucun souci d'anti-cheat.
-"""
 import ctypes
 import json
 import os
@@ -12,7 +7,6 @@ from settings import DATA_DIR
 
 PROFILES_PATH = os.path.join(DATA_DIR, "profiles.json")
 
-# Zones en fraction de l'ecran : x, y = coin haut-gauche ; l, h = largeur, hauteur.
 DEFAULT_PROFILES = {
     "_aide": "Zones en fraction de l'ecran (0 a 1) : x,y = coin haut-gauche, l,h = largeur,hauteur. "
              "En jeu, le raccourci « Voir les zones » (Ctrl+Alt+Z au depart) les affiche en rouge. Le fichier est relu automatiquement.",
@@ -48,7 +42,6 @@ DEFAULT_PROFILES = {
         },
         "Wow.exe": {
             "nom": "World of Warcraft",
-            # autres noms du jeu selon la version (Classic, PTR, anciens clients)
             "autres_exe": ["WowClassic.exe", "WowClassicT.exe", "WowT.exe", "WowB.exe", "Wow-64.exe"],
             "zones_interdites": [
                 {"nom": "Portraits joueur / cible", "x": 0.0, "y": 0.0, "l": 0.30, "h": 0.16},
@@ -97,7 +90,6 @@ def load_profiles():
         if k not in data:
             data[k] = DEFAULT_PROFILES[k]
             changed = True
-    # nouveaux jeux ajoutes dans une mise a jour : on les ajoute sans toucher a tes reglages
     for name, prof in DEFAULT_PROFILES["jeux"].items():
         if name not in data["jeux"]:
             data["jeux"][name] = prof
@@ -122,12 +114,10 @@ def _safe(key):
 
 
 def capture_path(key):
-    """Fichier de la capture d'ecran d'un jeu (pour l'editeur de zones)."""
     return os.path.join(CAPTURES_DIR, _safe(key or "aucun") + ".jpg")
 
 
 def captured_games():
-    """Cles des jeux dont on a une capture."""
     try:
         return sorted(f[:-4] for f in os.listdir(CAPTURES_DIR) if f.lower().endswith(".jpg"))
     except Exception:
@@ -140,8 +130,6 @@ def pretty_name(exe):
 
 
 def save_zones(key, zones):
-    """Enregistre les zones d'un jeu (le cree s'il est nouveau). key = nom du .exe,
-    ou "jeu_inconnu" pour le profil des autres jeux en plein ecran."""
     data = load_profiles()
     if data is DEFAULT_PROFILES:
         data = json.loads(json.dumps(DEFAULT_PROFILES))
@@ -165,9 +153,6 @@ def profiles_mtime():
         return 0
 
 
-# --------------------------------------------------------------------------
-# Fenetre au premier plan
-# --------------------------------------------------------------------------
 _u = ctypes.windll.user32
 _k = ctypes.windll.kernel32
 _u.GetForegroundWindow.restype = wintypes.HWND
@@ -192,7 +177,6 @@ _u.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_MONITORINFO)]
 
 
 def foreground_info():
-    """-> (nom_exe, plein_ecran)"""
     try:
         hwnd = _u.GetForegroundWindow()
         if not hwnd:
@@ -200,7 +184,7 @@ def foreground_info():
         pid = wintypes.DWORD()
         _u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         exe = ""
-        h = _k.OpenProcess(0x1000, False, pid.value)  # QUERY_LIMITED_INFORMATION
+        h = _k.OpenProcess(0x1000, False, pid.value)
         if h:
             buf = ctypes.create_unicode_buffer(520)
             size = wintypes.DWORD(520)
@@ -227,19 +211,16 @@ _s = ctypes.windll.shell32
 
 
 def exclusive_fullscreen():
-    """True si un jeu est en plein ecran EXCLUSIF (Direct3D) : dans ce mode, Windows
-    n'affiche aucune autre fenetre par-dessus, meme "toujours au premier plan"."""
     try:
         state = ctypes.c_int(0)
         if _s.SHQueryUserNotificationState(ctypes.byref(state)) == 0:
-            return state.value == 3  # QUNS_RUNNING_D3D_FULL_SCREEN
+            return state.value == 3
     except Exception:
         pass
     return False
 
 
 def current_profile(profiles):
-    """-> (cle, profil) pour la fenetre au premier plan."""
     exe, full = foreground_info()
     for name, prof in profiles.get("jeux", {}).items():
         names = [name] + list(prof.get("autres_exe", []))

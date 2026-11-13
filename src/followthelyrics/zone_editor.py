@@ -1,5 +1,3 @@
-"""Editeur de zones : on dessine a la souris, sur une capture du jeu, les endroits
-que les paroles doivent eviter (minimap, barre de sorts, chat...)."""
 import ctypes
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
@@ -9,16 +7,15 @@ from PyQt6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushBut
 
 import games
 from panel import BG, DIM, TEXT, make_icon, ui_font
-from widgets import SOLID_BORDER as CARD_BORDER, SOLID_CARD as CARD, SOLID_FIELD as FIELD  # fenetre opaque
+from widgets import SOLID_BORDER as CARD_BORDER, SOLID_CARD as CARD, SOLID_FIELD as FIELD
 
 ACCENT = "#8B7CFF"
-HANDLE = 9          # demi-taille des poignees (pixels)
-MIN_SIZE = 0.015    # plus petit qu'1,5 % de l'ecran : clic accidentel, on ignore
-UPPER = 0.5         # les paroles vivent dans la moitie haute
+HANDLE = 9
+MIN_SIZE = 0.015
+UPPER = 0.5
 
 
 class Canvas(QWidget):
-    """La capture du jeu avec les zones par-dessus."""
     changed = pyqtSignal()
     selected = pyqtSignal(int)
 
@@ -28,13 +25,11 @@ class Canvas(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(640, 360)
         self.image = None
-        self.zones = []       # dicts {"nom", "x", "y", "l", "h"} en fraction de l'ecran
+        self.zones = []
         self.sel = -1
-        self._drag = None     # (mode, index, point de depart, zone de depart)
+        self._drag = None
 
-    # ---- geometrie ------------------------------------------------------------
     def view(self):
-        """Rectangle ou la capture est dessinee (16:9 ou format de la capture, centre)."""
         ratio = (self.image.width() / self.image.height()) if self.image is not None else 16 / 9
         w, h = self.width(), self.height()
         vw = min(w, h * ratio)
@@ -56,7 +51,6 @@ class Canvas(QWidget):
         return {"tl": r.topLeft(), "tr": r.topRight(), "bl": r.bottomLeft(), "br": r.bottomRight()}
 
     def hit(self, pos):
-        """-> (mode, index) sous la souris : poignee, interieur d'une zone, ou vide."""
         order = ([self.sel] if 0 <= self.sel < len(self.zones) else []) + \
             [i for i in reversed(range(len(self.zones))) if i != self.sel]
         for i in order:
@@ -68,7 +62,6 @@ class Canvas(QWidget):
                 return "move", i
         return "new", -1
 
-    # ---- souris ---------------------------------------------------------------
     def mousePressEvent(self, e):
         if e.button() != Qt.MouseButton.LeftButton:
             return
@@ -101,7 +94,6 @@ class Canvas(QWidget):
             z["x"] = min(1.0 - z0["l"], max(0.0, z0["x"] + fx - sx))
             z["y"] = min(1.0 - z0["h"], max(0.0, z0["y"] + fy - sy))
         else:
-            # le coin oppose a la poignee reste fixe
             ax = z0["x"] + z0["l"] if "l" in mode else z0["x"]
             ay = z0["y"] + z0["h"] if "t" in mode else z0["y"]
             z["x"], z["l"] = min(ax, fx), abs(fx - ax)
@@ -141,7 +133,6 @@ class Canvas(QWidget):
             self.select(-1)
             self.changed.emit()
 
-    # ---- dessin ---------------------------------------------------------------
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -162,7 +153,6 @@ class Canvas(QWidget):
             p.setFont(ui_font(16))
             p.drawText(QRectF(v.left(), v.top() + v.height() * 0.55, v.width(), 60), Qt.AlignmentFlag.AlignCenter,
                        "Pas encore de capture de ce jeu.\nEn jeu, appuie sur Ctrl + Alt + E : elle s'affichera ici.")
-        # la moitie haute, la ou vivent les paroles
         p.setPen(QPen(QColor(120, 200, 255, 190), 1.5, Qt.PenStyle.DashLine))
         y = v.top() + v.height() * UPPER
         p.drawLine(QPointF(v.left(), y), QPointF(v.right(), y))
@@ -271,9 +261,7 @@ class ZoneEditor(QWidget):
         b.clicked.connect(slot)
         return b
 
-    # ---- jeux -----------------------------------------------------------------
     def fill_games(self, key=None):
-        """Liste : les jeux connus, les jeux captures pas encore connus, « autres jeux »."""
         self._loading = True
         self.game.clear()
         profiles = self.app.profiles
@@ -304,10 +292,8 @@ class ZoneEditor(QWidget):
         self.set_dirty(False)
 
     def show_game(self, key):
-        """Ouvre l'editeur sur ce jeu (appele apres une capture)."""
         self.fill_games(key)
 
-    # ---- edition ---------------------------------------------------------------
     def set_dirty(self, on):
         self.dirty = on
         self.btn_save.setEnabled(on)
@@ -351,14 +337,13 @@ class ZoneEditor(QWidget):
             self.set_dirty(False)
             self.hint.setText("Enregistré. Les paroles éviteront ces zones dès maintenant "
                               "(Ctrl + Alt + Z en jeu pour les revoir).")
-            # un jeu « nouveau » devient un jeu connu : on rafraichit la liste
             self.fill_games(self.key)
         else:
             self.hint.setText("Impossible d'enregistrer le fichier des profils.")
 
     def showEvent(self, e):
         super().showEvent(e)
-        try:  # barre de titre sombre
+        try:
             val = ctypes.c_int(1)
             ctypes.windll.dwmapi.DwmSetWindowAttribute(int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val))
         except Exception:

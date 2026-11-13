@@ -1,27 +1,3 @@
-"""FollowTheLyrics.
-
-Affiche les paroles de la musique en cours (Spotify, YouTube Music, Deezer...)
-par-dessus les jeux, dans la moitie haute de l'ecran. Trois modes :
-  - Classique        : les lignes defilent dans un coin (gauche / centre / droite)
-  - Edit             : chaque ligne surgit a un endroit different de l'ecran
-  - Machine a ecrire : les lettres s'ecrivent au fil du chant
-
-Un panneau de controle s'ouvre au lancement (icone ♪ pres de l'heure pour le rouvrir).
-
-Raccourcis (modifiables dans le panneau, page « Raccourcis ») :
-  Ctrl+Alt+L      afficher / masquer
-  Ctrl+Alt+M      changer de mode
-  Ctrl+Alt+T      couleurs : album / blanc lumineux
-  Ctrl+Alt+S      changer d'animation (cinetique, karaoke, simple)
-  Ctrl+Alt+Z      voir les zones interdites du jeu actuel
-  Ctrl+Alt+Haut   paroles plus tot   (+0.2 s)
-  Ctrl+Alt+Bas    paroles plus tard  (-0.2 s)
-
-Options : --demo (paroles de demo)
-          --snapshot fichier.png --at 7.5 [--mode classic] [--position left] [--color white]
-                     [--font "Bahnschrift"] [--style kinetic] [--game "League of Legends.exe"]
-                     [--zones] [--cover image.png] [--card] [--translation]
-"""
 import argparse
 import bisect
 import ctypes
@@ -39,9 +15,9 @@ from types import SimpleNamespace
 
 import bootstrap
 
-bootstrap.prepare()  # nos bibliotheques C++ et Qt d'abord (voir bootstrap.py)
+bootstrap.prepare()
 
-import numpy as np  # noqa: E402
+import numpy as np
 
 try:
     from PyQt6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, pyqtSignal
@@ -62,11 +38,11 @@ from lyrics import (Line, build_line, cache_load, cache_save, extract_singers, f
                     mark_title_lines, split_adlibs, translate_lines)
 from settings import COLORS, DEFAULTS, MODES, POSITIONS, STYLES, load_config, save_config
 
-PREV_ALPHA = 0.42      # opacite de la ligne precedente
-HIDE_AFTER = 3.0       # une ligne disparait 3 s apres avoir ete chantee
-CARD_TIME = 4.5        # duree de la carte "pochette + titre" en debut de morceau
-UPPER = 0.5            # les paroles restent dans la moitie haute de l'ecran
-NEUTRAL_PALETTE = ["#FFFFFF", "#E8ECF4", "#CBD3E3"]  # en attendant la pochette
+PREV_ALPHA = 0.42
+HIDE_AFTER = 3.0
+CARD_TIME = 4.5
+UPPER = 0.5
+NEUTRAL_PALETTE = ["#FFFFFF", "#E8ECF4", "#CBD3E3"]
 WHITE_PALETTE = ["#FFFFFF", "#F4F6FB", "#E6EAF3"]
 
 
@@ -97,7 +73,6 @@ def mix(c1: QColor, c2: QColor, k):
 
 
 def _box_blur(a, r, axis):
-    """Moyenne glissante de largeur 2r+1 le long d'un axe (via sommes cumulees)."""
     if r < 1:
         return a
     pad = [(0, 0), (0, 0)]
@@ -110,7 +85,6 @@ def _box_blur(a, r, axis):
 
 
 def gaussian_blur(a, sigma):
-    """Flou gaussien approche par 3 flous "boite" successifs (rapide, rendu doux)."""
     r = max(1, int(round(sigma * 0.95)))
     for _ in range(3):
         a = _box_blur(a, r, 1)
@@ -128,15 +102,10 @@ def family_or_default(name):
     return name if name in _FAMILIES else "Segoe UI"
 
 
-# --------------------------------------------------------------------------
-# Couleurs de la pochette
-# --------------------------------------------------------------------------
 def palette_from_cover(data):
-    """Les 2-3 couleurs dominantes de la pochette, eclaircies pour rester lisibles."""
     img = QImage.fromData(data) if not isinstance(data, QImage) else data
     if img.isNull():
         return None
-    # reduite a 64x64 puis analysee dans colors.py (familles de couleurs en OKLCH)
     img = img.convertToFormat(QImage.Format.Format_RGBA8888).scaled(
         64, 64, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
     try:
@@ -150,11 +119,7 @@ def palette_from_cover(data):
     return [QColor(*c) for c in pal] if pal else None
 
 
-# --------------------------------------------------------------------------
-# Analyse des paroles : mots tenus, refrain
-# --------------------------------------------------------------------------
 def compute_word_meta(lines):
-    """Pour chaque mot : (debut, fin, intensite 0..1 du "mot tenu")."""
     per_char = []
     for l in lines:
         if not l.chars:
@@ -184,7 +149,6 @@ def compute_word_meta(lines):
 
 
 def mark_chorus(lines):
-    """Les lignes qui reviennent plusieurs fois = le refrain."""
     def key(t):
         return " ".join(re.sub(r"[^\w]+", " ", t.lower()).split())
     counts = {}
@@ -199,7 +163,6 @@ def mark_chorus(lines):
         l.chorus = counts.get(key(l.text), 0) >= need
 
 
-# mots trop banals pour etre mis en vedette, meme s'ils reviennent partout
 COMMON_WORDS = frozenset("""
     avec dans pour plus mais comme tout tous toute cette elle elles nous vous leur leurs sans sous
     quand alors aussi encore jamais toujours etre avoir fait faire suis sont etait veux peux vais
@@ -209,7 +172,6 @@ COMMON_WORDS = frozenset("""
 
 
 def word_key(word):
-    """« L'amour, » -> « lamour » : minuscules, sans accents ni ponctuation."""
     table = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
     return re.sub(r"[^a-z0-9]", "", word.lower().translate(table))
 
@@ -224,7 +186,6 @@ def count_word_lines(lines):
 
 
 def held_fx(meta, pos):
-    """-> (echelle, dx, dy, lueur 0..1, etirement horizontal)"""
     none = (1.0, 0.0, 0.0, 0.0, 1.0)
     if not meta:
         return none
@@ -245,34 +206,30 @@ def held_fx(meta, pos):
     return sc, 0.0, 0.0, max(0.0, 1 - after * 3), 1.0
 
 
-# --------------------------------------------------------------------------
-# Sources de donnees
-# --------------------------------------------------------------------------
 class MediaWorker(QThread):
-    """Interroge Windows toutes les 400 ms, cherche paroles, traduction et pochette."""
     track = pyqtSignal(object)
     lyrics = pyqtSignal(object, object)
     translated = pyqtSignal(object)
     cover = pyqtSignal(object, object)
-    sources = pyqtSignal(object)  # applis qui diffusent un media en ce moment
-    browsers = pyqtSignal(object)  # navigateur -> (site reconnu, suivi ou non)
+    sources = pyqtSignal(object)
+    browsers = pyqtSignal(object)
     COVER_READS = (0.8, 3.5)
-    MAX_DURATION = 20 * 60  # plus long = film, video ou mix : on ne cherche pas de paroles
-    RETRY_DELAYS = (10, 30, 60, 120, 300)  # nouvelles tentatives apres un souci de reseau
+    MAX_DURATION = 20 * 60
+    RETRY_DELAYS = (10, 30, 60, 120, 300)
 
     def __init__(self, blocked=(), sites_off=(), sites_other=False):
         super().__init__()
         from sites import SiteGuard
-        self.guard = SiteGuard(sites_off, sites_other)  # quels sites suivre dans un navigateur
+        self.guard = SiteGuard(sites_off, sites_other)
         self._stop = False
         self._cache = {}
-        self._retry = {}     # cle -> (heure de la prochaine tentative, nb d'essais)
+        self._retry = {}
         self._pending = set()
-        self.blocked = set(blocked)  # applis ignorees (reglable dans le panneau)
+        self.blocked = set(blocked)
 
     def run(self):
         import asyncio
-        from media import get_manager, get_now_playing, get_thumbnail, list_sources  # winrt dans ce thread
+        from media import get_manager, get_now_playing, get_thumbnail, list_sources
 
         loop = asyncio.new_event_loop()
         manager = loop.run_until_complete(get_manager())
@@ -335,7 +292,7 @@ class MediaWorker(QThread):
             self.lyrics.emit(np.key, None)
             return
         found, lines = cache_load(np.title, np.artist, np.duration)
-        if found:  # deja cherche une autre fois : instantane, meme hors ligne
+        if found:
             self._cache[np.key] = lines
             self.lyrics.emit(np.key, lines)
             self.translated.emit(np.key)
@@ -345,7 +302,6 @@ class MediaWorker(QThread):
         except Exception:
             lines, reliable = None, False
         if not reliable:
-            # Souci de reseau : on ne retient PAS "pas de paroles", on reessaiera.
             n = self._retry.get(np.key, (0, 0))[1]
             if n < len(self.RETRY_DELAYS):
                 self._retry[np.key] = (time.monotonic() + self.RETRY_DELAYS[n], n + 1)
@@ -372,7 +328,6 @@ class MediaWorker(QThread):
 
 
 def _demo_line(t, text, singer=""):
-    """Ligne de demo avec un faux timing mot par mot. Un "~" en fin de mot = mot tenu."""
     if not text:
         return Line(t, "")
     segs = [(t, 0.01, f"({singer}) ")] if singer else []
@@ -408,13 +363,9 @@ def demo_track(position):
 
 
 class BeatBridge(QThread):
-    """Fait passer les beats du thread audio vers l'interface."""
     beat = pyqtSignal(float)
 
 
-# --------------------------------------------------------------------------
-# L'overlay plein ecran
-# --------------------------------------------------------------------------
 class Overlay(QWidget):
     def __init__(self, cfg, profiles, clock=time.monotonic, rng=None):
         super().__init__(
@@ -442,7 +393,7 @@ class Overlay(QWidget):
         self.lines: list[Line] | None = None
         self.times: list[float] = []
         self.word_sync = False
-        self.state = "idle"  # idle | loading | ok | missing
+        self.state = "idle"
         self.anchor_pos = 0.0
         self.anchor_t = clock()
         self.playing = False
@@ -453,18 +404,18 @@ class Overlay(QWidget):
         self.zones_until = -99.0
         self.beat_t, self.beat_k = -99.0, 0.0
         self.last_tick = clock()
-        self.cur = None       # ligne en cours : {"idx", "place", "since"}
-        self.prev = None      # ligne d'avant : idem + "prev_since"
-        self.exiting = []     # lignes qui disparaissent : [(entree, depuis)]
+        self.cur = None
+        self.prev = None
+        self.exiting = []
         self.particles = []
         self.last_region = QRegion()
         self._layout_cache = {}
         self._band = None
         self._halo_cache = OrderedDict()
-        self._hero_cache = {}      # ligne -> rangee vedette (mode Edit, mots empiles)
-        self.word_lines = {}       # mot -> nombre de lignes de la chanson qui le contiennent
-        self.flash = None          # titre du morceau affiche en geant
-        self.egg = None            # easter egg du morceau en cours (voir easter.py)
+        self._hero_cache = {}
+        self.word_lines = {}
+        self.flash = None
+        self.egg = None
         self.force_paint = True
         self.was_animating = False
         self.accent = [QColor(c) for c in NEUTRAL_PALETTE]
@@ -477,14 +428,12 @@ class Overlay(QWidget):
         self.top_timer.timeout.connect(self.keep_on_top)
         self.top_timer.start(500)
 
-    # ---- fenetre ---------------------------------------------------------
     def apply_geometry(self):
         self.setGeometry(QGuiApplication.primaryScreen().geometry())
         self.update_zones()
         self.reset_layout()
 
     def reset_layout(self):
-        """Apres un changement de mode / police / taille : on replace tout."""
         self._layout_cache.clear()
         self._band = None
         self.cur = self.prev = None
@@ -494,7 +443,6 @@ class Overlay(QWidget):
         self.update()
 
     def poke(self):
-        """Quelque chose a change (couleur, pochette...) : redessiner au prochain tick."""
         self.force_paint = True
 
     def set_profile(self, key, profile):
@@ -512,7 +460,6 @@ class Overlay(QWidget):
                 pass
 
     def keep_on_top(self):
-        """Repasse devant le jeu (qui se met souvent lui-meme "au premier plan")."""
         if not self.isVisible():
             return
         try:
@@ -520,33 +467,30 @@ class Overlay(QWidget):
             u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                                        ctypes.c_int, ctypes.c_int, ctypes.c_uint]
             u.SetWindowPos.restype = wintypes.BOOL
-            # HWND_TOPMOST = -1 : doit etre passe comme un pointeur 64 bits, sinon l'appel echoue
             u.SetWindowPos(int(self.winId()), wintypes.HWND(-1), 0, 0, 0, 0,
-                           0x0001 | 0x0002 | 0x0010 | 0x0200)  # NOSIZE|NOMOVE|NOACTIVATE|NOOWNERZORDER
+                           0x0001 | 0x0002 | 0x0010 | 0x0200)
         except Exception:
             pass
 
     def install_foreground_hook(self):
-        """Des qu'une autre fenetre (le jeu) passe au premier plan, on se remet devant."""
         try:
             u = ctypes.windll.user32
             proto = ctypes.WINFUNCTYPE(None, wintypes.HANDLE, wintypes.DWORD, wintypes.HWND, wintypes.LONG,
                                        wintypes.LONG, wintypes.DWORD, wintypes.DWORD)
 
             def on_foreground(*_):
-                for delay in (0, 300, 1000, 2500):  # le jeu peut se remettre devant juste apres
+                for delay in (0, 300, 1000, 2500):
                     QTimer.singleShot(delay, self.keep_on_top)
 
-            self._fg_proc = proto(on_foreground)  # garder une reference (sinon effacee)
+            self._fg_proc = proto(on_foreground)
             u.SetWinEventHook.restype = wintypes.HANDLE
             u.SetWinEventHook.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE, proto,
                                           wintypes.DWORD, wintypes.DWORD, wintypes.DWORD]
-            self._fg_hook = u.SetWinEventHook(3, 3, None, self._fg_proc, 0, 0, 0)  # EVENT_SYSTEM_FOREGROUND
+            self._fg_hook = u.SetWinEventHook(3, 3, None, self._fg_proc, 0, 0, 0)
         except Exception:
             self._fg_hook = None
 
     def harden_window(self):
-        """Clic traversant + jamais de focus, au niveau Windows."""
         try:
             hwnd = int(self.winId())
             u = ctypes.windll.user32
@@ -557,7 +501,6 @@ class Overlay(QWidget):
         except Exception:
             pass
 
-    # ---- donnees ---------------------------------------------------------
     def raw_position(self):
         return self.anchor_pos + ((self.clock() - self.anchor_t) if self.playing else 0.0)
 
@@ -648,7 +591,6 @@ class Overlay(QWidget):
             return self.lines[self.cur["idx"]].text
         return ""
 
-    # ---- couleurs ----------------------------------------------------------
     def colors(self):
         if self.cfg.get("color") == "white":
             return [QColor(c) for c in WHITE_PALETTE]
@@ -658,11 +600,8 @@ class Overlay(QWidget):
         cols = self.colors()
         if self.cfg.get("color") == "white":
             return QBrush(cols[0])
-        # coeur des lettres plus clair que le halo : effet neon
         g = QLinearGradient(QPointF(x0, 0), QPointF(x0 + max(roww, 1), 0))
         white = QColor(255, 255, 255)
-        # degrade calcule en OKLab (pas de milieu grisatre) ; les couleurs sont deja
-        # a la bonne clarte, donc on ne les delave presque plus avec du blanc
         key = tuple((c.red(), c.green(), c.blue()) for c in cols)
         for pos, rgb in cover_colors.ramp(key):
             g.setColorAt(pos, mix(QColor(*rgb), white, 0.26 if chorus else 0.12))
@@ -677,7 +616,6 @@ class Overlay(QWidget):
         return pen
 
     def glow_pens(self, boost):
-        """Halo autour des lettres (blanc doux, ou couleur de l'album)."""
         if self.cfg.get("color") == "white":
             c, base = QColor(255, 255, 255), 55
         else:
@@ -686,7 +624,6 @@ class Overlay(QWidget):
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         return [pen]
 
-    # ---- polices et mise en page -------------------------------------------
     def main_font(self):
         f = QFont(family_or_default(self.cfg.get("font", DEFAULTS["font"])), 1)
         f.setPixelSize(int(34 * self.cfg["scale"]))
@@ -734,7 +671,6 @@ class Overlay(QWidget):
         return res
 
     def block_size(self, line, maxw):
-        """Taille (non zoomee) du bloc : nom du chanteur + lignes + traduction + choeur."""
         font = self.main_font()
         rows, lh, _ = self.layout(line.text, font, maxw)
         w = max(rw for _, rw in rows)
@@ -752,28 +688,22 @@ class Overlay(QWidget):
         return self.cfg.get("mode") in ("classic", "typewriter")
 
     def stacked(self):
-        """Mode Edit : rangees de tailles differentes, une seule en couleur."""
         return self.cfg.get("mode") == "edit" and self.cfg.get("stack", True)
 
     def word_score(self, line, word, cstart, index):
-        """Importance d'un mot dans sa ligne : tenu par le chanteur > titre du morceau >
-        mot qui revient dans la chanson > simple longueur."""
         key = word_key(word)
-        score = min(len(key), 12) * 0.04  # a defaut d'autre indice : le mot le plus long
+        score = min(len(key), 12) * 0.04
         meta = (getattr(line, "word_meta", None) or {}).get(cstart)
         if meta:
-            score += 3.0 * meta[2]  # mot tenu (0..1)
+            score += 3.0 * meta[2]
         span = getattr(line, "title_span", None)
         if span and span[0] <= index < span[0] + span[1]:
             score += 2.5
         if len(key) >= 4 and key not in COMMON_WORDS:
-            # present dans 2 lignes = un peu, dans 6 lignes ou plus = le mot du refrain
             score += 1.5 * clamp((self.word_lines.get(key, 1) - 1) / 5)
         return score
 
     def row_scales(self, line, rows):
-        """-> (rangee vedette, taille de chaque rangee). La vedette est la rangee du mot le
-        plus important ; les autres rapetissent en s'en eloignant."""
         key = (line.time, line.text, len(rows))
         hero = self._hero_cache.get(key)
         if hero is None:
@@ -781,13 +711,12 @@ class Overlay(QWidget):
             for r, (row, _w) in enumerate(rows):
                 for word, _x, _ww, cstart in row:
                     sc = self.word_score(line, word, cstart, index)
-                    if sc > best + 1e-9:  # a egalite : la premiere rangee
+                    if sc > best + 1e-9:
                         best, hero = sc, r
                     index += 1
             self._hero_cache[key] = hero
         return hero, [1.0 if r == hero else max(0.46, 0.64 - 0.12 * (abs(r - hero) - 1)) for r in range(len(rows))]
 
-    # ---- placement : mode Edit (au hasard, moitie haute) --------------------
     def place_line(self, line, avoid):
         if self.column_mode():
             return self.column_place(line)
@@ -804,9 +733,9 @@ class Overlay(QWidget):
                 mul = rng.uniform(0.95, 1.1) * (1.35 if n < 14 else 1.15 if n < 26 else 1.0)
                 if chorus:
                     mul *= 1.22
-                if attempt >= 100:  # pas de place parfaite : on reduit plutot que d'empieter
+                if attempt >= 100:
                     mul *= 0.78 if attempt < 150 else 0.62
-                if self.stacked():  # mots empiles : rangees courtes, bloc un peu plus gros
+                if self.stacked():
                     mul *= 1.45
                     maxw = rng.choice([0.11, 0.14, 0.18, 0.22]) * W / mul
                 else:
@@ -849,9 +778,7 @@ class Overlay(QWidget):
                                enter=enter, dir=direction, chorus=chorus,
                                tilt={"left": 1, "right": -1}.get(align, 0) * rng.uniform(26, 34))
 
-    # ---- placement : modes Classique / Machine a ecrire ---------------------
     def column_band(self):
-        """Bande en haut de l'ecran (gauche / centre / droite) ou defilent les lignes."""
         if self._band is not None:
             return self._band
         W, H = self.width(), self.height()
@@ -864,7 +791,7 @@ class Overlay(QWidget):
         x = {"left": m, "right": W - m - mw}.get(pos, (W - mw) / 2)
         best = QRectF(x, m, mw, band_h)
         y = m
-        while y + band_h <= H * UPPER + lh:  # premiere hauteur libre (hors zones du jeu)
+        while y + band_h <= H * UPPER + lh:
             r = QRectF(x, y, mw, band_h)
             if not any(r.intersects(z) for z in self.zones):
                 best = r
@@ -889,7 +816,6 @@ class Overlay(QWidget):
         return self.block_size(line, e["place"].maxw)[1] * e["place"].mul
 
     def advance(self, idx, now):
-        """La chanson passe a la ligne idx."""
         old = self.cur
         if self.prev:
             self.exiting.append((self.prev, now))
@@ -906,9 +832,7 @@ class Overlay(QWidget):
         self.cur = {"idx": idx, "place": self.place_line(self.lines[idx], avoid), "since": now}
         self.maybe_flash(idx)
 
-    # ---- titre du morceau en geant ----------------------------------------
     def maybe_flash(self, idx):
-        """Le chanteur dit le titre du morceau : on l'affiche en tres grand."""
         line = self.lines[idx]
         mode = self.cfg.get("title_drop", "always")
         if mode == "never" or self.egg or not getattr(line, "title_drop", False):
@@ -930,8 +854,6 @@ class Overlay(QWidget):
                       "rot": self.rng.choice([-3, -2, -1, 1, 2, 3])}
 
     def flash_place(self, text, in_game):
-        """-> (police, rectangle). Hors jeu : presque tout l'ecran. En jeu : le plus grand
-        possible dans un espace libre de la moitie haute (jamais sur une zone du jeu)."""
         W, H = self.width(), self.height()
         base = self.main_font()
         probe = QFont(base)
@@ -953,7 +875,7 @@ class Overlay(QWidget):
         for frac in (0.62, 0.5, 0.42, 0.34, 0.27, 0.21):
             px = min(H * 0.15, 100 * W * frac / w100)
             if px < base.pixelSize() * 1.5:
-                break  # pas plus grand que les paroles : sans interet
+                break
             w, h = w100 * px / 100, h100 * px / 100
             xs = sorted((m + k * (W - 2 * m - w) / 12 for k in range(13)), key=lambda x: abs(x + w / 2 - W / 2))
             y = m
@@ -990,7 +912,6 @@ class Overlay(QWidget):
         p.restore()
 
     def is_animating(self, now, pos):
-        """Faux quand l'image est figee : inutile de redessiner (moins de charge en jeu)."""
         if self.exiting or self.particles or self.flash:
             return True
         if self.egg and self.egg.busy(now, pos):
@@ -1010,19 +931,18 @@ class Overlay(QWidget):
             line = self.lines[e["idx"]]
             if not line.text:
                 if e is self.cur:
-                    return True  # petits points animes
+                    return True
                 continue
             fade = self.done_fade(e["idx"], pos)
             if 0 < fade < 1:
                 return True
             if e is self.cur and fade > 0:
                 if typewriter:
-                    return True  # curseur qui clignote
+                    return True
                 if pos < max(self.sung_end(e["idx"]), line.time + len(line.text.split()) * 0.06) + 0.8:
                     return True
         return False
 
-    # ---- animation -------------------------------------------------------
     def tick(self, dt=None):
         now = self.clock()
         if dt is None:
@@ -1060,7 +980,6 @@ class Overlay(QWidget):
         target = 1.0 if show else 0.0
         self.alpha += (target - self.alpha) * (1 - math.exp(-dt * (8 if show else 4)))
 
-        # On ne redessine que les zones utiles (sinon tout l'ecran 60x/s = plus lourd).
         region = QRegion()
         if self.alpha > 0.003:
             pad = int(120 * self.cfg["scale"])
@@ -1079,9 +998,8 @@ class Overlay(QWidget):
                 g = int(self.flash["font"].pixelSize() * 0.9) + 40
                 region = region.united(QRegion(self.flash["rect"].toAlignedRect().adjusted(-g, -g, g, g)))
             if now < self.zones_until or (self.egg and self.egg.busy(now, pos_now)):
-                region = QRegion(self.rect())  # feux d'artifice : partout sur l'ecran
+                region = QRegion(self.rect())
         dirty = region.united(self.last_region)
-        # On ne redessine que si quelque chose bouge (texte fige = aucun travail).
         animating = abs(target - self.alpha) > 0.002 or self.is_animating(now, pos_now)
         if not dirty.isEmpty() and (animating or self.was_animating or self.force_paint
                                     or region != self.last_region):
@@ -1098,7 +1016,6 @@ class Overlay(QWidget):
             out.append(self.cur)
         return out
 
-    # ---- dessin ----------------------------------------------------------
     def paintEvent(self, ev):
         if self.alpha < 0.003:
             return
@@ -1142,13 +1059,11 @@ class Overlay(QWidget):
         return min(nxt, line.time + max(2.0, len(line.text) * 0.09))
 
     def done_fade(self, idx, pos):
-        """1 tant que la ligne est fraiche, puis 0 en 0,5 s, 3 s apres la fin du chant."""
         if not self.lines[idx].text:
             return 1.0
         return clamp(1 - (pos - self.sung_end(idx) - HIDE_AFTER) / 0.5)
 
     def beat_scale(self, chorus):
-        """Pulsation : le texte grossit un peu sur le beat (rien d'autre)."""
         return 1 + (0.09 if chorus else 0.05) * self.beat_pulse()
 
     def draw_current(self, p, e, now, pos):
@@ -1166,8 +1081,6 @@ class Overlay(QWidget):
         self.draw_entry(p, e, a, sc, ox, oy, "current", pos)
 
     def draw_column(self, p, now, pos):
-        """Modes Classique / Machine a ecrire : la ligne en cours en bas de la bande,
-        la precedente remonte au-dessus en plus petit."""
         band = self.column_band()
         s = self.cfg["scale"]
         gap = 8 * s
@@ -1209,9 +1122,8 @@ class Overlay(QWidget):
         p.translate(x + ox, y + oy)
         tilt = getattr(pl, "tilt", 0) if self.cfg.get("tilt", True) else 0
         if tilt and line.text:
-            # effet 3D : le texte pivote comme sur un mur, le bord de l'ecran devant, le centre au fond
             ang = math.radians(abs(tilt))
-            depth = max(120.0, pl.rect.width()) * 2.1  # camera proche : la perspective se voit meme sur une ligne courte
+            depth = max(120.0, pl.rect.width()) * 2.1
             k = math.copysign(math.sin(ang) / depth, tilt)
             p.setTransform(QTransform(math.cos(ang), 0, k, 0, 1, 0, 0, 0, 1), True)
         p.rotate(pl.rot)
@@ -1241,7 +1153,6 @@ class Overlay(QWidget):
             p.drawEllipse(QPointF(x0 + k * step, -4 * s * pulse), rr, rr)
 
     def typed_times(self, line, idx):
-        """Moment d'apparition de chaque lettre (machine a ecrire)."""
         n = len(line.text)
         if line.chars and len(line.chars) == n:
             return [c[0] for c in line.chars]
@@ -1249,14 +1160,12 @@ class Overlay(QWidget):
         d = min((nxt - line.time) * 0.9, 0.35 + 0.045 * n)
         return [line.time + d * i / max(1, n) for i in range(n)]
 
-    # ---- vrai glow : halo flou (gaussien) derriere les lettres ----------------
     def glow_color(self):
         if self.cfg.get("color") == "white":
             return QColor(236, 244, 255)
-        # halo bien colore (comme un neon) : teinte de la pochette, saturation renforcee
-        c = self.accent[0]  # la couleur la plus marquante de la pochette
+        c = self.accent[0]
         h, s, v = c.hsvHueF(), c.hsvSaturationF(), c.valueF()
-        if s < 0.10:  # pochette grise : halo blanc
+        if s < 0.10:
             return QColor(236, 244, 255)
         return QColor.fromHsvF(max(h, 0), min(1.0, s * 1.25 + 0.1), 1.0)
 
@@ -1264,14 +1173,13 @@ class Overlay(QWidget):
         return 0.85 if self.cfg.get("color") == "white" else 1.0
 
     def halo(self, text, font, color, radius, strength):
-        """Image floutee du texte (calculee une fois puis gardee en memoire)."""
         key = (text, font.family(), font.pixelSize(), str(font.weight()), font.italic(),
                color.rgb(), int(radius * 10), int(strength * 10))
         hit = self._halo_cache.get(key)
         if hit is not None:
             self._halo_cache.move_to_end(key)
             return hit
-        k = 0.5  # le flou est calcule en demi-resolution : plus leger, invisible a l'oeil
+        k = 0.5
         f2 = QFont(font)
         f2.setPixelSize(max(4, int(round(font.pixelSize() * k))))
         r2 = max(0.8, radius * k)
@@ -1313,11 +1221,9 @@ class Overlay(QWidget):
         p.restore()
 
     def draw_text_fx(self, p, text, font, x, base_y, brush, glow=1.0, shadow=1.0, path=None):
-        """Texte lumineux : ombre douce (lisibilite sur le jeu) + halo large + halo serre + lettres."""
-        px = min(font.pixelSize(), 110)  # texte geant : le halo ne grossit pas a l'infini
+        px = min(font.pixelSize(), 110)
         white = self.cfg.get("color") == "white"
         if shadow > 0:
-            # ombre large et douce (lisible meme sur un decor clair) + ombre serree sous les lettres
             self.blit_halo(p, text, font, x, base_y, QColor(0, 0, 0), px * 0.32, 1.2, 0.32 * shadow, px * 0.04)
             self.blit_halo(p, text, font, x, base_y, QColor(0, 0, 0), px * 0.09, 2.0, 0.7 * shadow, px * 0.05)
         if glow > 0:
@@ -1369,11 +1275,11 @@ class Overlay(QWidget):
             for r, (row, roww) in enumerate(rows):
                 x0 = {"left": 0, "right": -roww}.get(align, -roww / 2)
                 rs = scales[r]
-                p.save()  # chaque rangee a sa taille (autour du point d'ancrage : l'alignement tient)
+                p.save()
                 p.translate(0, row_top)
                 p.scale(rs, rs)
                 base_y = ascent
-                plain = stack and r != hero  # rangee secondaire : blanche, peu de halo
+                plain = stack and r != hero
                 brush = QBrush(QColor(255, 255, 255, 215 if white else 245)) if plain \
                     else self.fill_brush(x0, roww, chorus or stack)
                 for word, wx, ww, cstart in row:
@@ -1415,7 +1321,7 @@ class Overlay(QWidget):
                         self.draw_text_fx(p, word, font, x, base_y, brush, glow)
                     elif style == "simple" or not timed:
                         self.draw_text_fx(p, word, font, x, base_y, brush, glow)
-                    else:  # karaoke : lettres grises ici ; la partie chantee s'allume apres la ligne
+                    else:
                         wf = self.word_fill(line, cstart, len(word), pos)
                         self.draw_text_fx(p, word, font, x, base_y, QBrush(QColor(255, 255, 255, 105)), glow=0)
                         if wf > 0:
@@ -1423,8 +1329,6 @@ class Overlay(QWidget):
                     p.restore()
                     word_i += 1
                 if style == "karaoke" and timed and lit:
-                    # Un seul decoupage par ligne, a l'endroit ou en est le chant :
-                    # le halo coule d'un mot a l'autre, sans bandes.
                     m = font.pixelSize()
                     _, lx, lw_, lwf = lit[-1][:4]
                     fill_x = lx + lw_ * lwf
@@ -1443,7 +1347,6 @@ class Overlay(QWidget):
                             lp.translate(-cxw, -cyw)
                         self.draw_text_fx(lp, word, font, x, base_y, brush, glow, shadow=0)
                         lp.restore()
-                    # fondu doux a l'endroit ou en est le chant (pas de coupure nette)
                     lp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
                     fade = QLinearGradient(QPointF(fill_x - m * 0.08, 0), QPointF(fill_x + m * 0.22, 0))
                     fade.setColorAt(0, QColor(0, 0, 0, 255))
@@ -1456,10 +1359,9 @@ class Overlay(QWidget):
                 last_row_end = ((x0 + roww) * rs, row_top + ascent * rs)
                 row_top += lh * rs
 
-        # choeur "(yeah)" : petit, en italique, a cote de la fin de ligne
         if line.adlib and current:
             ad_t = line.adlib_time if line.adlib_time is not None else line.time
-            if self.cfg.get("mode") == "typewriter":  # attend que la ligne soit ecrite
+            if self.cfg.get("mode") == "typewriter":
                 ad_t = max(ad_t, self.typed_times(line, self.cur["idx"])[-1])
             k = clamp((pos - ad_t) / 0.3) if (line.chars or self.cfg.get("mode") == "typewriter") else 1.0
             if k > 0:
@@ -1475,7 +1377,6 @@ class Overlay(QWidget):
                                   QBrush(mix(cols[2], QColor(255, 255, 255), 0.45)), glow=0.5)
                 p.restore()
 
-        # traduction francaise sous la ligne
         if current and self.show_translation(line):
             fm = QFontMetricsF(tf)
             text = fm.elidedText(line.translation, Qt.TextElideMode.ElideRight, pl.maxw * 1.2)
@@ -1485,7 +1386,6 @@ class Overlay(QWidget):
             self.draw_text_fx(p, text, tf, tx, ty, QBrush(QColor(255, 255, 255, 205)), glow=0)
 
     def draw_typed(self, p, line, rows, lh, ascent, font, align, pos, chorus):
-        """Machine a ecrire : seules les lettres deja chantees sont ecrites, + curseur."""
         times = self.typed_times(line, self.cur["idx"])
         fm = QFontMetricsF(font)
         glow = self.base_glow() + (0.25 if chorus else 0)
@@ -1511,7 +1411,7 @@ class Overlay(QWidget):
             s = self.cfg["scale"]
             rect = QRectF(cx + 4 * s, cy - ascent * 0.8, 4 * s, ascent * 0.95)
             gc = self.glow_color()
-            for grow, al in ((7 * s, 40), (3 * s, 90)):  # petit halo autour du curseur
+            for grow, al in ((7 * s, 40), (3 * s, 90)):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QColor(gc.red(), gc.green(), gc.blue(), al))
                 p.drawRoundedRect(rect.adjusted(-grow, -grow * 0.5, grow, grow * 0.5), grow, grow)
@@ -1532,7 +1432,6 @@ class Overlay(QWidget):
                 done += (pos - a) / (b - a)
         return done / len(seg)
 
-    # ---- particules (mots tenus) -------------------------------------------
     def spawn_particles(self, p, x, y, w, h, k):
         if len(self.particles) > 160 or self.rng.random() > 0.35 + 0.5 * k:
             return
@@ -1560,7 +1459,6 @@ class Overlay(QWidget):
             p.drawEllipse(QPointF(pt["x"], pt["y"]), pt["size"], pt["size"])
         p.restore()
 
-    # ---- carte pochette + titre (debut de morceau) --------------------------
     def card_visible(self):
         return self.cfg.get("card", True) and self.track is not None and \
             self.clock() - self.card_since < CARD_TIME
@@ -1703,9 +1601,6 @@ class Overlay(QWidget):
         p.restore()
 
 
-# --------------------------------------------------------------------------
-# Application : panneau + icone + raccourcis
-# --------------------------------------------------------------------------
 class App:
     def __init__(self, app, demo=False, minimized=False, updated=""):
         from panel import Panel, make_icon
@@ -1730,8 +1625,8 @@ class App:
         self.demo_timer = QTimer()
         self.demo_timer.timeout.connect(self.demo_step)
 
-        self.sources = []  # applis vues cette session (pour le panneau)
-        self.browsers = {}  # navigateur -> (site reconnu, suivi ou non)
+        self.sources = []
+        self.browsers = {}
         self.worker = MediaWorker(self.cfg.get("sources_blocked", []), self.cfg.get("sites_off", []),
                                   self.cfg.get("sites_other", False))
         self.worker.sources.connect(self.w_sources)
@@ -1757,7 +1652,7 @@ class App:
         self.profile_timer.start(1000)
 
         self.cfg["hotkeys"] = hotkeys.normalize(self.cfg.get("hotkeys"))
-        self.hotkeys_failed = []  # combinaisons refusees par Windows (prises par une autre appli)
+        self.hotkeys_failed = []
         self.hotkeys = hotkeys.Hotkeys(self.cfg["hotkeys"])
         self.hotkeys.pressed.connect(self.on_hotkey)
         self.hotkeys.failed.connect(self.on_hotkeys_failed)
@@ -1785,24 +1680,22 @@ class App:
         self.last_game = None
         self.setup_updates(updated)
         if not self.cfg.get("welcomed"):
-            self.show_welcome()  # tout premier lancement
+            self.show_welcome()
         elif not minimized:
             self.show_panel()
 
-    # ---- mises a jour ---------------------------------------------------------
     def setup_updates(self, updated):
         import updater
         self.update_info = None
         self.update_check = None
         self.update_job = None
         self.cleanup_tries = 0
-        if updated:  # on vient d'etre installe par l'ancienne version
+        if updated:
             try:
                 self.tray.showMessage("FollowTheLyrics", f"Mise à jour installée : version {updated}.",
                                       self.tray.icon(), 5000)
             except Exception:
                 pass
-        # restes d'une mise a jour (l'ancien .exe ne peut etre efface qu'une fois ferme)
         self.cleanup_timer = QTimer()
         self.cleanup_timer.timeout.connect(self.cleanup_update)
         self.cleanup_timer.start(3000)
@@ -1819,7 +1712,6 @@ class App:
             self.cleanup_timer.stop()
 
     def check_update(self, manual=False):
-        """manual : demande depuis le panneau (on repond meme s'il n'y a rien de neuf)."""
         import updater
         if self.update_info:
             if manual:
@@ -1841,14 +1733,14 @@ class App:
                                   "Ouvre le panneau pour mettre à jour.", self.tray.icon(), 6000)
         except Exception:
             pass
-        if os.environ.get("FTL_AUTO_UPDATE"):  # test de bout en bout
+        if os.environ.get("FTL_AUTO_UPDATE"):
             self.install_update()
 
     def install_update(self):
         import updater
         if not self.update_info or (self.update_job and self.update_job.isRunning()):
             return
-        if not updater.bootstrap.FROZEN:  # version « code » : on ouvre juste la page
+        if not updater.bootstrap.FROZEN:
             os.startfile(updater.RELEASES_URL)
             self.panel.update_failed("Version « code » : télécharge la nouvelle version sur la page ouverte.")
             return
@@ -1861,16 +1753,15 @@ class App:
     def on_update_installed(self, version):
         import updater
         try:
-            updater.relaunch(sys.executable, version)  # la nouvelle version nous demandera de quitter
+            updater.relaunch(sys.executable, version)
         except Exception as e:
             self.panel.update_failed(f"La nouvelle version est installée mais n'a pas pu démarrer ({e}). "
                                      "Relance FollowTheLyrics.")
 
-    # ---- editeur de zones -------------------------------------------------------
     def reload_profiles(self):
         self.profiles = games.load_profiles()
         self.profiles_mtime = games.profiles_mtime()
-        self.overlay.profile_key = None  # reapplique au prochain passage
+        self.overlay.profile_key = None
 
     def open_zone_editor(self, key=None, activate=True):
         from zone_editor import ZoneEditor
@@ -1888,7 +1779,6 @@ class App:
             w.activateWindow()
 
     def capture_game(self):
-        """Raccourci « capture » en jeu : capture l'ecran (sans les paroles) pour l'editeur de zones."""
         exe, _full = games.foreground_info()
         key, _prof = games.current_profile(self.profiles)
         if key not in self.profiles.get("jeux", {}):
@@ -1896,9 +1786,9 @@ class App:
             if not exe or exe.lower() in ("explorer.exe", own, "python.exe", "pythonw.exe"):
                 self.overlay.toast("Mets-toi dans le jeu, puis " + self.hotkey_text("capture"))
                 return
-            key = exe  # jeu pas encore connu : il sera cree a l'enregistrement
+            key = exe
         o = self.overlay
-        o.setWindowOpacity(0.0)  # les paroles ne doivent pas etre sur la capture
+        o.setWindowOpacity(0.0)
 
         def grab():
             try:
@@ -1917,7 +1807,6 @@ class App:
 
         QTimer.singleShot(150, grab)
 
-    # ---- premier lancement ---------------------------------------------------
     def show_welcome(self):
         from welcome import Welcome
         self.welcome = Welcome()
@@ -1932,7 +1821,7 @@ class App:
         save_config(self.cfg)
         self.welcome = None
         if setup and self.install_here(autostart, shortcut):
-            return  # la copie installee prend le relais
+            return
         if autostart != settings.autostart_enabled():
             settings.set_autostart(autostart)
         if shortcut:
@@ -1941,10 +1830,9 @@ class App:
             self.panel.sync_from_cfg()
             self.show_panel()
 
-    # ---- musique reelle / demo -------------------------------------------
     def w_track(self, np):
         self.real_track = np
-        if self.audio:  # seulement la vraie musique (la demo ne fait pas de son)
+        if self.audio:
             self.audio.music_playing = bool(np and np.playing)
         if self.demo:
             return
@@ -1966,7 +1854,6 @@ class App:
         self.browsers = dict(seen)
 
     def set_site_enabled(self, site_id, enabled):
-        """Cocher / decocher un site de musique (ou "les autres sites") pour les navigateurs."""
         import sites
         if site_id == sites.OTHER:
             self.cfg["sites_other"] = bool(enabled)
@@ -1979,7 +1866,6 @@ class App:
         self.worker.guard.other = bool(self.cfg.get("sites_other", False))
 
     def set_source_enabled(self, app_id, enabled):
-        """Cocher / decocher une appli dans le panneau : elle est ecoutee ou ignoree."""
         blocked = set(self.cfg.get("sources_blocked", []))
         (blocked.discard if enabled else blocked.add)(app_id)
         self.cfg["sources_blocked"] = sorted(blocked)
@@ -2030,7 +1916,6 @@ class App:
             self.overlay.set_profile(key, prof)
             if key != "bureau":
                 self.overlay.toast(f"Profil : {prof.get('nom', key)}")
-        # Plein ecran EXCLUSIF : Windows interdit toute fenetre par-dessus -> on previent
         excl = games.exclusive_fullscreen()
         if excl and not self.exclusive:
             tip = prof.get("conseil_plein_ecran") or \
@@ -2044,7 +1929,6 @@ class App:
                 pass
         self.exclusive = excl
 
-    # ---- reglages (appeles par le panneau et les raccourcis) ----------------
     def set_cfg(self, key, value):
         self.cfg[key] = value
         save_config(self.cfg)
@@ -2077,14 +1961,10 @@ class App:
         except Exception:
             pass
 
-    # ---- raccourcis modifiables -------------------------------------------------
     def hotkey_text(self, name):
-        """La combinaison actuelle d'une action, telle qu'on l'affiche (« Ctrl + Alt + E »)."""
         return hotkeys.pretty(self.cfg["hotkeys"].get(name, ""))
 
     def set_hotkey(self, name, combo):
-        """Change un raccourci. Si une autre action avait deja cette combinaison, elle la perd.
-        Renvoie le nom de cette autre action (ou None)."""
         keys = dict(self.cfg["hotkeys"])
         stolen = None
         for other, used in keys.items():
@@ -2145,10 +2025,7 @@ class App:
         self.panel.raise_()
         self.panel.activateWindow()
 
-    # ---- installation sur le PC ------------------------------------------------
     def install_here(self, autostart=None, shortcut=False):
-        """Installe ce .exe sur le PC puis passe la main a la copie installee.
-        -> False si la copie a echoue (on continue alors d'ici, comme avant)."""
         import install
         import settings
         try:
@@ -2161,20 +2038,18 @@ class App:
             autostart = settings.autostart_enabled()
         settings.set_autostart(bool(autostart), exe=exe)
         link = settings.desktop_link()
-        if shortcut or (link and os.path.exists(link)):  # un raccourci existant suit l'appli
+        if shortcut or (link and os.path.exists(link)):
             settings.create_desktop_shortcut(exe=exe)
         install.launch(exe, "--installed")
         self.quit()
         return True
 
     def uninstall(self):
-        """Bouton « Desinstaller » du panneau."""
         import install
         if install.run_uninstall():
             self.quit()
 
     def quit(self):
-        """Quitter pour de vrai (le panneau accepte alors de se fermer)."""
         self.quitting = True
         if self.welcome is not None:
             self.welcome.close()
@@ -2192,9 +2067,6 @@ class App:
         self.worker.stop()
 
 
-# --------------------------------------------------------------------------
-# Mode capture (pour tester le rendu sans ecran)
-# --------------------------------------------------------------------------
 def snapshot(path, at, args):
     fake = [0.0]
     cfg = dict(DEFAULTS, style=args.style, mode=args.mode, position=args.position,
@@ -2235,14 +2107,12 @@ def snapshot(path, at, args):
 
 
 def selftest(app, out_dir):
-    """Demarre tout en mode demo quelques secondes, ecrit un rapport et des captures,
-    puis quitte. Ne remplace pas l'appli deja ouverte et n'enregistre aucun reglage."""
     import traceback
     import settings
     report = [f"frozen={settings.FROZEN}", f"data_dir={settings.DATA_DIR}"]
     report += [f"boot {n}: {r}" for n, r in bootstrap.LOG]
     try:
-        import media  # noqa: F401
+        import media
         report.append("winrt=ok")
     except Exception as e:
         report.append(f"winrt=ERREUR {e!r}")
@@ -2287,13 +2157,11 @@ def selftest(app, out_dir):
         os._exit(1)
 
 
-INSTANCE_NAME = "LyricsOverlay-instance" + os.environ.get("FTL_TEST_INSTANCE", "")  # ancien nom du projet, garde pour remplacer les vieilles versions
+INSTANCE_NAME = "LyricsOverlay-instance" + os.environ.get("FTL_TEST_INSTANCE", "")
 _instance_mutex = None
 
 
 def take_over_instance():
-    """Une seule appli a la fois : si une ancienne tourne, on lui demande de quitter
-    et on prend sa place. Renvoie le serveur qui ecoutera la prochaine relance."""
     global _instance_mutex
     from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
@@ -2305,9 +2173,9 @@ def take_over_instance():
     deadline = time.monotonic() + 6.0
     while True:
         h = k.CreateMutexW(None, False, "Local\\" + INSTANCE_NAME)
-        already = ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
+        already = ctypes.get_last_error() == 183
         if not already or time.monotonic() > deadline:
-            _instance_mutex = h  # garde tant que l'appli vit
+            _instance_mutex = h
             break
         k.CloseHandle(h)
         if not asked:
@@ -2328,13 +2196,13 @@ def take_over_instance():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--demo", action="store_true")
-    ap.add_argument("--updated", default="")  # lance par l'ancienne version apres une mise a jour
-    ap.add_argument("--minimized", action="store_true")  # demarrage avec Windows : pas de panneau
-    ap.add_argument("--installed", action="store_true")  # lance par le .exe qui vient de s'installer
-    ap.add_argument("--uninstall", action="store_true")  # bouton Desinstaller de Windows
-    ap.add_argument("--quiet", action="store_true")      # ... sans poser de question
-    ap.add_argument("--purge", action="store_true")      # ... en effacant aussi les reglages
-    ap.add_argument("--selftest")  # dossier : verifie que le .exe demarre, sans rien deranger
+    ap.add_argument("--updated", default="")
+    ap.add_argument("--minimized", action="store_true")
+    ap.add_argument("--installed", action="store_true")
+    ap.add_argument("--uninstall", action="store_true")
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--purge", action="store_true")
+    ap.add_argument("--selftest")
     ap.add_argument("--snapshot")
     ap.add_argument("--at", type=float, default=7.0)
     ap.add_argument("--mode", default="edit")
@@ -2350,7 +2218,7 @@ def main():
     ap.add_argument("--seed", type=int, default=3)
     args, _unknown = ap.parse_known_args()
 
-    try:  # icone et regroupement propres dans la barre des taches
+    try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FollowTheLyrics.App")
     except Exception:
         pass
@@ -2368,7 +2236,7 @@ def main():
     if args.uninstall:
         if install.is_installed() and (args.quiet or install.message(
                 "Désinstaller FollowTheLyrics de ce PC ?", 0x24) == 6):
-            take_over_instance()  # ferme l'appli si elle tourne
+            take_over_instance()
             keep = not args.purge
             if not args.quiet:
                 keep = install.message("Garder tes réglages et tes zones pour une prochaine installation ?",
@@ -2378,23 +2246,21 @@ def main():
                 install.message("FollowTheLyrics a été désinstallé.")
             install.delete_later(folders)
         os._exit(0)
-    if install.hand_over():  # une copie est installee : c'est elle qui tourne
+    if install.hand_over():
         os._exit(0)
     server = take_over_instance()
     if settings.FROZEN:
         if install.running_installed():
             try:
-                install.register()  # version a jour dans « Applications installees »
+                install.register()
             except Exception:
                 pass
-        if not os.environ.get("FTL_TEST_INSTANCE"):  # un essai ne touche pas au vrai demarrage
-            settings.refresh_autostart()  # le .exe a peut-etre ete deplace
+        if not os.environ.get("FTL_TEST_INSTANCE"):
+            settings.refresh_autostart()
     a = App(app, demo=args.demo, minimized=args.minimized, updated=args.updated)
     if server is not None:
-        # une nouvelle version se lance : celle-ci lui laisse la place
         server.newConnection.connect(a.quit)
     code = app.exec()
-    # Sortie directe : evite qu'un thread audio/Windows encore actif bloque la fermeture.
     os._exit(code)
 
 

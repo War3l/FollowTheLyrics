@@ -1,5 +1,3 @@
-"""Les briques du panneau, dessinees a la main et animees : interrupteur, choix a pastille
-glissante, menu lateral, cartes de mode vivantes, bouton de raccourci, pochette…"""
 import math
 import time
 
@@ -13,25 +11,20 @@ from PyQt6.QtWidgets import QAbstractButton, QSizePolicy, QWidget
 import hotkeys
 
 DEFAULT_ACCENT = QColor("#8B7CFF")
-UI = {"accent": QColor(DEFAULT_ACCENT)}  # couleur d'accent du panneau (celle de la pochette)
+UI = {"accent": QColor(DEFAULT_ACCENT)}
 
 BG = "#0b0c11"
-# Le verre : du blanc presque transparent (#AARRGGBB), pose sur le fond colore du panneau.
 CARD = "#0fffffff"
 CARD_BORDER = "#26ffffff"
 FIELD = "#16ffffff"
-# Les memes roles en opaque, pour ce qui n'a pas de fond colore derriere (editeur de zones).
 SOLID_CARD = "#14161e"
 SOLID_BORDER = "#222533"
 SOLID_FIELD = "#1b1e28"
-BRAND = ("#5EE7FF", "#8B7CFF", "#FF6FB5")  # les trois couleurs du logo
+BRAND = ("#5EE7FF", "#8B7CFF", "#FF6FB5")
 TEXT = "#eceef4"
 DIM = "#8b91a3"
 
 
-# --------------------------------------------------------------------------
-# Outils
-# --------------------------------------------------------------------------
 def mix(a, b, t):
     a, b = QColor(a), QColor(b)
     t = max(0.0, min(1.0, t))
@@ -46,19 +39,15 @@ def alpha(c, a):
 
 
 def qss(c):
-    """Couleur (meme transparente) ecrite pour une feuille de style Qt."""
     c = QColor(c)
     return f"rgba({c.red()},{c.green()},{c.blue()},{c.alphaF():.3f})"
 
 
 def enable_backdrop(hwnd):
-    """Demande a Windows 11 son verre depoli (acrylique) derriere la fenetre : tout ce que
-    la fenetre laisse transparent montre alors, floute, ce qu'il y a derriere elle.
-    -> True si Windows a accepte."""
     import ctypes
     import sys
     try:
-        if sys.getwindowsversion().build < 22621:  # arrive avec Windows 11 22H2
+        if sys.getwindowsversion().build < 22621:
             return False
 
         class MARGINS(ctypes.Structure):
@@ -66,22 +55,20 @@ def enable_backdrop(hwnd):
 
         dwm = ctypes.windll.dwmapi
         hwnd = ctypes.c_void_p(int(hwnd))
-        margins = MARGINS(-1, -1, -1, -1)  # toute la fenetre
+        margins = MARGINS(-1, -1, -1, -1)
         dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-        kind = ctypes.c_int(3)  # DWMSBT_TRANSIENTWINDOW : acrylique
+        kind = ctypes.c_int(3)
         return dwm.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(kind), ctypes.sizeof(kind)) == 0
     except Exception:
         return False
 
 
 def dark_caption(hwnd):
-    """Barre de titre sombre, assortie au panneau, meme si Windows colore les barres de titre
-    avec la couleur d'accent de l'utilisateur (Windows 11 ; sans effet avant)."""
     import ctypes
     try:
         dwm = ctypes.windll.dwmapi
         hwnd = ctypes.c_void_p(int(hwnd))
-        for attr, bgr in ((35, 0x00150E0D), (34, 0x00342C2B), (36, 0x00F4EEEC)):  # fond, bord, texte
+        for attr, bgr in ((35, 0x00150E0D), (34, 0x00342C2B), (36, 0x00F4EEEC)):
             val = ctypes.c_uint(bgr)
             dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(val), ctypes.sizeof(val))
     except Exception:
@@ -121,7 +108,6 @@ def ease_out_back(t):
 
 
 class Hover:
-    """A melanger a un widget : self._hover passe en douceur de 0 a 1 sous la souris."""
 
     def init_hover(self):
         self._hover = 0.0
@@ -140,12 +126,7 @@ class Hover:
         super().leaveEvent(e)
 
 
-# --------------------------------------------------------------------------
-# Logo et icones
-# --------------------------------------------------------------------------
 def logo_path():
-    """Le signe du logo dans une grille de 64 x 64 : un triangle de lecture fendu par un trait
-    (la ligne de paroles qui traverse la musique)."""
     path = QPainterPath()
     for pts in (((16, 10), (16, 27), (48, 27)), ((16, 54), (16, 37), (48, 37))):
         path.moveTo(*pts[0])
@@ -156,7 +137,6 @@ def logo_path():
 
 
 def draw_logo(p, rect, brush):
-    """Dessine le signe du logo dans `rect` (coins arrondis), rempli avec `brush`."""
     p.save()
     p.translate(rect.left(), rect.top())
     p.scale(rect.width() / 64.0, rect.height() / 64.0)
@@ -169,8 +149,6 @@ def draw_logo(p, rect, brush):
 
 
 def icon_pixmap(size=64):
-    """L'icone de l'appli : le signe en degrade sur une tuile sombre. En tout petit (pres de
-    l'heure), le signe seul, pour rester lisible."""
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
@@ -182,7 +160,7 @@ def icon_pixmap(size=64):
     g.setColorAt(0.5, QColor("#8B7CFF"))
     g.setColorAt(1.0, QColor("#FF6FB5"))
     if size < 32:
-        draw_logo(p, QRectF(-8.5, -9.6, 83.2, 83.2), QBrush(g))  # agrandi : le signe remplit la case
+        draw_logo(p, QRectF(-8.5, -9.6, 83.2, 83.2), QBrush(g))
     else:
         body = QRectF(2, 2, 60, 60)
         tile = QLinearGradient(QPointF(2, 2), QPointF(62, 62))
@@ -212,7 +190,6 @@ def make_icon():
 
 
 def draw_icon(p, name, rect, color, width=1.7):
-    """Petite icone au trait, dessinee dans une grille de 20 x 20."""
     p.save()
     p.translate(rect.left(), rect.top())
     p.scale(rect.width() / 20.0, rect.height() / 20.0)
@@ -284,7 +261,6 @@ def draw_icon(p, name, rect, color, width=1.7):
 
 
 def draw_keycaps(p, names, x, cy, dim=False):
-    """Dessine des touches de clavier cote a cote ; renvoie la position x de fin."""
     font = ui_font(12, QFont.Weight.Bold)
     fm = QFontMetricsF(font)
     p.setFont(font)
@@ -307,11 +283,7 @@ def draw_keycaps(p, names, x, cy, dim=False):
     return x
 
 
-# --------------------------------------------------------------------------
-# Interrupteur
-# --------------------------------------------------------------------------
 class Toggle(QAbstractButton):
-    """Interrupteur on/off : le rond glisse d'un cote a l'autre."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -347,9 +319,6 @@ class Toggle(QAbstractButton):
         p.drawEllipse(QRectF(3 + 20 * t, 3, 20, 20))
 
 
-# --------------------------------------------------------------------------
-# Choix unique : la pastille glisse vers l'option choisie
-# --------------------------------------------------------------------------
 class Segmented(QWidget):
     changed = pyqtSignal(str)
     H, PAD = 38, 3
@@ -442,16 +411,13 @@ class Segmented(QWidget):
             p.drawText(self.seg_rect(i), Qt.AlignmentFlag.AlignCenter, label)
 
 
-# --------------------------------------------------------------------------
-# Menu lateral
-# --------------------------------------------------------------------------
 class SideNav(QWidget):
     changed = pyqtSignal(str)
     ITEM_H, GAP = 44, 4
 
     def __init__(self, items, parent=None):
         super().__init__(parent)
-        self.items = list(items)  # (cle, texte, icone)
+        self.items = list(items)
         self.index = 0
         self._y = 0.0
         self._hover_i = -1
@@ -536,11 +502,7 @@ class SideNav(QWidget):
                 p.drawEllipse(QPointF(w - 16, y + self.ITEM_H / 2), 4, 4)
 
 
-# --------------------------------------------------------------------------
-# Musique en cours
-# --------------------------------------------------------------------------
 class CoverView(QWidget):
-    """La pochette, coins arrondis ; fondu quand le morceau change."""
 
     def __init__(self, size, radius=18, parent=None):
         super().__init__(parent)
@@ -592,7 +554,6 @@ class CoverView(QWidget):
 
 
 class Equalizer(QWidget):
-    """Quatre barres qui dansent quand la musique joue."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -642,7 +603,6 @@ class ProgressView(QWidget):
 
 
 class MiniPlayer(Hover, QAbstractButton):
-    """En bas du menu : petite pochette + titre, toujours visible."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -691,11 +651,7 @@ class MiniPlayer(Hover, QAbstractButton):
                    QFontMetricsF(f2).elidedText(self.artist, Qt.TextElideMode.ElideRight, tw))
 
 
-# --------------------------------------------------------------------------
-# Cartes de choix
-# --------------------------------------------------------------------------
 class ModeCard(Hover, QAbstractButton):
-    """Carte de choix du mode : un mini ecran rejoue le mode en boucle."""
 
     def __init__(self, key, title, desc, parent=None):
         super().__init__(parent)
@@ -749,7 +705,7 @@ class ModeCard(Hover, QAbstractButton):
 
         if self.key == "classic":
             t = (now % 3.0) / 3.0
-            slide = max(0.0, (t - 0.86) / 0.14) * 15  # la ligne monte, la suivante arrive
+            slide = max(0.0, (t - 0.86) / 0.14) * 15
             bar(12, 18 - slide, w * 0.32, alpha(dim, 62 * (1 - slide / 15)), 5)
             bar(12, 33 - slide, w * 0.52, dim, 7)
             bar(12, 33 - slide, w * 0.52 * min(1.0, t / 0.8), acc, 7)
@@ -780,7 +736,6 @@ class ModeCard(Hover, QAbstractButton):
         p.setFont(ui_font(15, QFont.Weight.Bold, "Segoe UI Variable Display"))
         p.drawText(QRectF(r.left() + 14, scr.bottom() + 10, r.width() - 50, 22),
                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.title)
-        # pastille « choisi »
         c = QPointF(r.right() - 22, scr.bottom() + 21)
         p.setPen(QPen(mix("#3b4052", acc, self._sel), 1.6))
         p.setBrush(Qt.BrushStyle.NoBrush)
@@ -796,13 +751,12 @@ class ModeCard(Hover, QAbstractButton):
 
 
 class ColorCard(Hover, QAbstractButton):
-    """Choix des couleurs du texte, avec un exemple peint."""
 
     def __init__(self, key, title, desc, colors_fn, parent=None):
         super().__init__(parent)
         self.init_hover()
         self.key, self.title, self.desc = key, title, desc
-        self.colors_fn = colors_fn  # -> liste de QColor a montrer
+        self.colors_fn = colors_fn
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(116)
@@ -832,7 +786,7 @@ class ColorCard(Hover, QAbstractButton):
         g = QLinearGradient(br.topLeft(), br.topRight())
         for i, c in enumerate(cols):
             g.setColorAt(i / max(1, len(cols) - 1) if len(cols) > 1 else 0.0, c)
-        for width, a in ((12, 22), (7, 34), (3, 50)):  # halo
+        for width, a in ((12, 22), (7, 34), (3, 50)):
             pen = QPen(alpha(cols[0], a), width)
             pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             p.strokePath(path, pen)
@@ -862,7 +816,6 @@ class ColorCard(Hover, QAbstractButton):
 
 
 class NavTile(Hover, QAbstractButton):
-    """Grande tuile de l'accueil : montre un reglage actuel et mene a sa page."""
 
     def __init__(self, icon, caption, parent=None):
         super().__init__(parent)
@@ -905,11 +858,8 @@ class NavTile(Hover, QAbstractButton):
         draw_icon(p, "chevron", QRectF(r.right() - 30 + 3 * h, r.center().y() - 9, 18, 18), mix(DIM, acc, h))
 
 
-# --------------------------------------------------------------------------
-# Bouton de raccourci : on clique, on appuie sur la nouvelle combinaison
-# --------------------------------------------------------------------------
 class HotkeyButton(Hover, QWidget):
-    captured = pyqtSignal(str)  # nouvelle combinaison ("" = plus de raccourci)
+    captured = pyqtSignal(str)
     started = pyqtSignal()
     ended = pyqtSignal()
 
@@ -919,7 +869,7 @@ class HotkeyButton(Hover, QWidget):
         self.combo = ""
         self.error = False
         self.listening = False
-        self.live = []  # touches tenues pendant le choix
+        self.live = []
         self.note = ""
         self.setFixedSize(250, 42)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -984,9 +934,9 @@ class HotkeyButton(Hover, QWidget):
         if e.isAutoRepeat():
             return
         vk, mods = int(e.nativeVirtualKey()), self._mods(e)
-        if vk == 0x1B:  # Echap : on garde l'ancien
+        if vk == 0x1B:
             return self.finish()
-        if vk in (0x08, 0x2E) and not mods:  # Retour / Suppr : plus de raccourci
+        if vk in (0x08, 0x2E) and not mods:
             return self.finish("")
         held = [hotkeys.PRETTY.get(n, n) for n, flag in hotkeys.MODS if mods & flag]
         if not vk or vk in hotkeys.MODIFIER_VKS:

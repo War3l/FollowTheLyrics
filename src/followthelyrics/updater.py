@@ -1,11 +1,3 @@
-"""Mise a jour : regarde la derniere version publiee sur GitHub et remplace le .exe
-sur place (meme fichier, meme dossier : raccourcis et demarrage avec Windows restent bons).
-
-Comment le remplacement marche : Windows interdit d'effacer un .exe en cours
-d'execution, mais permet de le RENOMMER. On telecharge donc « X.exe.new », on renomme
-« X.exe » en « X.exe.old », « X.exe.new » en « X.exe », puis on lance le nouveau,
-qui prend la place de l'ancien et efface le « .old ».
-"""
 import hashlib
 import json
 import os
@@ -21,12 +13,12 @@ REPO = "War3l/FollowTheLyrics"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
 ASSET_NAME = "FollowTheLyrics.exe"
-DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"  # seule origine acceptee
+DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 USER_AGENT = "FollowTheLyrics-updater"
 
 
 def current_version():
-    fake = os.environ.get("FTL_FAKE_VERSION")  # pour tester la mise a jour
+    fake = os.environ.get("FTL_FAKE_VERSION")
     if fake:
         return fake
     try:
@@ -51,8 +43,7 @@ def is_newer(candidate, current):
 
 
 def fetch_latest(timeout=8):
-    """-> dict(version, url, size, sha256, notes) de la derniere version, ou None."""
-    api = os.environ.get("FTL_UPDATE_API") or API_URL  # variable de test
+    api = os.environ.get("FTL_UPDATE_API") or API_URL
     if not api.startswith(f"https://api.github.com/repos/{REPO}/"):
         api = API_URL
     req = urllib.request.Request(api, headers={"User-Agent": USER_AGENT,
@@ -71,7 +62,6 @@ def fetch_latest(timeout=8):
 
 
 def download(info, dest, progress=None, timeout=20):
-    """Telecharge le nouveau .exe dans `dest` et verifie qu'il est complet et intact."""
     if not info["url"].startswith(DOWNLOAD_PREFIX):
         raise ValueError("adresse de telechargement inattendue")
     req = urllib.request.Request(info["url"], headers={"User-Agent": USER_AGENT})
@@ -99,7 +89,6 @@ def download(info, dest, progress=None, timeout=20):
 
 
 def swap(exe, new):
-    """Met `new` a la place de `exe` (l'ancien devient `exe`.old). Annule tout si ca rate."""
     old = exe + ".old"
     if os.path.exists(old):
         os.remove(old)
@@ -107,12 +96,11 @@ def swap(exe, new):
     try:
         os.replace(new, exe)
     except Exception:
-        os.replace(old, exe)  # on remet l'ancien en place
+        os.replace(old, exe)
         raise
 
 
 def relaunch(exe, version):
-    """Lance le nouveau .exe, independant de celui-ci (il se deballe de son cote)."""
     env = dict(os.environ)
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     for key in list(env):
@@ -120,12 +108,10 @@ def relaunch(exe, version):
             env.pop(key, None)
     env.pop("FTL_FAKE_VERSION", None)
     subprocess.Popen([exe, "--updated", version], env=env, cwd=os.path.dirname(exe), close_fds=True,
-                     creationflags=0x00000008 | 0x00000200)  # DETACHED_PROCESS | NEW_PROCESS_GROUP
+                     creationflags=0x00000008 | 0x00000200)
 
 
 def cleanup_leftovers():
-    """Efface les restes d'une mise a jour (ancien .exe, telechargement interrompu).
-    Renvoie False s'il faudra reessayer (l'ancienne version n'a pas encore fini de quitter)."""
     if not bootstrap.FROZEN:
         return True
     ok = True
@@ -140,9 +126,8 @@ def cleanup_leftovers():
 
 
 class UpdateCheck(QThread):
-    """Regarde s'il existe une version plus recente."""
     found = pyqtSignal(dict)
-    nothing = pyqtSignal(bool)  # rien de neuf (True = on n'a pas pu joindre GitHub)
+    nothing = pyqtSignal(bool)
 
     def run(self):
         try:
@@ -152,14 +137,13 @@ class UpdateCheck(QThread):
             else:
                 self.nothing.emit(False)
         except Exception:
-            self.nothing.emit(True)  # pas de reseau, GitHub injoignable : on reessaiera plus tard
+            self.nothing.emit(True)
 
 
 class UpdateInstall(QThread):
-    """Telecharge la nouvelle version et la met a la place du .exe en cours."""
     progress = pyqtSignal(float)
     failed = pyqtSignal(str)
-    installed = pyqtSignal(str)  # le nouveau .exe est en place : il n'y a plus qu'a le lancer
+    installed = pyqtSignal(str)
 
     def __init__(self, info):
         super().__init__()

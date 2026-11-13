@@ -1,15 +1,3 @@
-"""Ecoute le son du PC (ce qui sort des enceintes / du casque) et detecte les beats.
-
-Utilise la capture "loopback" de Windows (WASAPI) : on recoit une copie du son
-joue, rien n'est enregistre ni envoye nulle part.
-
-Avec plusieurs sorties audio (GoXLR, Voicemeeter...), la musique ne passe pas
-forcement par la sortie par defaut : si elle reste muette alors qu'une musique
-joue, on teste les autres sorties et on garde celle ou il y a du son.
-
-On lit le son en "attente active" (on regarde ce qui est disponible, sans
-fonction de rappel) : c'est ce qui evite les blocages de PyAudio a la fermeture.
-"""
 import threading
 import time
 from collections import deque
@@ -18,14 +6,13 @@ import numpy as np
 
 try:
     import pyaudiowpatch as pyaudio
-except Exception:  # bibliotheque absente : pas de beat, le reste marche
+except Exception:
     pyaudio = None
 
 BLOCK = 1024
 
 
 class BeatDetector:
-    """Detecte les coups de grosse caisse : hausse brutale de l'energie des basses (40-150 Hz)."""
 
     def __init__(self, rate):
         self.rate = rate
@@ -37,7 +24,6 @@ class BeatDetector:
         self.last_beat = 0.0
 
     def feed(self, mono, now):
-        """-> force du beat (0..1) ou 0."""
         mag = np.abs(np.fft.rfft(mono * self.window))
         e = float(np.sqrt(np.sum(mag[self.band] ** 2)))
         flux = max(0.0, e - self.prev)
@@ -55,7 +41,6 @@ class BeatDetector:
 
 
 class _Capture:
-    """Une sortie audio en ecoute, lue sans fonction de rappel."""
 
     def __init__(self, pa, dev):
         self.dev = dev
@@ -65,7 +50,6 @@ class _Capture:
                               input_device_index=dev["index"], frames_per_buffer=BLOCK)
 
     def read(self):
-        """Ce qui est arrive depuis la derniere lecture (mono), ou un tableau vide."""
         try:
             avail = self.stream.get_read_available()
             if avail <= 0:
@@ -86,7 +70,6 @@ class _Capture:
 
 
 class AudioBeats:
-    """Thread qui capture le son et appelle on_beat(force) a chaque beat."""
 
     def __init__(self, on_beat):
         self.on_beat = on_beat
@@ -141,7 +124,7 @@ class AudioBeats:
             buf = np.zeros(0, dtype=np.float32)
             last_sound = time.monotonic()
             last_check = last_scan = 0.0
-            scan_wait = 8.0  # double apres chaque recherche sans resultat (max 2 min)
+            scan_wait = 8.0
             while not self._stop.is_set():
                 a = cap.read()
                 now = time.monotonic()
@@ -164,7 +147,6 @@ class AudioBeats:
                     continue
                 last_check = now
                 if now - last_sound > 3.0 and self.music_playing and now - last_scan > scan_wait:
-                    # La musique joue mais cette sortie est muette : on cherche la bonne.
                     last_scan = now
                     cap.close()
                     best, best_lvl = current, 0.0
@@ -177,7 +159,7 @@ class AudioBeats:
                     if best_lvl > 0.002:
                         current = best
                         scan_wait = 8.0
-                    else:  # son coupe partout : inutile de chercher aussi souvent
+                    else:
                         scan_wait = min(120.0, scan_wait * 2)
                     cap = _Capture(pa, current)
                     det = BeatDetector(cap.rate)

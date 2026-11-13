@@ -1,4 +1,3 @@
-"""Ecran de bienvenue affiche au tout premier lancement."""
 import ctypes
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
@@ -22,7 +21,6 @@ STEPS = (
 
 
 class Badge(QWidget):
-    """Pastille numerotee en degrade."""
 
     def __init__(self, n):
         super().__init__()
@@ -45,8 +43,7 @@ class Badge(QWidget):
 
 
 class Welcome(QWidget):
-    """Fenetre sans bordure, centree : 3 etapes, quelques options, 1 bouton."""
-    finished = pyqtSignal(bool, bool, bool)  # (lancer avec Windows, raccourci bureau, installer)
+    finished = pyqtSignal(bool, bool, bool)
 
     def __init__(self):
         super().__init__()
@@ -146,7 +143,6 @@ class Welcome(QWidget):
         line.addWidget(toggle)
         return line
 
-    # ---- dessin / deplacement -------------------------------------------------
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -161,7 +157,6 @@ class Welcome(QWidget):
             g.setColorAt(0, QColor(c.red(), c.green(), c.blue(), alpha))
             g.setColorAt(1, QColor(c.red(), c.green(), c.blue(), 0))
             p.fillRect(r, QBrush(g))
-        # fonds des deux lignes d'options
         p.setPen(QPen(QColor(CARD_BORDER), 1))
         p.setBrush(QColor(FIELD))
         for t in (self.autostart, self.shortcut, self.setup):
@@ -177,7 +172,7 @@ class Welcome(QWidget):
         super().showEvent(e)
         scr = self.screen().availableGeometry()
         self.move(scr.center().x() - self.width() // 2, scr.center().y() - self.height() // 2)
-        try:  # coins arrondis + ombre Windows 11
+        try:
             val = ctypes.c_int(2)
             ctypes.windll.dwmapi.DwmSetWindowAttribute(int(self.winId()), 33, ctypes.byref(val), ctypes.sizeof(val))
         except Exception:
@@ -198,7 +193,7 @@ class Welcome(QWidget):
         if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.accept()
         elif e.key() == Qt.Key.Key_Escape:
-            self.close()  # passer : rien n'est cree ni modifie
+            self.close()
 
     def accept(self):
         if self._done:
@@ -209,7 +204,7 @@ class Welcome(QWidget):
         self.close()
 
     def closeEvent(self, e):
-        if not self._done:  # fermee autrement (Alt+F4) : on ne change rien, mais on continue
+        if not self._done:
             self._done = True
             self.finished.emit(autostart_enabled(), False, False)
         e.accept()
