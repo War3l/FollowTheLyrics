@@ -1,5 +1,4 @@
-<p align="center"><img src="docs/img/logo.png" width="96" alt=""></p>
-<h1 align="center">FollowTheLyrics</h1>
+<p align="center"><img src="reseaux/banniere.png" alt="FollowTheLyrics"></p>
 <p align="center"><b>Les paroles de ta musique, par-dessus tes jeux.</b><br>
 Mot à mot, en rythme, aux couleurs de la pochette. Windows 10 et 11, et Linux.</p>
 <p align="center">
