@@ -33,12 +33,12 @@ from PyQt6.QtWidgets import QStackedWidget
 from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
-from followthelyrics import hotkeys
-from followthelyrics import install
-from followthelyrics import settings
-from followthelyrics import sites
-from followthelyrics import updater
-from followthelyrics import widgets
+from followthelyrics.config import settings
+from followthelyrics.playback import sites
+from followthelyrics.system import hotkeys
+from followthelyrics.system import install
+from followthelyrics.system import updater
+from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
 

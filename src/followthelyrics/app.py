@@ -14,21 +14,22 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSystemTrayIcon
 
-from followthelyrics import audio
-from followthelyrics import demo_lyrics
 from followthelyrics import diagnostics
-from followthelyrics import games
-from followthelyrics import hotkeys
-from followthelyrics import install
 from followthelyrics import logs
-from followthelyrics import overlay
-from followthelyrics import panel
-from followthelyrics import settings
-from followthelyrics import sites
-from followthelyrics import updater
-from followthelyrics import welcome
-from followthelyrics import worker
-from followthelyrics import zone_editor
+from followthelyrics.config import games
+from followthelyrics.config import settings
+from followthelyrics.lyrics import demo_song
+from followthelyrics.overlay import window
+from followthelyrics.playback import audio
+from followthelyrics.playback import sites
+from followthelyrics.playback import worker
+from followthelyrics.system import hotkeys
+from followthelyrics.system import install
+from followthelyrics.system import updater
+from followthelyrics.ui import panel
+from followthelyrics.ui import welcome
+from followthelyrics.ui import widgets
+from followthelyrics.ui import zone_editor
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class App:
         self.cfg = settings.load_config()
         self.profiles = games.load_profiles()
         self.profiles_mtime = games.profiles_mtime()
-        self.overlay = overlay.Overlay(self.cfg, self.profiles)
+        self.overlay = window.Overlay(self.cfg, self.profiles)
         self.overlay.show()
         self.overlay.harden_window()
         self.overlay.keep_on_top()
@@ -93,7 +94,7 @@ class App:
 
         self.panel = panel.Panel(self)
         self.hotkeys.start()
-        self.tray = QSystemTrayIcon(panel.make_icon())
+        self.tray = QSystemTrayIcon(widgets.make_icon())
         self.tray.setToolTip("FollowTheLyrics")
         menu = QMenu()
         menu.addAction("Ouvrir le panneau", self.show_panel)
@@ -356,7 +357,7 @@ class App:
         if self.demo:
             self.demo_start = time.monotonic()
             self.demo_step()
-            o.on_lyrics(demo_lyrics.DEMO_KEY, demo_lyrics.DEMO_LINES)
+            o.on_lyrics(demo_song.DEMO_KEY, demo_song.DEMO_LINES)
             self.demo_timer.start(400)
         else:
             self.demo_timer.stop()
@@ -364,8 +365,8 @@ class App:
                 self.w_track(self.real_track)
 
     def demo_step(self):
-        pos = (time.monotonic() - self.demo_start) % demo_lyrics.DEMO_LENGTH
-        self.overlay.on_track(demo_lyrics.demo_track(pos))
+        pos = (time.monotonic() - self.demo_start) % demo_song.DEMO_LENGTH
+        self.overlay.on_track(demo_song.demo_track(pos))
 
     def check_profile(self):
         mt = games.profiles_mtime()

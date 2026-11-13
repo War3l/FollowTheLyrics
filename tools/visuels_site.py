@@ -14,10 +14,10 @@ from PyQt6.QtGui import QPainter
 from PyQt6.QtGui import QRadialGradient
 from PyQt6.QtWidgets import QApplication
 
-from followthelyrics import demo_lyrics
-from followthelyrics import games
-from followthelyrics import overlay
-from followthelyrics import settings
+from followthelyrics.config import games
+from followthelyrics.config import settings
+from followthelyrics.lyrics import demo_song
+from followthelyrics.overlay import window
 
 root, out = sys.argv[1], sys.argv[2]
 os.chdir(root)
@@ -69,7 +69,7 @@ def backdrop(colors, seed):
 
 def make(name, at, colors, seed=3, track=None, lines=None, key=None, **cfg):
     fake = [0.0]
-    o = overlay.Overlay(
+    o = window.Overlay(
         dict(settings.DEFAULTS, card=False, **cfg),
         games.DEFAULT_PROFILES,
         clock=lambda: fake[0],
@@ -80,8 +80,8 @@ def make(name, at, colors, seed=3, track=None, lines=None, key=None, **cfg):
     o.setGeometry(0, 0, S, SH)
     start = max(0.0, at - 8.0)
     if track is None:
-        o.on_track(demo_lyrics.demo_track(start))
-        o.on_lyrics(demo_lyrics.DEMO_KEY, demo_lyrics.DEMO_LINES)
+        o.on_track(demo_song.demo_track(start))
+        o.on_lyrics(demo_song.DEMO_KEY, demo_song.DEMO_LINES)
     else:
         o.on_track(track)
         o.on_lyrics(o.track_key, lines)
@@ -137,7 +137,7 @@ for sd in seeds:
         mode="edit",
         scale=1.2,
     )
-    L = demo_lyrics.demo_line
+    L = demo_song.demo_line
     tr = SimpleNamespace(
         title="Firework",
         artist="Katy Perry",

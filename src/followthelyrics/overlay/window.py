@@ -17,7 +17,6 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QBrush
 from PyQt6.QtGui import QColor
 from PyQt6.QtGui import QFont
-from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtGui import QFontMetricsF
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtGui import QImage
@@ -29,95 +28,38 @@ from PyQt6.QtGui import QRegion
 from PyQt6.QtGui import QTransform
 from PyQt6.QtWidgets import QWidget
 
-from followthelyrics import analysis
-from followthelyrics import animation
-from followthelyrics import colors
-from followthelyrics import easter
-from followthelyrics import lyrics
-from followthelyrics import settings
-from followthelyrics import win32
+from followthelyrics.config import settings
+from followthelyrics.lyrics import analysis
+from followthelyrics.lyrics import model
+from followthelyrics.lyrics import parsing
+from followthelyrics.overlay import animation
+from followthelyrics.overlay import colors
+from followthelyrics.overlay import easter
+from followthelyrics.overlay import effects
+from followthelyrics.system import win32
 
 logger = logging.getLogger(__name__)
 
+
 PREV_ALPHA = 0.42
+
+
 ACTIVE_INTERVAL_MS = 16
+
+
 IDLE_INTERVAL_MS = 200
+
+
 PATH_CACHE_SIZE = 512
+
+
 HIDE_AFTER = 3.0
+
+
 CARD_TIME = 4.5
+
+
 UPPER = 0.5
-NEUTRAL_PALETTE = ["#FFFFFF", "#E8ECF4", "#CBD3E3"]
-WHITE_PALETTE = ["#FFFFFF", "#F4F6FB", "#E6EAF3"]
-
-
-def area(r: QRectF):
-    return r.width() * r.height() if r.isValid() else 0.0
-
-
-def mix(c1: QColor, c2: QColor, k):
-    return QColor(
-        int(animation.lerp(c1.red(), c2.red(), k)),
-        int(animation.lerp(c1.green(), c2.green(), k)),
-        int(animation.lerp(c1.blue(), c2.blue(), k)),
-    )
-
-
-def _box_blur(a, r, axis):
-    if r < 1:
-        return a
-    pad = [(0, 0), (0, 0)]
-    pad[axis] = (r + 1, r)
-    c = np.cumsum(np.pad(a, pad), axis=axis)
-    n = 2 * r + 1
-    if axis == 1:
-        return (c[:, n:] - c[:, :-n]) / n
-    return (c[n:, :] - c[:-n, :]) / n
-
-
-def gaussian_blur(a, sigma):
-    r = max(1, round(sigma * 0.95))
-    for _ in range(3):
-        a = _box_blur(a, r, 1)
-        a = _box_blur(a, r, 0)
-    return a
-
-
-_FAMILIES = None
-
-
-def family_or_default(name):
-    global _FAMILIES
-    if _FAMILIES is None:
-        _FAMILIES = set(QFontDatabase.families())
-    return name if name in _FAMILIES else "Segoe UI"
-
-
-def palette_from_cover(data):
-    img = QImage.fromData(data) if not isinstance(data, QImage) else data
-    if img.isNull():
-        return None
-    img = img.convertToFormat(QImage.Format.Format_RGBA8888).scaled(
-        64,
-        64,
-        Qt.AspectRatioMode.IgnoreAspectRatio,
-        Qt.TransformationMode.SmoothTransformation,
-    )
-    try:
-        ptr = img.constBits()
-        ptr.setsize(img.sizeInBytes())
-        arr = np.frombuffer(ptr, dtype=np.uint8).reshape(
-            img.height(), img.bytesPerLine()
-        )
-        arr = (
-            arr[:, : img.width() * 4]
-            .reshape(img.height(), img.width(), 4)[:, :, :3]
-            .copy()
-        )
-        pal = colors.palette_rgb(arr)
-    except Exception:
-        logger.debug("palette_from_cover failed", exc_info=True)
-        pal = None
-    return [QColor(*c) for c in pal] if pal else None
 
 
 class Overlay(QWidget):
@@ -144,7 +86,7 @@ class Overlay(QWidget):
         self.track_changed_at = -99.0
         self.card_since = -99.0
         self.cover_img: QImage | None = None
-        self.lines: list[lyrics.Line] | None = None
+        self.lines: list[model.Line] | None = None
         self.times: list[float] = []
         self.word_sync = False
         self.state = "idle"
@@ -178,7 +120,7 @@ class Overlay(QWidget):
         self.egg = None
         self.force_paint = True
         self.was_animating = False
-        self.accent = [QColor(c) for c in NEUTRAL_PALETTE]
+        self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
         self.apply_geometry()
 
         self.timer = QTimer(self)
@@ -305,7 +247,7 @@ class Overlay(QWidget):
             self.exiting = []
             self.flash = None
             self.cover_img = None
-            self.accent = [QColor(c) for c in NEUTRAL_PALETTE]
+            self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
             self.anchor_pos, self.anchor_t = np.position, now
             self.egg = (
                 easter.pick(np, self) if self.cfg.get("easter", True) else None
@@ -325,11 +267,11 @@ class Overlay(QWidget):
             return
         if lines:
             if lines[0].time > 0.5:
-                lines = [lyrics.Line(0.0, ""), *list(lines)]
+                lines = [model.Line(0.0, ""), *list(lines)]
             analysis.compute_word_meta(lines)
             analysis.mark_chorus(lines)
             if self.track is not None:
-                lyrics.mark_title_lines(
+                parsing.mark_title_lines(
                     lines, self.track.title, self.track.artist
                 )
             self._hero_cache = {}
@@ -359,7 +301,7 @@ class Overlay(QWidget):
         if img.isNull():
             return
         self.cover_img = img
-        pal = palette_from_cover(img)
+        pal = effects.palette_from_cover(img)
         if pal:
             self.accent = pal
         self.force_paint = True
@@ -386,7 +328,7 @@ class Overlay(QWidget):
 
     def colors(self):
         if self.cfg.get("color") == "white":
-            return [QColor(c) for c in WHITE_PALETTE]
+            return [QColor(c) for c in effects.WHITE_PALETTE]
         return self.accent
 
     def fill_brush(self, x0, roww, chorus):
@@ -398,7 +340,7 @@ class Overlay(QWidget):
         key = tuple((c.red(), c.green(), c.blue()) for c in cols)
         for pos, rgb in colors.ramp(key):
             g.setColorAt(
-                pos, mix(QColor(*rgb), white, 0.26 if chorus else 0.12)
+                pos, effects.mix(QColor(*rgb), white, 0.26 if chorus else 0.12)
             )
         return QBrush(g)
 
@@ -429,7 +371,9 @@ class Overlay(QWidget):
 
     def main_font(self):
         f = QFont(
-            family_or_default(self.cfg.get("font", settings.DEFAULTS["font"])),
+            effects.family_or_default(
+                self.cfg.get("font", settings.DEFAULTS["font"])
+            ),
             1,
         )
         f.setPixelSize(int(34 * self.cfg["scale"]))
@@ -569,13 +513,13 @@ class Overlay(QWidget):
             r = QRectF(rng.uniform(margin, width - margin - bw), y, bw, bh)
             padded = r.adjusted(-20 * s, -14 * s, 20 * s, 14 * s)
             score = (
-                sum(area(padded.intersected(z)) for z in self.zones)
+                sum(effects.area(padded.intersected(z)) for z in self.zones)
                 / (bw * bh)
                 * 10
             )
             for a in avoid:
                 score += (
-                    area(
+                    effects.area(
                         padded.adjusted(
                             -30 * s, -30 * s, 30 * s, 30 * s
                         ).intersected(a)
@@ -590,7 +534,7 @@ class Overlay(QWidget):
                     score += 0.6
             card = self.card_rect()
             if self.card_visible() and card is not None:
-                score += area(padded.intersected(card)) / (bw * bh) * 5
+                score += effects.area(padded.intersected(card)) / (bw * bh) * 5
             if best is None or score < best[0]:
                 best = (score, r, mul, maxw)
             if score == 0:
@@ -1224,7 +1168,7 @@ class Overlay(QWidget):
             .reshape(height, width, 4)[:, :, 3]
             .astype(np.float32)
         )
-        a = np.clip(gaussian_blur(a, r2) * strength, 0, 255)
+        a = np.clip(effects.gaussian_blur(a, r2) * strength, 0, 255)
         out = np.empty((height, width, 4), dtype=np.uint8)
         out[..., 0] = a * (color.blue() / 255)
         out[..., 1] = a * (color.green() / 255)
@@ -1573,7 +1517,7 @@ class Overlay(QWidget):
                     af,
                     ox,
                     oy,
-                    QBrush(mix(cols[2], QColor(255, 255, 255), 0.45)),
+                    QBrush(effects.mix(cols[2], QColor(255, 255, 255), 0.45)),
                     glow=0.5,
                 )
                 p.restore()
@@ -1774,7 +1718,9 @@ class Overlay(QWidget):
             p.setOpacity(self.alpha * a)
             r = rect.translated(slide, 0)
             g = QLinearGradient(r.topLeft(), r.bottomRight())
-            g.setColorAt(0, mix(QColor(14, 14, 20), self.accent[0], 0.22))
+            g.setColorAt(
+                0, effects.mix(QColor(14, 14, 20), self.accent[0], 0.22)
+            )
             g.setColorAt(1, QColor(12, 12, 18))
             p.setPen(
                 QPen(

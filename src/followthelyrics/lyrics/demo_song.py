@@ -1,11 +1,12 @@
 from types import SimpleNamespace
 
-from followthelyrics import lyrics
+from followthelyrics.lyrics import model
+from followthelyrics.lyrics import parsing
 
 
 def demo_line(t, text, singer=""):
     if not text:
-        return lyrics.Line(t, "")
+        return model.Line(t, "")
     segs = [(t, 0.01, f"({singer}) ")] if singer else []
     for k, raw in enumerate(text.split()):
         held = raw.endswith("~")
@@ -15,11 +16,11 @@ def demo_line(t, text, singer=""):
         )
         segs.append((t, dur, w + " "))
         t += dur + (0.08 if w.endswith(",") else 0.02)
-    return lyrics.build_line(segs)
+    return model.build_line(segs)
 
 
-DEMO_LINES = lyrics.split_adlibs(
-    lyrics.extract_singers(
+DEMO_LINES = parsing.split_adlibs(
+    parsing.extract_singers(
         [
             demo_line(2.0, "Les neons dansent sur l'ecran"),
             demo_line(5.5, "Je joue la nuit (oh oh), je perds le temps"),

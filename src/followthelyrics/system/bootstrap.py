@@ -5,7 +5,7 @@ import os
 import sys
 from ctypes import wintypes
 
-from followthelyrics import win32
+from followthelyrics.system import win32
 
 logger = logging.getLogger(__name__)
 

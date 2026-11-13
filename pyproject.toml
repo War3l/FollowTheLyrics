@@ -73,8 +73,8 @@ ban-relative-imports = "all"
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101"]
 "src/followthelyrics/__main__.py" = ["PLC0415"]
-"src/followthelyrics/worker.py" = ["PLC0415"]
-"src/followthelyrics/win32.py" = ["N801", "N815"]
+"src/followthelyrics/playback/worker.py" = ["PLC0415"]
+"src/followthelyrics/system/win32.py" = ["N801", "N815"]
 
 [tool.mypy]
 python_version = "3.12"

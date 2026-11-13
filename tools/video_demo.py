@@ -18,10 +18,10 @@ from PyQt6.QtGui import QPolygonF
 from PyQt6.QtGui import QRadialGradient
 from PyQt6.QtWidgets import QApplication
 
-from followthelyrics import demo_lyrics
-from followthelyrics import games
-from followthelyrics import overlay
-from followthelyrics import settings
+from followthelyrics.config import games
+from followthelyrics.config import settings
+from followthelyrics.lyrics import demo_song
+from followthelyrics.overlay import window
 
 root, ffmpeg, dest, poster = sys.argv[1:5]
 cover = sys.argv[5] if len(sys.argv) > 5 else None
@@ -31,7 +31,7 @@ app = QApplication(sys.argv)
 
 FPS, START, LENGTH = 30, 0.6, 15.0
 fake = [0.0]
-o = overlay.Overlay(
+o = window.Overlay(
     dict(settings.DEFAULTS, scale=1.45),
     games.DEFAULT_PROFILES,
     clock=lambda: fake[0],
@@ -204,8 +204,8 @@ def draw_game(p, t):
     )
 
 
-o.on_track(demo_lyrics.demo_track(START))
-o.on_lyrics(demo_lyrics.DEMO_KEY, demo_lyrics.DEMO_LINES)
+o.on_track(demo_song.demo_track(START))
+o.on_lyrics(demo_song.DEMO_KEY, demo_song.DEMO_LINES)
 if cover:
     with open(cover, "rb") as fh:
         o.on_cover(o.track_key, fh.read())

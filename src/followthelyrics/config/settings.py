@@ -15,9 +15,8 @@ logger = logging.getLogger(__name__)
 
 APP_NAME = "FollowTheLyrics"
 OLD_NAMES = ("LyricsOverlay", "Lyrics Overlay")
-PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(PACKAGE_DIR))
 FROZEN = bool(getattr(sys, "frozen", False))
 
 

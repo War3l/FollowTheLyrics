@@ -18,8 +18,8 @@ from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
-from followthelyrics import games
-from followthelyrics import widgets
+from followthelyrics.config import games
+from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
 

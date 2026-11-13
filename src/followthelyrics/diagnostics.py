@@ -13,12 +13,12 @@ from PyQt6.QtGui import QImage
 from PyQt6.QtGui import QLinearGradient
 from PyQt6.QtGui import QPainter
 
-from followthelyrics import audio
-from followthelyrics import bootstrap
-from followthelyrics import demo_lyrics
-from followthelyrics import games
-from followthelyrics import overlay
-from followthelyrics import settings
+from followthelyrics.config import games
+from followthelyrics.config import settings
+from followthelyrics.lyrics import demo_song
+from followthelyrics.overlay import window
+from followthelyrics.playback import audio
+from followthelyrics.system import bootstrap
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def snapshot(path, at, args):
         font=args.font,
     )
     profiles = games.DEFAULT_PROFILES
-    o = overlay.Overlay(
+    o = window.Overlay(
         cfg, profiles, clock=lambda: fake[0], rng=random.Random(args.seed)
     )
     o.timer.stop()
@@ -44,8 +44,8 @@ def snapshot(path, at, args):
             args.game, profiles["jeux"].get(args.game, profiles["jeu_inconnu"])
         )
     start = max(0.0, at - 8.0) if not args.card else at
-    o.on_track(demo_lyrics.demo_track(start))
-    lines = demo_lyrics.DEMO_LINES
+    o.on_track(demo_song.demo_track(start))
+    lines = demo_song.DEMO_LINES
     if args.translation:
         lines = [
             dataclasses.replace(
@@ -55,7 +55,7 @@ def snapshot(path, at, args):
             else line
             for line in lines
         ]
-    o.on_lyrics(demo_lyrics.DEMO_KEY, lines)
+    o.on_lyrics(demo_song.DEMO_KEY, lines)
     if args.cover:
         with open(args.cover, "rb") as f:
             o.on_cover(o.track_key, f.read())
@@ -83,7 +83,7 @@ def selftest(app, out_dir, app_factory):
     report = [f"frozen={settings.FROZEN}", f"data_dir={settings.DATA_DIR}"]
     report += [f"boot {n}: {r}" for n, r in bootstrap.LOG]
     try:
-        importlib.import_module("followthelyrics.media")
+        importlib.import_module("followthelyrics.playback.media")
         report.append("winrt=ok")
     except (ImportError, OSError) as e:
         report.append(f"winrt=ERREUR {e!r}")

@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
-from followthelyrics import install
-from followthelyrics import settings
-from followthelyrics import widgets
+from followthelyrics.config import settings
+from followthelyrics.system import install
+from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
 
