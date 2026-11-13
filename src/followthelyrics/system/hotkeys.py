@@ -1,6 +1,7 @@
 from PyQt6.QtCore import QObject
 from PyQt6.QtCore import pyqtSignal
 
+from followthelyrics import i18n
 from followthelyrics.desktop import ports
 
 ACTIONS = [
@@ -85,6 +86,20 @@ PRETTY = {
     "NumDiv": "Num /",
 }
 
+FRENCH_ONLY = {
+    "Space",
+    "Enter",
+    "Delete",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    "Insert",
+    "Backspace",
+    "Shift",
+}
+ENGLISH = {"PageUp": "PgUp", "PageDown": "PgDn", "Delete": "Del"}
+
 
 def is_function_key(vk):
     return 0x70 <= vk <= 0x87
@@ -129,6 +144,12 @@ def allowed(mods, vk):
     return bool(mods & (MOD_CTRL | MOD_ALT)) or is_function_key(vk)
 
 
+def pretty_key(name):
+    if i18n.language() == "fr" or name not in FRENCH_ONLY:
+        return PRETTY.get(name, name)
+    return ENGLISH.get(name, name)
+
+
 def key_names(combo, char_of=None):
     out = []
     for raw in (combo or "").split("+"):
@@ -141,13 +162,13 @@ def key_names(combo, char_of=None):
             except ValueError:
                 char = None
             part = char or part
-        out.append(PRETTY.get(part, part))
+        out.append(pretty_key(part))
     return out
 
 
 def pretty(combo, char_of=None):
     if not combo:
-        return "aucun raccourci"
+        return i18n.tr("aucun raccourci")
     return " + ".join(key_names(combo, char_of))
 
 

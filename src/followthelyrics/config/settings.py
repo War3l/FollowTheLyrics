@@ -118,6 +118,7 @@ DEFAULTS: dict[str, Any] = {
     "scale": 1.0,
     "offset": 0.0,
     "translation": True,
+    "lang": "en",
     "liriqo": True,
     "beat": True,
     "card": True,
@@ -138,9 +139,14 @@ def load_config():
     cfg = dict(DEFAULTS)
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
-            cfg.update(json.load(f))
-    except (OSError, ValueError):
+            saved = json.load(f)
+        cfg.update(saved)
+        if "lang" not in saved:
+            cfg["lang"] = "fr"
+    except (OSError, ValueError, TypeError):
         pass
+    if cfg.get("lang") not in ("en", "fr", "es", "zh"):
+        cfg["lang"] = DEFAULTS["lang"]
     if cfg.get("style") == "pop":
         cfg["style"] = "kinetic"
     for key in ("sources_blocked", "sites_off"):
