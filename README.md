@@ -14,6 +14,8 @@ Mot à mot, en rythme, aux couleurs de la pochette. Windows 10 et 11, et Linux.<
 
 Marche avec Spotify, YouTube Music, Deezer, Apple Music… sans connexion à un compte.
 
+L'appli existe en anglais (par défaut), français, espagnol et chinois : le choix est dans la page Général.
+
 ## Installer
 1. Télécharge **[FollowTheLyrics.exe](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe)** : un seul fichier, rien à installer.
 2. Double-clique dessus. Si Windows affiche « Windows a protégé votre ordinateur » (le fichier n'est pas signé) :

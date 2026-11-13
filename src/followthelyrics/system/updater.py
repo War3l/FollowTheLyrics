@@ -8,6 +8,7 @@ import urllib.request
 from PyQt6.QtCore import QThread
 from PyQt6.QtCore import pyqtSignal
 
+from followthelyrics import i18n
 from followthelyrics import version
 from followthelyrics.config import settings
 from followthelyrics.system import startup
@@ -175,16 +176,20 @@ class UpdateInstall(QThread):
         except PermissionError:
             self._clean(new)
             self.failed.emit(
-                "Impossible d'écrire dans le dossier du programme. Déplace "
-                f"{self.release.asset} "
-                "dans un dossier à toi (Bureau, Documents…) puis réessaie."
+                i18n.tr(
+                    "Impossible d'écrire dans le dossier du programme. Déplace "
+                    "{} dans un dossier à toi (Bureau, Documents…) puis "
+                    "réessaie."
+                ).format(self.release.asset)
             )
             return
         except Exception as e:
             logger.warning("run failed", exc_info=True)
             self._clean(new)
             self.failed.emit(
-                f"La mise à jour a échoué ({e}). Réessaie plus tard."
+                i18n.tr(
+                    "La mise à jour a échoué ({}). Réessaie plus tard."
+                ).format(e)
             )
             return
         self.installed.emit(self.info["version"])
