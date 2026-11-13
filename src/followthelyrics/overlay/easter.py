@@ -1,6 +1,7 @@
 import bisect
 import math
 import re
+from typing import Any
 
 from PyQt6.QtCore import QPointF
 from PyQt6.QtCore import QRectF
@@ -65,7 +66,7 @@ class FireworkShow:
         self.hits = []
         self.line_hit = {}
         self.last_pos = None
-        self.queue = []
+        self.queue: list[tuple[Any, ...]] = []
         self.rockets = []
         self.sparks = []
         self.flashes = []
@@ -742,11 +743,11 @@ class LightsShow(FireworkShow):
             c1, c2 = QColor(self.NEONS[col]), QColor(self.NEONS[col])
             c1.setAlpha(int(120 * a))
             c2.setAlpha(0)
-            grad = QRadialGradient(QPointF(x, y), r)
-            grad.setColorAt(0, QColor(255, 255, 255, int(150 * a)))
-            grad.setColorAt(0.25, c1)
-            grad.setColorAt(1, c2)
-            p.setBrush(QBrush(grad))
+            glow = QRadialGradient(QPointF(x, y), r)
+            glow.setColorAt(0, QColor(255, 255, 255, int(150 * a)))
+            glow.setColorAt(0.25, c1)
+            glow.setColorAt(1, c2)
+            p.setBrush(QBrush(glow))
             p.drawEllipse(QPointF(x, y), r, r)
             streak = QLinearGradient(
                 QPointF(x - r * 2.4, y), QPointF(x + r * 2.4, y)

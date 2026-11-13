@@ -8,6 +8,7 @@ from ctypes import wintypes
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QAction
 from PyQt6.QtNetwork import QLocalServer
 from PyQt6.QtNetwork import QLocalSocket
 from PyQt6.QtWidgets import QApplication
@@ -98,7 +99,9 @@ class App:
         self.tray.setToolTip("FollowTheLyrics")
         menu = QMenu()
         menu.addAction("Ouvrir le panneau", self.show_panel)
-        self.act_toggle = menu.addAction("Masquer les paroles", self.toggle)
+        self.act_toggle = QAction("Masquer les paroles", menu)
+        self.act_toggle.triggered.connect(self.toggle)
+        menu.addAction(self.act_toggle)
         menu.addSeparator()
         menu.addAction("Quitter", self.quit)
         self.tray_menu = menu
@@ -252,7 +255,10 @@ class App:
 
         def grab():
             try:
-                pm = o.screen().grabWindow(0)
+                screen = o.screen()
+                if screen is None:
+                    raise RuntimeError("aucun ecran")
+                pm = screen.grabWindow()
                 os.makedirs(games.CAPTURES_DIR, exist_ok=True)
                 ok = (not pm.isNull()) and pm.save(
                     games.capture_path(key), "JPG", 88

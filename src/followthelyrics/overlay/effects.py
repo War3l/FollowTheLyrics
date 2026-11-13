@@ -12,9 +12,7 @@ from followthelyrics.overlay import colors
 
 logger = logging.getLogger(__name__)
 
-
 NEUTRAL_PALETTE = ["#FFFFFF", "#E8ECF4", "#CBD3E3"]
-
 
 WHITE_PALETTE = ["#FFFFFF", "#F4F6FB", "#E6EAF3"]
 
@@ -61,6 +59,14 @@ def family_or_default(name):
     return name if name in _FAMILIES else "Segoe UI"
 
 
+def image_rows(img: QImage) -> np.ndarray:
+    bits = img.constBits()
+    if bits is None:
+        return np.zeros((0, 0), dtype=np.uint8)
+    raw = np.frombuffer(bits.asstring(img.sizeInBytes()), dtype=np.uint8)
+    return raw.reshape(img.height(), img.bytesPerLine())
+
+
 def palette_from_cover(data):
     img = QImage.fromData(data) if not isinstance(data, QImage) else data
     if img.isNull():
@@ -72,13 +78,8 @@ def palette_from_cover(data):
         Qt.TransformationMode.SmoothTransformation,
     )
     try:
-        ptr = img.constBits()
-        ptr.setsize(img.sizeInBytes())
-        arr = np.frombuffer(ptr, dtype=np.uint8).reshape(
-            img.height(), img.bytesPerLine()
-        )
         arr = (
-            arr[:, : img.width() * 4]
+            image_rows(img)[:, : img.width() * 4]
             .reshape(img.height(), img.width(), 4)[:, :, :3]
             .copy()
         )

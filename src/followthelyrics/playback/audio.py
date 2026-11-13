@@ -22,7 +22,7 @@ class BeatDetector:
         self.band = (freqs >= 40) & (freqs <= 150)
         self.window = np.hanning(BLOCK).astype(np.float32)
         self.prev = 0.0
-        self.flux_hist = deque(maxlen=int(1.5 * rate / BLOCK))
+        self.flux_hist: deque[float] = deque(maxlen=int(1.5 * rate / BLOCK))
         self.last_beat = 0.0
 
     def feed(self, mono, now):

@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import tempfile
+from typing import Any
 
 from PyQt6.QtCore import QFile
 from PyQt6.QtCore import QStandardPaths
@@ -209,7 +210,7 @@ RECOMMENDED_FONTS = [
     "Trebuchet MS",
 ]
 
-DEFAULTS = {
+DEFAULTS: dict[str, Any] = {
     "mode": "edit",
     "position": "left",
     "color": "album",

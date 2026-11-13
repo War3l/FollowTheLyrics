@@ -140,7 +140,7 @@ def site_of(tab_title):
     return None
 
 
-_exe_cache = {}
+_exe_cache: dict[int, str] = {}
 _exe_cache_at = [0.0]
 
 

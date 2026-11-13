@@ -73,15 +73,15 @@ def hue_diff(a, b):
 
 def _kmeans(pts, k, iters=14):
     rng = np.random.default_rng(7)
-    centers = [pts[rng.integers(len(pts))]]
+    picked = [pts[rng.integers(len(pts))]]
     d2 = np.full(len(pts), np.inf)
     for _ in range(k - 1):
-        d2 = np.minimum(d2, ((pts - centers[-1]) ** 2).sum(1))
+        d2 = np.minimum(d2, ((pts - picked[-1]) ** 2).sum(1))
         total = d2.sum()
         if total <= 1e-12:
             break
-        centers.append(pts[rng.choice(len(pts), p=d2 / total)])
-    centers = np.array(centers)
+        picked.append(pts[rng.choice(len(pts), p=d2 / total)])
+    centers = np.array(picked)
     labels = np.zeros(len(pts), dtype=np.int64)
     for _ in range(iters):
         dist = ((pts[:, None, :] - centers[None, :, :]) ** 2).sum(2)
