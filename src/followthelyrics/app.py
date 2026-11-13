@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import QSystemTrayIcon
 
 from followthelyrics import diagnostics
 from followthelyrics import logs
+from followthelyrics import version
 from followthelyrics.config import games
 from followthelyrics.config import settings
 from followthelyrics.lyrics import demo_song
@@ -24,6 +25,7 @@ from followthelyrics.overlay import window
 from followthelyrics.playback import audio
 from followthelyrics.playback import sites
 from followthelyrics.playback import worker
+from followthelyrics.system import bootstrap
 from followthelyrics.system import hotkeys
 from followthelyrics.system import install
 from followthelyrics.system import updater
@@ -140,7 +142,7 @@ class App:
         self.cleanup_timer = QTimer()
         self.cleanup_timer.timeout.connect(self.cleanup_update)
         self.cleanup_timer.start(3000)
-        if updater.bootstrap.FROZEN or os.environ.get("FTL_FAKE_VERSION"):
+        if bootstrap.FROZEN or os.environ.get("FTL_FAKE_VERSION"):
             QTimer.singleShot(5000, self.check_update)
             self.update_timer = QTimer()
             self.update_timer.timeout.connect(self.check_update)
@@ -185,7 +187,7 @@ class App:
             self.update_job and self.update_job.isRunning()
         ):
             return
-        if not updater.bootstrap.FROZEN:
+        if not bootstrap.FROZEN:
             os.startfile(updater.RELEASES_URL)
             self.panel.update_failed(
                 "Version « code » : télécharge la nouvelle version sur la "
@@ -617,7 +619,7 @@ def main():
     ap.add_argument("--seed", type=int, default=3)
     args, _unknown = ap.parse_known_args()
     logs.setup()
-    logger.info("FollowTheLyrics %s", updater.current_version())
+    logger.info("FollowTheLyrics %s", version.current())
 
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(

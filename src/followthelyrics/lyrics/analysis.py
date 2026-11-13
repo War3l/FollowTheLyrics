@@ -1,8 +1,6 @@
 import re
 import statistics
 
-from followthelyrics.overlay import animation
-
 
 def compute_word_meta(lines):
     per_char = []
@@ -31,7 +29,7 @@ def compute_word_meta(lines):
                     meta[c] = (
                         start,
                         end,
-                        animation.clamp((ratio - 2.0) / 2.5)
+                        min(1.0, max(0.0, (ratio - 2.0) / 2.5))
                         if d >= 0.45
                         else 0.0,
                     )

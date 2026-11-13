@@ -1,5 +1,6 @@
 import pytest
 
+from followthelyrics import version
 from followthelyrics.system import updater
 
 
@@ -31,10 +32,10 @@ def test_is_newer(candidate, current, newer):
 
 
 def test_current_version_reads_the_packaged_file():
-    assert updater.parse_version(updater.current_version()) > (0,)
+    assert updater.parse_version(version.current()) > (0,)
 
 
 def test_current_version_can_be_faked(monkeypatch):
     monkeypatch.setenv("FTL_FAKE_VERSION", "9.9.9")
 
-    assert updater.current_version() == "9.9.9"
+    assert version.current() == "9.9.9"

@@ -13,6 +13,7 @@ if sys.platform == "win32":
 
 import contextlib
 
+from followthelyrics import version
 from followthelyrics.config import settings
 from followthelyrics.system import updater
 
@@ -98,7 +99,7 @@ def register(version=None):
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _UNINSTALL_KEY) as k:
         for name, value in (
             ("DisplayName", settings.APP_NAME),
-            ("DisplayVersion", version or updater.current_version()),
+            ("DisplayVersion", version or version.current()),
             ("Publisher", PUBLISHER),
             ("DisplayIcon", exe),
             ("InstallLocation", install_dir()),
@@ -159,7 +160,7 @@ def hand_over():
     ):
         return False
     try:
-        mine = updater.current_version()
+        mine = version.current()
         if updater.is_newer(mine, installed_version() or "0"):
             install()
         launch(installed_exe())

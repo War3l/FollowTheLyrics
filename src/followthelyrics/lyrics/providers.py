@@ -5,9 +5,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from followthelyrics import version
 from followthelyrics.lyrics import model
 from followthelyrics.lyrics import parsing
-from followthelyrics.system import updater
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +15,8 @@ API = "https://lrclib.net/api"
 
 HEADERS = {
     "User-Agent": (
-        f"FollowTheLyrics/{updater.current_version()} "
-        f"(https://github.com/{updater.REPO})"
+        f"FollowTheLyrics/{version.current()} "
+        f"(https://github.com/{version.REPO})"
     )
 }
 

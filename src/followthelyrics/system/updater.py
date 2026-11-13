@@ -9,30 +9,16 @@ import urllib.request
 from PyQt6.QtCore import QThread
 from PyQt6.QtCore import pyqtSignal
 
+from followthelyrics import version
 from followthelyrics.system import bootstrap
 
 logger = logging.getLogger(__name__)
 
-REPO = "War3l/FollowTheLyrics"
-API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
-RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
+API_URL = f"https://api.github.com/repos/{version.REPO}/releases/latest"
+RELEASES_URL = f"https://github.com/{version.REPO}/releases/latest"
 ASSET_NAME = "FollowTheLyrics.exe"
-DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
+DOWNLOAD_PREFIX = f"https://github.com/{version.REPO}/releases/download/"
 USER_AGENT = "FollowTheLyrics-updater"
-VERSION_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION"
-)
-
-
-def current_version():
-    fake = os.environ.get("FTL_FAKE_VERSION")
-    if fake:
-        return fake
-    try:
-        with open(VERSION_PATH, encoding="utf-8") as f:
-            return f.read().strip() or "0"
-    except OSError:
-        return "0"
 
 
 def parse_version(text):
@@ -51,7 +37,7 @@ def is_newer(candidate, current):
 
 def fetch_latest(timeout=8):
     api = os.environ.get("FTL_UPDATE_API") or API_URL
-    if not api.startswith(f"https://api.github.com/repos/{REPO}/"):
+    if not api.startswith(f"https://api.github.com/repos/{version.REPO}/"):
         api = API_URL
     req = urllib.request.Request(
         api,
@@ -164,7 +150,7 @@ class UpdateCheck(QThread):
             if (
                 info
                 and info["version"]
-                and is_newer(info["version"], current_version())
+                and is_newer(info["version"], version.current())
             ):
                 self.found.emit(info)
             else:
