@@ -118,6 +118,7 @@ DEFAULTS: dict[str, Any] = {
     "scale": 1.0,
     "offset": 0.0,
     "translation": True,
+    "liriqo": True,
     "beat": True,
     "card": True,
     "particles": True,

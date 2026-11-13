@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -22,11 +23,21 @@ class MediaWorker(QThread):
     COVER_READS = (0.8, 3.5)
     MAX_DURATION = 20 * 60
     RETRY_DELAYS = (10, 30, 60, 120, 300)
+    UPGRADE_TRIES = 3
+    UPGRADE_WAIT = 12.0
 
     def __init__(
-        self, media, titles, blocked=(), sites_off=(), sites_other=False
+        self,
+        media,
+        titles,
+        blocked=(),
+        sites_off=(),
+        sites_other=False,
+        upgrade=False,
     ):
         super().__init__()
+        self.upgrade = bool(upgrade)
+        self._upgrade_lock = threading.Lock()
         self.media = media
         self.guard = sites.SiteGuard(sites_off, sites_other, titles)
         self._stop = False
@@ -122,6 +133,8 @@ class MediaWorker(QThread):
             self._cache[np.key] = lines
             self.lyrics.emit(np.key, lines)
             self.translated.emit(np.key)
+            if not cache.cache_is_final(np.title, np.artist):
+                self._upgrade(np, lines)
             return
         try:
             lines, reliable = providers.fetch_lyrics_ex(
@@ -153,7 +166,57 @@ class MediaWorker(QThread):
                 translated_ok = False
             self.translated.emit(np.key)
         if translated_ok:
-            cache.cache_save(np.title, np.artist, np.duration, lines)
+            cache.cache_save(
+                np.title,
+                np.artist,
+                np.duration,
+                lines,
+                final=providers.has_words(lines),
+            )
+        self._upgrade(np, lines)
+
+    def _upgrade(self, np, lines):
+        if not self.upgrade or providers.has_words(lines):
+            return
+        better, settled = None, False
+        with self._upgrade_lock:
+            for attempt in range(self.UPGRADE_TRIES):
+                if self._stop or not self.upgrade:
+                    return
+                try:
+                    better, settled = providers.fetch_liriqo(
+                        np.title,
+                        np.artist,
+                        np.duration,
+                        want_words=bool(lines),
+                    )
+                except Exception:
+                    logger.warning("_upgrade failed", exc_info=True)
+                    better, settled = None, False
+                if settled:
+                    break
+                if attempt + 1 < self.UPGRADE_TRIES:
+                    self._sleep(self.UPGRADE_WAIT)
+        if not settled:
+            return
+        if not better:
+            cache.cache_save(
+                np.title, np.artist, np.duration, lines, final=True
+            )
+            return
+        self._cache[np.key] = better
+        self.lyrics.emit(np.key, better)
+        try:
+            providers.translate_lines(better)
+        except Exception:
+            logger.warning("_upgrade failed", exc_info=True)
+        self.translated.emit(np.key)
+        cache.cache_save(np.title, np.artist, np.duration, better, final=True)
+
+    def _sleep(self, seconds):
+        until = time.monotonic() + seconds
+        while not self._stop and time.monotonic() < until:
+            time.sleep(0.2)
 
     def stop(self):
         self._stop = True

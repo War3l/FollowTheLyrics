@@ -55,7 +55,17 @@ def cache_load(title: str, artist: str, duration: float = 0):
         return False, None
 
 
-def cache_save(title: str, artist: str, duration: float, lines):
+def cache_is_final(title: str, artist: str) -> bool:
+    try:
+        with open(_cache_path(title, artist), encoding="utf-8") as f:
+            return bool(json.load(f).get("final"))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def cache_save(
+    title: str, artist: str, duration: float, lines, final: bool = False
+):
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
         data = None
@@ -81,6 +91,7 @@ def cache_save(title: str, artist: str, duration: float, lines):
                 "artist": artist,
                 "duration": duration,
                 "saved": time.time(),
+                "final": final,
                 "lines": data,
             },
             indent=None,
