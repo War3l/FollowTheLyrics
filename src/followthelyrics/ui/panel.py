@@ -778,6 +778,14 @@ class Panel(QWidget):
             self.opt["translation"],
             "Sous la ligne, pour les chansons qui ne sont pas en français.",
         )
+        self.opt["liriqo"] = widgets.Toggle()
+        lyr.add_row(
+            "Plus de mot à mot (LiriQo)",
+            self.opt["liriqo"],
+            "Quand un morceau n'a pas de mot à mot, demande à LiriQo, un "
+            "service tiers qui regroupe d'autres sources. Le titre et "
+            "l'artiste lui sont envoyés.",
+        )
         later = button("−", "round")
         earlier = button("+", "round")
         reset = button("Remettre à zéro", "link")
