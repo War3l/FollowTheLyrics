@@ -14,7 +14,6 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QBrush
 from PyQt6.QtGui import QColor
 from PyQt6.QtGui import QFont
-from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtGui import QFontMetricsF
 from PyQt6.QtGui import QIcon
 from PyQt6.QtGui import QLinearGradient
@@ -27,6 +26,7 @@ from PyQt6.QtWidgets import QAbstractButton
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import QWidget
 
+from followthelyrics import fonts
 from followthelyrics import i18n
 from followthelyrics.system import hotkeys
 
@@ -39,6 +39,7 @@ UI = {"accent": QColor(DEFAULT_ACCENT), "ink": QColor(INK)}
 FONTS = (
     "Helvetica Neue",
     "Helvetica",
+    fonts.BUNDLED,
     "Arial",
     "Nimbus Sans",
     "Liberation Sans",
@@ -83,7 +84,7 @@ def qss(c):
 
 def font_family():
     if not _font["family"]:
-        have = set(QFontDatabase.families())
+        have = fonts.families()
         _font["family"] = next(
             (name for name in FONTS if name in have), QFont().defaultFamily()
         )
