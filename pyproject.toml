@@ -75,6 +75,9 @@ ban-relative-imports = "all"
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004", "S101"]
 "src/followthelyrics/__main__.py" = ["PLC0415"]
+"src/followthelyrics/i18n.py" = ["E501", "RUF001"]
+"src/followthelyrics/ui/panel.py" = ["E501"]
+"src/followthelyrics/ui/zone_editor.py" = ["E501"]
 "src/followthelyrics/desktop/windows/api.py" = ["N801", "N815"]
 
 [tool.mypy]

@@ -17,12 +17,13 @@ from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
+from followthelyrics import i18n
 from followthelyrics.config import games
 from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
 
-ACCENT = "#8B7CFF"
+ACCENT = "#F4F4F2"
 HANDLE = 9
 MIN_SIZE = 0.015
 UPPER = 0.5
@@ -106,7 +107,7 @@ class Canvas(QWidget):
                 return
             self.zones.append(
                 {
-                    "nom": f"Zone {len(self.zones) + 1}",
+                    "nom": i18n.tr("Zone {}").format(len(self.zones) + 1),
                     "x": fx,
                     "y": fy,
                     "l": 0.0,
@@ -207,18 +208,20 @@ class Canvas(QWidget):
             p.drawText(
                 QRectF(v.left(), v.top() + v.height() * 0.55, v.width(), 60),
                 Qt.AlignmentFlag.AlignCenter,
-                "Pas encore de capture de ce jeu.\nEn jeu, appuie sur Ctrl + "
-                "Alt + E : elle s'affichera ici.",
+                i18n.tr(
+                    "Pas encore de capture de ce jeu.\nEn jeu, appuie sur Ctrl + "
+                    "Alt + E : elle s'affichera ici."
+                ),
             )
         p.setPen(QPen(QColor(120, 200, 255, 190), 1.5, Qt.PenStyle.DashLine))
         y = v.top() + v.height() * UPPER
         p.drawLine(QPointF(v.left(), y), QPointF(v.right(), y))
-        p.setFont(widgets.ui_font(11, family="Segoe UI Variable Text"))
+        p.setFont(widgets.ui_font(11))
         p.setPen(QColor(150, 215, 255, 230))
         p.drawText(
             QRectF(v.left() + 8, y - 20, 400, 18),
             Qt.AlignmentFlag.AlignLeft,
-            "Les paroles s'affichent au-dessus de cette ligne",
+            i18n.tr("Les paroles s'affichent au-dessus de cette ligne"),
         )
         for i, z in enumerate(self.zones):
             r = self.rect_of(z)
@@ -261,7 +264,7 @@ class ZoneEditor(QWidget):
         self.key = None
         self.dirty = False
         self._loading = False
-        self.setWindowTitle("FollowTheLyrics — zones à éviter")
+        self.setWindowTitle(i18n.tr("FollowTheLyrics — zones à éviter"))
         self.setWindowIcon(widgets.make_icon())
         self.resize(1280, 820)
 
@@ -271,7 +274,7 @@ class ZoneEditor(QWidget):
 
         top = QHBoxLayout()
         top.setSpacing(10)
-        title = QLabel("Zones à éviter")
+        title = QLabel(i18n.tr("Zones à éviter"))
         title.setProperty("role", "title")
         top.addWidget(title)
         self.game = QComboBox()
@@ -280,11 +283,13 @@ class ZoneEditor(QWidget):
         top.addWidget(self.game)
         top.addStretch(1)
         self.name = QLineEdit()
-        self.name.setPlaceholderText("Nom de la zone (minimap, chat…)")
+        self.name.setPlaceholderText(i18n.tr("Nom de la zone (minimap, chat…)"))
         self.name.setFixedWidth(250)
         self.name.textEdited.connect(self.on_name)
         top.addWidget(self.name)
-        self.btn_del = self.button("Supprimer la zone", self.delete_zone)
+        self.btn_del = self.button(
+            i18n.tr("Supprimer la zone"), self.delete_zone
+        )
         top.addWidget(self.btn_del)
         root.addLayout(top)
 
@@ -296,17 +301,23 @@ class ZoneEditor(QWidget):
         bottom = QHBoxLayout()
         bottom.setSpacing(10)
         self.hint = QLabel(
-            "Clique et glisse pour dessiner une zone. Glisse une zone pour la "
-            "déplacer, "
-            "ses coins pour la redimensionner. Suppr l'efface."
+            i18n.tr(
+                "Clique et glisse pour dessiner une zone. Glisse une zone pour la "
+                "déplacer, "
+                "ses coins pour la redimensionner. Suppr l'efface."
+            )
         )
         self.hint.setProperty("role", "hint")
         self.hint.setWordWrap(True)
         bottom.addWidget(self.hint, 1)
-        bottom.addWidget(self.button("Zones d'origine", self.restore_defaults))
-        bottom.addWidget(self.button("Tout effacer", self.clear_all))
-        bottom.addWidget(self.button("Fermer", self.close))
-        self.btn_save = self.button("Enregistrer", self.save, main=True)
+        bottom.addWidget(
+            self.button(i18n.tr("Zones d'origine"), self.restore_defaults)
+        )
+        bottom.addWidget(self.button(i18n.tr("Tout effacer"), self.clear_all))
+        bottom.addWidget(self.button(i18n.tr("Fermer"), self.close))
+        self.btn_save = self.button(
+            i18n.tr("Enregistrer"), self.save, main=True
+        )
         self.btn_save.setMinimumWidth(140)
         bottom.addWidget(self.btn_save)
         root.addLayout(bottom)
@@ -320,50 +331,51 @@ class ZoneEditor(QWidget):
                 background: transparent;
             }}
             QLabel[role="title"] {{
-                font: 800 20px "Segoe UI Variable Display";
+                font: 400 24px "{widgets.font_family()}";
             }}
             QLabel[role="hint"] {{
                 color: {widgets.DIM};
-                font: 13px "Segoe UI Variable Text";
+                font: 13px "{widgets.font_family()}";
             }}
             QPushButton {{
                 background: {widgets.SOLID_FIELD};
                 color: {widgets.TEXT};
                 border: 1px solid {widgets.SOLID_BORDER};
-                padding: 9px 16px;
-                border-radius: 10px;
-                font: 600 13px "Segoe UI Variable Text";
+                padding: 8px 18px;
+                min-height: 18px;
+                border-radius: 17px;
+                font: 500 13px "{widgets.font_family()}";
             }}
             QPushButton:hover {{
                 border-color: {ACCENT};
             }}
             QPushButton:disabled {{
-                color: #565b6b;
+                color: #66666b;
             }}
             QPushButton[main="true"] {{
                 background: {ACCENT};
                 color: {widgets.BG};
                 border-color: {ACCENT};
-                font-weight: 800;
+                font-weight: 600;
             }}
             QPushButton[main="true"]:disabled {{
-                background: #2a2740;
-                color: #6b7080;
-                border-color: #2a2740;
+                background: #2e2e32;
+                color: #8a8a90;
+                border-color: #2e2e32;
             }}
             QLineEdit, QComboBox {{
                 background: {widgets.SOLID_FIELD};
                 color: {widgets.TEXT};
                 border: 1px solid {widgets.SOLID_BORDER};
-                border-radius: 10px;
-                padding: 8px 12px;
-                font: 14px "Segoe UI Variable Text";
+                border-radius: 17px;
+                padding: 8px 14px;
+                font: 14px "{widgets.font_family()}";
             }}
             QLineEdit:focus, QComboBox:focus {{
                 border-color: {ACCENT};
             }}
             QLineEdit:disabled {{
-                color: #565b6b;
+                color: #66666b;
             }}
             QComboBox::drop-down {{
                 border: none;
@@ -396,8 +408,10 @@ class ZoneEditor(QWidget):
             self.game.addItem(prof.get("nom", exe), exe)
         for exe in games.captured_games():
             if exe not in profiles.get("jeux", {}) and exe != "jeu_inconnu":
-                self.game.addItem(f"{games.pretty_name(exe)} (nouveau)", exe)
-        self.game.addItem("Autres jeux en plein écran", "jeu_inconnu")
+                self.game.addItem(
+                    i18n.tr("{} (nouveau)").format(games.pretty_name(exe)), exe
+                )
+        self.game.addItem(i18n.tr("Autres jeux en plein écran"), "jeu_inconnu")
         self._loading = False
         idx = max(0, self.game.findData(key)) if key else 0
         self.game.setCurrentIndex(idx)
@@ -426,7 +440,9 @@ class ZoneEditor(QWidget):
     def set_dirty(self, on):
         self.dirty = on
         self.btn_save.setEnabled(on)
-        self.btn_save.setText("Enregistrer" if on else "Enregistré")
+        self.btn_save.setText(
+            i18n.tr("Enregistrer") if on else i18n.tr("Enregistré")
+        )
 
     def on_changed(self):
         self.set_dirty(True)
@@ -464,7 +480,8 @@ class ZoneEditor(QWidget):
     def save(self):
         zones = [
             {
-                "nom": z.get("nom", "").strip() or f"Zone {n + 1}",
+                "nom": z.get("nom", "").strip()
+                or i18n.tr("Zone {}").format(n + 1),
                 "x": z["x"],
                 "y": z["y"],
                 "l": z["l"],
@@ -476,13 +493,15 @@ class ZoneEditor(QWidget):
             self.app.reload_profiles()
             self.set_dirty(False)
             self.hint.setText(
-                "Enregistré. Les paroles éviteront ces zones dès maintenant "
-                "(Ctrl + Alt + Z en jeu pour les revoir)."
+                i18n.tr(
+                    "Enregistré. Les paroles éviteront ces zones dès maintenant "
+                    "(Ctrl + Alt + Z en jeu pour les revoir)."
+                )
             )
             self.fill_games(self.key)
         else:
             self.hint.setText(
-                "Impossible d'enregistrer le fichier des profils."
+                i18n.tr("Impossible d'enregistrer le fichier des profils.")
             )
 
     def showEvent(self, e):

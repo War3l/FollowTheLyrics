@@ -1,6 +1,5 @@
 import logging
 
-from PyQt6.QtCore import QPointF
 from PyQt6.QtCore import QRectF
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import pyqtSignal
@@ -11,19 +10,17 @@ from PyQt6.QtGui import QLinearGradient
 from PyQt6.QtGui import QPainter
 from PyQt6.QtGui import QPainterPath
 from PyQt6.QtGui import QPen
-from PyQt6.QtGui import QRadialGradient
 from PyQt6.QtWidgets import QHBoxLayout
 from PyQt6.QtWidgets import QLabel
 from PyQt6.QtWidgets import QPushButton
 from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
+from followthelyrics import i18n
 from followthelyrics.config import settings
 from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
-
-ACCENT = QColor("#8B7CFF")
 
 STEPS = (
     (
@@ -53,17 +50,11 @@ class Badge(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        g = QLinearGradient(0, 0, 38, 38)
-        g.setColorAt(0, QColor("#5EE7FF"))
-        g.setColorAt(0.5, QColor("#8B7CFF"))
-        g.setColorAt(1, QColor("#FF6FB5"))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(g))
-        p.drawRoundedRect(QRectF(0, 0, 38, 38), 12, 12)
-        p.setPen(QColor(14, 12, 28))
-        p.setFont(
-            widgets.ui_font(17, QFont.Weight.Black, "Segoe UI Variable Display")
-        )
+        p.setPen(QPen(QColor(255, 255, 255, 80), 1))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(QRectF(0.5, 0.5, 37, 37))
+        p.setPen(QColor(widgets.TEXT))
+        p.setFont(widgets.ui_font(16, QFont.Weight.Normal))
         p.drawText(
             QRectF(0, 0, 38, 37), Qt.AlignmentFlag.AlignCenter, str(self.n)
         )
@@ -76,7 +67,7 @@ class Welcome(QWidget):
         super().__init__()
         self.startup = desktop_startup
         self.windowing = desktop.windowing
-        self.setWindowTitle("Bienvenue dans FollowTheLyrics")
+        self.setWindowTitle(i18n.tr("Bienvenue dans FollowTheLyrics"))
         self.setWindowIcon(widgets.make_icon())
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
@@ -111,12 +102,12 @@ class Welcome(QWidget):
         logo.setFixedSize(72, 72)
         lay.addWidget(logo, 0, Qt.AlignmentFlag.AlignHCenter)
         lay.addSpacing(18)
-        title = QLabel("Bienvenue dans FollowTheLyrics")
+        title = QLabel(i18n.tr("Bienvenue dans FollowTheLyrics"))
         title.setProperty("role", "title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
         lay.addSpacing(6)
-        sub = QLabel("Les paroles de ta musique, par-dessus tes jeux.")
+        sub = QLabel(i18n.tr("Les paroles de ta musique, par-dessus tes jeux."))
         sub.setProperty("role", "sub")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(sub)
@@ -128,9 +119,9 @@ class Welcome(QWidget):
             line.addWidget(Badge(i), 0, Qt.AlignmentFlag.AlignTop)
             box = QVBoxLayout()
             box.setSpacing(3)
-            h = QLabel(head)
+            h = QLabel(i18n.tr(head))
             h.setProperty("role", "head")
-            t = QLabel(text)
+            t = QLabel(i18n.tr(text))
             t.setProperty("role", "text")
             t.setWordWrap(True)
             box.addWidget(h)
@@ -144,14 +135,19 @@ class Welcome(QWidget):
         self.autostart.setChecked(desktop_startup.enabled())
         if self.offers_autostart:
             lay.addLayout(
-                self._option(f"Lancer avec {desktop.name}", self.autostart)
+                self._option(
+                    i18n.tr("Lancer avec {}").format(desktop.name),
+                    self.autostart,
+                )
             )
         self.shortcut = widgets.Toggle()
         self.shortcut.setChecked(self.offers_shortcut)
         if self.offers_shortcut:
             lay.addSpacing(28)
             lay.addLayout(
-                self._option("Créer un raccourci sur le bureau", self.shortcut)
+                self._option(
+                    i18n.tr("Créer un raccourci sur le bureau"), self.shortcut
+                )
             )
         self.setup = widgets.Toggle()
         self.setup.setChecked(self.can_install)
@@ -159,13 +155,15 @@ class Welcome(QWidget):
             lay.addSpacing(28)
             lay.addLayout(
                 self._option(
-                    "Installer sur ce PC (icône dans le menu Démarrer)",
+                    i18n.tr(
+                        "Installer sur ce PC (icône dans le menu Démarrer)"
+                    ),
                     self.setup,
                 )
             )
         lay.addStretch(1)
 
-        go = QPushButton("C'est parti")
+        go = QPushButton(i18n.tr("C'est parti"))
         go.setProperty("role", "go")
         go.setCursor(Qt.CursorShape.PointingHandCursor)
         go.setFixedHeight(50)
@@ -173,40 +171,38 @@ class Welcome(QWidget):
         go.clicked.connect(self.accept)
         lay.addWidget(go)
 
-        a = ACCENT.name()
+        a = widgets.DEFAULT_ACCENT.name()
         self.setStyleSheet(f"""
             QLabel {{
                 color: {widgets.TEXT};
                 background: transparent;
             }}
             QLabel[role="title"] {{
-                font: 800 27px "Segoe UI Variable Display";
+                font: 400 30px "{widgets.font_family()}";
             }}
             QLabel[role="sub"] {{
                 color: {widgets.DIM};
-                font: 15px "Segoe UI Variable Text";
+                font: 15px "{widgets.font_family()}";
             }}
             QLabel[role="head"] {{
-                font: 700 15px "Segoe UI Variable Text";
+                font: 600 15px "{widgets.font_family()}";
             }}
             QLabel[role="text"] {{
                 color: {widgets.DIM};
-                font: 13px "Segoe UI Variable Text";
+                font: 13px "{widgets.font_family()}";
             }}
             QLabel[role="opt"] {{
-                font: 600 14px "Segoe UI Variable Text";
+                font: 500 14px "{widgets.font_family()}";
             }}
             QPushButton[role="go"] {{
-                color: #0e0c1c;
+                color: {widgets.ink_for(widgets.DEFAULT_ACCENT).name()};
                 border: none;
-                border-radius: 14px;
-                font: 800 16px "Segoe UI Variable Display";
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #5EE7FF, stop:0.5 {a}, stop:1 #FF6FB5);
+                border-radius: 24px;
+                font: 600 15px "{widgets.font_family()}";
+                background: {a};
             }}
             QPushButton[role="go"]:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #8ff0ff, stop:0.5 #a99dff, stop:1 #ff94c8);
+                background: #ffffff;
             }}
             QPushButton[role="go"]:pressed {{
                 padding-top: 2px;
@@ -227,28 +223,20 @@ class Welcome(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = QRectF(self.rect()).adjusted(1, 1, -1, -1)
         path = QPainterPath()
-        path.addRoundedRect(r, 26, 26)
+        path.addRoundedRect(r, 30, 30)
         p.fillPath(path, QColor(widgets.BG))
         p.setClipPath(path)
-        for cx, cy, col, alpha in (
-            (0.1, 0.0, "#5EE7FF", 60),
-            (0.95, 0.05, "#FF6FB5", 46),
-            (0.5, 1.05, "#8B7CFF", 40),
-        ):
-            c = QColor(col)
-            g = QRadialGradient(
-                QPointF(r.width() * cx, r.height() * cy), r.width() * 0.62
-            )
-            g.setColorAt(0, QColor(c.red(), c.green(), c.blue(), alpha))
-            g.setColorAt(1, QColor(c.red(), c.green(), c.blue(), 0))
-            p.fillRect(r, QBrush(g))
+        sheen = QLinearGradient(0, 0, 0, r.height())
+        sheen.setColorAt(0, QColor(255, 255, 255, 26))
+        sheen.setColorAt(0.6, QColor(255, 255, 255, 0))
+        p.fillRect(r, QBrush(sheen))
         p.setPen(QPen(QColor(widgets.CARD_BORDER), 1))
         p.setBrush(QColor(widgets.FIELD))
         for t in (self.autostart, self.shortcut, self.setup):
             if t.isVisible():
                 y = t.geometry().center().y()
                 p.drawRoundedRect(
-                    QRectF(44, y - 22, r.width() - 86, 44), 12, 12
+                    QRectF(44, y - 22, r.width() - 86, 44), 22, 22
                 )
         p.setClipping(False)
         p.setBrush(Qt.BrushStyle.NoBrush)
