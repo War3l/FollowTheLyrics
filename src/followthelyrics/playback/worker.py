@@ -24,7 +24,7 @@ class MediaWorker(QThread):
     COVER_READS = (0.8, 3.5)
     MAX_DURATION = 20 * 60
     RETRY_DELAYS = (10, 30, 60, 120, 300)
-    UPGRADE_TRIES = 3
+    UPGRADE_TRIES = 2
     UPGRADE_WAIT = 12.0
 
     def __init__(
@@ -39,6 +39,8 @@ class MediaWorker(QThread):
         super().__init__()
         self.upgrade = bool(upgrade)
         self._upgrade_lock = threading.Lock()
+        self._upgrades = ThreadPoolExecutor(max_workers=1)
+        self._playing_key = None
         self.media = media
         self.guard = sites.SiteGuard(sites_off, sites_other, titles)
         self._stop = False
@@ -85,6 +87,7 @@ class MediaWorker(QThread):
             now = time.monotonic()
             if np and np.key != last_key:
                 last_key = np.key
+                self._playing_key = np.key
                 changed_at, cover_step = now, 0
                 if np.key in self._cache:
                     self.lyrics.emit(np.key, self._cache[np.key])
@@ -135,7 +138,7 @@ class MediaWorker(QThread):
             self.lyrics.emit(np.key, lines)
             self.translated.emit(np.key)
             if not cache.cache_is_final(np.title, np.artist):
-                self._upgrade(np, lines)
+                self._upgrades.submit(self._upgrade, np, lines)
             return
         try:
             lines, reliable = providers.fetch_lyrics_ex(
@@ -177,15 +180,19 @@ class MediaWorker(QThread):
                 lines,
                 final=providers.has_words(lines),
             )
-        self._upgrade(np, lines)
+        self._upgrades.submit(self._upgrade, np, lines)
 
     def _upgrade(self, np, lines):
         if not self.upgrade or providers.has_words(lines):
+            return
+        if np.key != self._playing_key:
             return
         better, settled = None, False
         with self._upgrade_lock:
             for attempt in range(self.UPGRADE_TRIES):
                 if self._stop or not self.upgrade:
+                    return
+                if np.key != self._playing_key:
                     return
                 try:
                     better, settled = providers.fetch_liriqo(
@@ -227,6 +234,7 @@ class MediaWorker(QThread):
 
     def stop(self):
         self._stop = True
+        self._upgrades.shutdown(wait=False, cancel_futures=True)
         self.wait(2000)
 
 
