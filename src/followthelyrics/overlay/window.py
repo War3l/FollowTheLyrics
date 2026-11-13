@@ -76,6 +76,7 @@ class Overlay(QWidget):
         self.rng = rng or random.Random()
         self.profile_key: str | None = "bureau"
         self.profile = profiles["bureau"]
+        self.elsewhere = False
         self.zones: list[QRectF] = []
         self.track = None
         self.track_key = None
@@ -130,12 +131,27 @@ class Overlay(QWidget):
         self.top_timer.start(500)
 
     def apply_geometry(self):
-        screen = QGuiApplication.primaryScreen()
+        screen = self.target_screen()
         if screen is None:
             return
         self.setGeometry(screen.geometry())
         self.update_zones()
         self.reset_layout()
+
+    def target_screen(self):
+        main = QGuiApplication.primaryScreen()
+        if self.elsewhere:
+            others = [s for s in QGuiApplication.screens() if s is not main]
+            if others:
+                return others[0]
+        return main
+
+    def set_elsewhere(self, wanted):
+        wanted = bool(wanted) and len(QGuiApplication.screens()) > 1
+        if wanted != self.elsewhere:
+            self.elsewhere = wanted
+            self.apply_geometry()
+        return self.elsewhere
 
     def reset_layout(self):
         self._layout_cache.clear()
@@ -165,7 +181,10 @@ class Overlay(QWidget):
     def update_zones(self):
         width, height = self.width(), self.height()
         self.zones = []
-        for z in self.profile.get("zones_interdites", []):
+        wanted = (
+            [] if self.elsewhere else self.profile.get("zones_interdites", [])
+        )
+        for z in wanted:
             with contextlib.suppress(KeyError, TypeError, ValueError):
                 self.zones.append(
                     QRectF(

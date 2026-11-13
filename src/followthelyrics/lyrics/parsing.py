@@ -20,6 +20,9 @@ _YRC_WORD = re.compile(r"\((\d+),(\d+),-?\d+\)")
 _CREDIT = re.compile(
     r"^\s*[一-鿿 ]{1,8}\s*[:：]"
     r"|纯音乐|作词|作曲|编曲|制作人|混音|母带|监制|出品"
+    r"|^\s*(artist|song|album|title|lyrics|lyricist|composer|producer|"
+    r"written by|lyrics by|composed by|produced by)\s*[:：]",
+    re.IGNORECASE,
 )
 
 _PUNCT = set(",.!?;:…")

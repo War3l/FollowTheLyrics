@@ -102,34 +102,47 @@ def _best(results, duration: float):
     return synced[0]
 
 
-def _lrclib(
+def _lrclib_strict(
     session: _Session, track: str, art: str, album: str, duration: float
 ) -> list[model.Line] | None:
-    if art:
-        params: dict[str, str | int] = {
-            "track_name": track,
-            "artist_name": art,
-        }
-        if album:
-            params["album_name"] = album
-        if duration > 0:
-            params["duration"] = round(duration)
-        hit = session.lrclib("get", params)
-        if isinstance(hit, dict) and hit.get("syncedLyrics"):
-            return parsing.parse_lrc(hit["syncedLyrics"])
-        hit = _best(
-            session.lrclib("search", {"track_name": track, "artist_name": art}),
-            duration,
-        )
-        if hit:
-            return parsing.parse_lrc(hit["syncedLyrics"])
+    if not art:
+        return None
+    params: dict[str, str | int] = {"track_name": track, "artist_name": art}
+    if album:
+        params["album_name"] = album
+    if duration > 0:
+        params["duration"] = round(duration)
+    hit = session.lrclib("get", params)
+    if isinstance(hit, dict) and hit.get("syncedLyrics"):
+        return parsing.parse_lrc(hit["syncedLyrics"])
+    hit = _best(
+        session.lrclib("search", {"track_name": track, "artist_name": art}),
+        duration,
+    )
+    return parsing.parse_lrc(hit["syncedLyrics"]) if hit else None
+
+
+def _lrclib_loose(
+    session: _Session, track: str, art: str, duration: float
+) -> list[model.Line] | None:
     hit = _best(
         session.lrclib("search", {"q": f"{art} {track}".strip()}), duration
     )
     return parsing.parse_lrc(hit["syncedLyrics"]) if hit else None
 
 
-def _netease(session: _Session, track: str, art: str, duration: float):
+def _same_artist(want: str, names: list[str]) -> bool:
+    tight = want.replace(" ", "")
+    if len(tight) < 2:
+        return False
+    for name in names:
+        other = name.replace(" ", "")
+        if len(other) >= 2 and (other in tight or tight in other):
+            return True
+    return False
+
+
+def _netease_search(session: _Session, track: str, art: str, duration: float):
     q = urllib.parse.quote(f"{track} {art}".strip())
     res = session.get_json(
         f"{NE_API}/search/get?s={q}&type=1&limit=10", NE_HEADERS
@@ -149,30 +162,35 @@ def _netease(session: _Session, track: str, art: str, duration: float):
         ) / max(len(got_t), len(want_t)) > 0.6
         if not (exact or close):
             continue
-        arts = [
-            parsing.simplify(a.get("name") or "")
-            for a in s.get("artists") or []
-        ]
-        art_ok = bool(want_a) and any(
-            a and (a in want_a or want_a in a) for a in arts
+        art_ok = _same_artist(
+            want_a,
+            [
+                parsing.simplify(a.get("name") or "")
+                for a in s.get("artists") or []
+            ],
         )
         d = (s.get("duration") or 0) / 1000
         diff = abs(d - duration) if duration > 0 and d > 0 else None
         if diff is not None and diff > 6:
             continue
         dur_ok = diff is not None and diff <= 3
-        if not (art_ok or dur_ok):
+        if not (art_ok or (exact and dur_ok)):
             continue
         score = (
             (2 if exact else 1) + (3 if art_ok else 0) + (2 if dur_ok else 0)
         )
         if _VERSION.search(name) and not asked_version:
             score -= 4
-        scored.append((score, s["id"]))
-    scored.sort(reverse=True)
+        scored.append(
+            (score, -(diff if diff is not None else 6.0), art_ok, s["id"])
+        )
+    scored.sort(key=lambda hit: hit[:2], reverse=True)
+    return [(art_ok, sid) for _, _, art_ok, sid in scored]
 
+
+def _netease_lyrics(session: _Session, ids):
     line_level = None
-    for _, sid in scored[:3]:
+    for sid in ids:
         ly = (
             session.get_json(
                 f"{NE_API}/song/lyric/v1?id={sid}&lv=1&yv=1&tv=-1", NE_HEADERS
@@ -191,23 +209,37 @@ def _netease(session: _Session, track: str, art: str, duration: float):
     return None, line_level
 
 
+def _netease_pass(session: _Session, found, sure: bool, limit: int):
+    fallback = None
+    for hits in found:
+        ids = [sid for art_ok, sid in hits if art_ok == sure][:limit]
+        words, ne_lines = _netease_lyrics(session, ids)
+        if words:
+            return parsing.add_pauses(words), None
+        fallback = fallback or ne_lines
+    return None, fallback
+
+
 def _fetch(
     session: _Session, title: str, artist: str, album: str, duration: float
 ) -> list[model.Line] | None:
-    fallback = None
-    lines = None
-    for track, art in parsing.candidates(title, artist):
-        words, ne_lines = _netease(session, track, art, duration)
-        if words:
-            lines = parsing.add_pauses(words)
+    wanted = parsing.candidates(title, artist)
+    found = [
+        _netease_search(session, track, art, duration) for track, art in wanted
+    ]
+    lines, fallback = _netease_pass(session, found, True, 3)
+    for track, art in wanted:
+        if lines:
             break
-        fallback = fallback or ne_lines
-    if lines is None:
-        for track, art in parsing.candidates(title, artist):
-            lines = _lrclib(session, track, art, album, duration)
-            if lines:
-                break
+        lines = _lrclib_strict(session, track, art, album, duration)
     lines = lines or fallback
+    if lines is None:
+        lines, fallback = _netease_pass(session, found, False, 2)
+        lines = lines or fallback
+    for track, art in wanted:
+        if lines:
+            break
+        lines = _lrclib_loose(session, track, art, duration)
     return (
         parsing.split_adlibs(parsing.extract_singers(lines, artist))
         if lines

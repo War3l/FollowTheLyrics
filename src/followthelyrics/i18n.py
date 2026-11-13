@@ -953,6 +953,11 @@ TEXTS: dict[str, tuple[str, str, str]] = {
         "Entra en el juego y luego ",
         "请进入游戏，然后 ",
     ),
+    "Elles s'affichent sur ton autre écran. ": (
+        "They are shown on your other screen. ",
+        "Se muestran en tu otra pantalla. ",
+        "歌词会显示在你的另一块屏幕上。",
+    ),
     "FollowTheLyrics : jeu en plein écran exclusif": (
         "FollowTheLyrics: game in exclusive fullscreen",
         "FollowTheLyrics: juego en pantalla completa exclusiva",
