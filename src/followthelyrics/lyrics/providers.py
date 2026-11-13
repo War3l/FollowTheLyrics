@@ -231,7 +231,7 @@ def fetch_lyrics_ex(
 
 LIRIQO_API = "https://api.liriqo-alfarrizi.my.id/v1/lyrics"
 
-LIRIQO_TIMEOUT = 25
+LIRIQO_TIMEOUT = 20
 
 _WORD_LEVELS = ("syllable", "word", "character")
 
