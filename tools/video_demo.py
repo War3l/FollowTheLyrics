@@ -18,6 +18,7 @@ from PyQt6.QtGui import QPolygonF
 from PyQt6.QtGui import QRadialGradient
 from PyQt6.QtWidgets import QApplication
 
+from followthelyrics import desktop
 from followthelyrics.config import games
 from followthelyrics.config import settings
 from followthelyrics.lyrics import demo_song
@@ -34,6 +35,7 @@ fake = [0.0]
 o = window.Overlay(
     dict(settings.DEFAULTS, scale=1.45),
     games.DEFAULT_PROFILES,
+    desktop.current().windowing,
     clock=lambda: fake[0],
     rng=random.Random(11),
 )

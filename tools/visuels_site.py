@@ -14,6 +14,7 @@ from PyQt6.QtGui import QPainter
 from PyQt6.QtGui import QRadialGradient
 from PyQt6.QtWidgets import QApplication
 
+from followthelyrics import desktop
 from followthelyrics.config import games
 from followthelyrics.config import settings
 from followthelyrics.lyrics import demo_song
@@ -72,6 +73,7 @@ def make(name, at, colors, seed=3, track=None, lines=None, key=None, **cfg):
     o = window.Overlay(
         dict(settings.DEFAULTS, card=False, **cfg),
         games.DEFAULT_PROFILES,
+        desktop.current().windowing,
         clock=lambda: fake[0],
         rng=random.Random(seed),
     )

@@ -1,15 +1,14 @@
-import ctypes
 import logging
-import os
-import sys
 
 from PyQt6.QtCore import QPointF
 from PyQt6.QtCore import QRectF
 from PyQt6.QtCore import QSize
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QBrush
 from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtGui import QFont
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtGui import QFontMetricsF
@@ -35,12 +34,16 @@ from PyQt6.QtWidgets import QWidget
 
 from followthelyrics import version
 from followthelyrics.config import settings
+from followthelyrics.desktop import ports
 from followthelyrics.playback import sites
 from followthelyrics.system import hotkeys
-from followthelyrics.system import install
 from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
+
+TITLE_BAR = ports.TitleBarColors(
+    caption="#0d0e15", border="#2b2c34", text="#eceef4"
+)
 
 SITE_URL = "https://war3l.github.io/FollowTheLyrics/"
 
@@ -229,7 +232,8 @@ class Panel(QWidget):
         self.setMinimumSize(1020, 660)
         self._accent_name = None
         self._cover_src = None
-        self._can_glass = sys.getwindowsversion().build >= 22621
+        self._windowing = app.desktop.windowing
+        self._can_glass = self._windowing.supports_backdrop()
         self._glass_ok = False
         if self._can_glass:
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -912,7 +916,8 @@ class Panel(QWidget):
         t = QLabel(
             "Mets tes jeux en « fenêtré sans bordure » dans leurs options "
             "vidéo. En plein écran exclusif, "
-            "Windows n'affiche aucune fenêtre par-dessus le jeu."
+            f"{self.app.desktop.name} n'affiche aucune fenêtre par-dessus le "
+            "jeu."
         )
         t.setProperty("role", "hint")
         t.setWordWrap(True)
@@ -928,7 +933,7 @@ class Panel(QWidget):
         )
         self.key_buttons = {}
         for name, label, _default in hotkeys.ACTIONS:
-            b = widgets.HotkeyButton()
+            b = widgets.HotkeyButton(self.app.hotkeys)
             b.started.connect(self.app.hotkeys.pause)
             b.ended.connect(self.app.hotkeys.resume)
             b.captured.connect(
@@ -942,6 +947,14 @@ class Panel(QWidget):
         self.key_msg.hide()
         reset = button("Remettre les raccourcis d'origine")
         reset.clicked.connect(self.on_keys_reset)
+        if not self.app.hotkeys.available:
+            unsupported = QLabel(
+                "Les raccourcis clavier globaux ne sont pas encore "
+                f"disponibles sur {self.app.desktop.name}."
+            )
+            unsupported.setProperty("role", "hint")
+            unsupported.setWordWrap(True)
+            card.add(unsupported)
         return [card, self.key_msg, hbox(reset)]
 
     def on_key_captured(self, name, combo):
@@ -949,7 +962,7 @@ class Panel(QWidget):
         self._key_note = (
             (
                 f"« {hotkeys.LABELS[stolen]} » utilisait déjà "
-                f"{hotkeys.pretty(combo)} : "
+                f"{self.app.hotkeys.pretty(combo)} : "
                 "ce raccourci lui a été retiré."
             )
             if stolen
@@ -972,16 +985,17 @@ class Panel(QWidget):
         notes = [self._key_note] if self._key_note else []
         if failed:
             notes.append(
-                "Windows refuse "
-                + ", ".join(hotkeys.pretty(keys[n]) for n in failed)
+                f"{self.app.desktop.name} refuse "
+                + ", ".join(self.app.hotkeys.pretty(keys[n]) for n in failed)
                 + " : cette combinaison est déjà prise par une autre appli. "
                 "Choisis-en une autre."
             )
         self.key_msg.setText("\n".join(notes))
         self.key_msg.setVisible(bool(notes))
+        pretty = self.app.hotkeys.pretty
         capture = keys.get("capture", "")
         self.step_labels[0].setText(
-            f"Dans le jeu, appuie sur {hotkeys.pretty(capture)} : une capture "
+            f"Dans le jeu, appuie sur {pretty(capture)} : une capture "
             f"est prise, sans les paroles."
             if capture
             else "Donne d'abord un raccourci à « Capturer le jeu » dans la "
@@ -990,26 +1004,25 @@ class Panel(QWidget):
         up, down = keys.get("earlier", ""), keys.get("later", "")
         tip = "Paroles en retard : appuie sur +. En avance : appuie sur −."
         if up and down:
-            tip += f"\nEn jeu : {hotkeys.pretty(up)} et {hotkeys.pretty(down)}."
+            tip += f"\nEn jeu : {pretty(up)} et {pretty(down)}."
         self.offset_row.hint_label.setText(tip)
 
     def build_general(self):
-        start = Card("Démarrage")
+        cards = []
         self.autostart = widgets.Toggle()
-        self.autostart.setChecked(settings.autostart_enabled())
+        self.autostart.setChecked(self.app.startup.enabled())
         self.autostart.toggled.connect(
-            lambda v: (
-                None if self._building else settings.set_autostart(bool(v))
+            lambda v: None if self._building else self.app.startup.set(bool(v))
+        )
+        if self.app.startup.supports_autostart:
+            start = Card("Démarrage")
+            start.add_row(
+                f"Lancer avec {self.app.desktop.name}",
+                self.autostart,
+                "Démarre tout seul à l'allumage du PC, discrètement près de "
+                "l'heure.",
             )
-        )
-        start.add_row(
-            "Lancer avec Windows",
-            self.autostart,
-            "Démarre tout seul à l'allumage du PC, discrètement près de "
-            "l'heure.",
-        )
-
-        cards = [start]
+            cards.append(start)
         if self._can_glass:
             look = Card("Apparence")
             self.glass = widgets.Toggle()
@@ -1023,16 +1036,17 @@ class Panel(QWidget):
                 "Laisse voir, flouté, ce qu'il y a derrière cette fenêtre.",
             )
             cards.append(look)
-        if settings.FROZEN:
+        installation = self.app.installation
+        if settings.FROZEN and installation is not None:
             setup = Card("Installation")
-            if install.running_installed():
+            if installation.running_installed():
                 b = button("Désinstaller")
                 b.clicked.connect(self.app.uninstall)
                 setup.add_row(
                     "Installée sur ce PC",
                     b,
                     "L'appli est dans le menu Démarrer et dans les "
-                    "applications installées de Windows.",
+                    f"applications installées de {self.app.desktop.name}.",
                 )
             else:
                 b = button("Installer")
@@ -1057,7 +1071,7 @@ class Panel(QWidget):
 
         about = Card("À propos")
         site = button("Ouvrir le site")
-        site.clicked.connect(lambda: os.startfile(SITE_URL))
+        site.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(SITE_URL)))
         about.add_row(
             "FollowTheLyrics",
             site,
@@ -1170,7 +1184,7 @@ class Panel(QWidget):
             for k, t in self.opt.items():
                 t.setChecked(bool(cfg.get(k, True)))
             self.demo.setChecked(self.app.demo)
-            self.autostart.setChecked(settings.autostart_enabled())
+            self.autostart.setChecked(self.app.startup.enabled())
             self.master.setChecked(not self.app.overlay.user_hidden)
             self.master_state.setText(
                 "Affichées" if self.master.isChecked() else "Masquées"
@@ -1612,16 +1626,11 @@ class Panel(QWidget):
 
     def showEvent(self, e):
         super().showEvent(e)
-        try:
-            val = ctypes.c_int(1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val)
-            )
-        except Exception:
-            logger.debug("showEvent failed", exc_info=True)
+        window = int(self.winId())
+        self._windowing.dark_title_bar(window)
         if self._can_glass and not self._glass_ok:
-            self._glass_ok = widgets.enable_backdrop(self.winId())
-        widgets.dark_caption(self.winId())
+            self._glass_ok = self._windowing.enable_backdrop(window)
+        self._windowing.color_title_bar(window, TITLE_BAR)
         self.refresh()
 
     def closeEvent(self, e):

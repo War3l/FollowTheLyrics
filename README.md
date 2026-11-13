@@ -103,6 +103,7 @@ Vérifications, lancées aussi par la CI à chaque pull request :
 ruff check src tests tools
 ruff format --check src tests tools
 mypy
+mypy --platform linux
 pytest
 ```
 
@@ -131,10 +132,11 @@ Le détail (rôle de chaque module, flux de données, règles de dépendance) es
 | `app.py` | assemble l'appli : overlay, panneau, icône de la barre des tâches, minuteries |
 | `config/` | réglages (`config.json`) et profils de jeux avec leurs zones interdites |
 | `lyrics/` | modèle d'une ligne, lecture des formats LRC et YRC, sources de paroles, cache, analyse (refrains, mots forts) |
-| `playback/` | musique en cours (Windows), reconnaissance du site du navigateur, détection des beats, fil de travail |
+| `desktop/` | tout ce qui touche au système : contrats (`ports.py`), backend Windows, backend Qt pour Linux et macOS |
+| `playback/` | morceau en cours, reconnaissance du site du navigateur, détection des beats, fil de travail |
 | `overlay/` | la fenêtre des paroles et son rendu : animations, couleurs, effets, easter eggs |
 | `ui/` | panneau de contrôle, briques animées, écran de bienvenue, éditeur de zones |
-| `system/` | appels Windows, démarrage du `.exe`, installation, mises à jour, raccourcis clavier |
+| `system/` | démarrage auto, installation, mises à jour, raccourcis clavier, au-dessus des ports de `desktop/` |
 | `tests/` | tests pytest, sans Windows ni réseau |
 | `tools/` | fabrication du `.exe`, vidéo et visuels du site, petits scripts de diagnostic |
 | `.github/workflows/` | `ci.yml` (lint, types, tests, `.exe` de test) et `release.yml` (publication) |

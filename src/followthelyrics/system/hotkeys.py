@@ -1,11 +1,5 @@
-import ctypes
-import logging
-from ctypes import wintypes
-
-from PyQt6.QtCore import QThread
+from PyQt6.QtCore import QObject
 from PyQt6.QtCore import pyqtSignal
-
-logger = logging.getLogger(__name__)
 
 ACTIONS = [
     ("toggle", "Afficher / masquer les paroles", "Ctrl+Alt+L"),
@@ -20,7 +14,7 @@ ACTIONS = [
 DEFAULTS = {name: combo for name, _label, combo in ACTIONS}
 LABELS = {name: label for name, label, _combo in ACTIONS}
 
-MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_NOREPEAT = 0x0001, 0x0002, 0x0004, 0x4000
+MOD_ALT, MOD_CTRL, MOD_SHIFT = 0x0001, 0x0002, 0x0004
 MODS = (("Ctrl", MOD_CTRL), ("Alt", MOD_ALT), ("Shift", MOD_SHIFT))
 MODIFIER_VKS = {
     0x10,
@@ -133,27 +127,26 @@ def allowed(mods, vk):
     return bool(mods & (MOD_CTRL | MOD_ALT)) or is_function_key(vk)
 
 
-def key_names(combo):
+def key_names(combo, char_of=None):
     out = []
     for raw in (combo or "").split("+"):
         part = raw.strip()
         if not part:
             continue
-        if part.upper().startswith("VK_"):
+        if char_of is not None and part.upper().startswith("VK_"):
             try:
-                ch = (
-                    ctypes.windll.user32.MapVirtualKeyW(int(part[3:], 16), 2)
-                    & 0x7FFF
-                )
-                part = chr(ch).upper() if ch > 32 else part
-            except (OSError, AttributeError, ValueError):
-                logger.debug("key_names failed", exc_info=True)
+                char = char_of(int(part[3:], 16))
+            except ValueError:
+                char = None
+            part = char or part
         out.append(PRETTY.get(part, part))
     return out
 
 
-def pretty(combo):
-    return " + ".join(key_names(combo)) if combo else "aucun raccourci"
+def pretty(combo, char_of=None):
+    if not combo:
+        return "aucun raccourci"
+    return " + ".join(key_names(combo, char_of))
 
 
 def normalize(saved):
@@ -172,70 +165,64 @@ def normalize(saved):
     return out
 
 
-class Hotkeys(QThread):
+def bindings_of(combos):
+    out = {}
+    for name, _label, _default in ACTIONS:
+        parsed = parse(combos.get(name, ""))
+        if parsed:
+            out[name] = parsed
+    return out
+
+
+class Hotkeys(QObject):
     pressed = pyqtSignal(str)
     failed = pyqtSignal(list)
-    WM_HOTKEY, WM_QUIT, WM_RELOAD = 0x0312, 0x0012, 0x8001
 
-    def __init__(self, bindings):
+    def __init__(self, backend, keyboard, combos):
         super().__init__()
-        self.bindings = dict(bindings)
-        self.paused = False
-        self.tid = 0
+        self._backend = backend
+        self.keyboard = keyboard
+        self._combos = dict(combos)
+        self._paused = False
 
-    def set_bindings(self, bindings):
-        self.bindings = dict(bindings)
-        self._reload()
+    @property
+    def available(self):
+        return self._backend is not None
 
-    def pause(self):
-        self.paused = True
-        self._reload()
-
-    def resume(self):
-        self.paused = False
-        self._reload()
-
-    def _reload(self):
-        if self.tid:
-            ctypes.windll.user32.PostThreadMessageW(
-                self.tid, self.WM_RELOAD, 0, 0
-            )
+    def start(self):
+        if self._backend is None:
+            return
+        self._backend.start(self.pressed.emit, self._report_failed)
+        self._apply()
 
     def stop(self):
-        if self.tid:
-            ctypes.windll.user32.PostThreadMessageW(
-                self.tid, self.WM_QUIT, 0, 0
+        if self._backend is not None:
+            self._backend.stop()
+
+    def set_bindings(self, combos):
+        self._combos = dict(combos)
+        self._apply()
+
+    def pause(self):
+        self._paused = True
+        self._apply()
+
+    def resume(self):
+        self._paused = False
+        self._apply()
+
+    def key_names(self, combo):
+        return key_names(combo, self.keyboard.key_char)
+
+    def pretty(self, combo):
+        return pretty(combo, self.keyboard.key_char)
+
+    def _apply(self):
+        if self._backend is not None:
+            self._backend.bind(
+                {} if self._paused else bindings_of(self._combos)
             )
-        self.wait(1000)
 
-    def _register(self):
-        user32 = ctypes.windll.user32
-        ids, bad = {}, []
-        if not self.paused:
-            for i, (name, _label, _default) in enumerate(ACTIONS):
-                parsed = parse(self.bindings.get(name, ""))
-                if not parsed:
-                    continue
-                mods, vk = parsed
-                if user32.RegisterHotKey(None, i + 1, mods | MOD_NOREPEAT, vk):
-                    ids[i + 1] = name
-                else:
-                    bad.append(name)
-            self.failed.emit(bad)
-        return ids
-
-    def run(self):
-        user32 = ctypes.windll.user32
-        msg = wintypes.MSG()
-        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
-        self.tid = ctypes.windll.kernel32.GetCurrentThreadId()
-        ids = self._register()
-        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            if msg.message == self.WM_HOTKEY and msg.wParam in ids:
-                self.pressed.emit(ids[msg.wParam])
-            elif msg.message == self.WM_RELOAD:
-                for hid in ids:
-                    user32.UnregisterHotKey(None, hid)
-                ids = self._register()
-        for hid in ids:
-            user32.UnregisterHotKey(None, hid)
+    def _report_failed(self, names):
+        if not self._paused:
+            self.failed.emit(list(names))

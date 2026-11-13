@@ -7,11 +7,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-try:
-    import pyaudiowpatch as pyaudio
-except ImportError:
-    pyaudio = None
-
 BLOCK = 1024
 
 
@@ -42,48 +37,21 @@ class BeatDetector:
         return strength
 
 
-class _Capture:
-    def __init__(self, pa, dev):
-        self.dev = dev
-        self.ch = max(1, min(2, int(dev["maxInputChannels"])))
-        self.rate = int(dev["defaultSampleRate"])
-        self.stream = pa.open(
-            format=pyaudio.paFloat32,
-            channels=self.ch,
-            rate=self.rate,
-            input=True,
-            input_device_index=dev["index"],
-            frames_per_buffer=BLOCK,
-        )
+SILENCE_LEVEL = 0.002
+QUIET_BEFORE_SCAN = 3.0
+FIRST_SCAN_WAIT = 8.0
+MAX_SCAN_WAIT = 120.0
 
-    def read(self):
-        try:
-            avail = self.stream.get_read_available()
-            if avail <= 0:
-                return np.zeros(0, dtype=np.float32)
-            a = np.frombuffer(
-                self.stream.read(avail, exception_on_overflow=False),
-                dtype=np.float32,
-            )
-        except Exception:
-            logger.debug("read failed", exc_info=True)
-            return np.zeros(0, dtype=np.float32)
-        if self.ch == 2:
-            a = a[: a.size - a.size % 2].reshape(-1, 2).mean(axis=1)
-        return a
 
-    def close(self):
-        try:
-            self.stream.stop_stream()
-            self.stream.close()
-        except Exception:
-            logger.debug("close failed", exc_info=True)
+def _silence():
+    return np.zeros(0, dtype=np.float32)
 
 
 class AudioBeats:
-    def __init__(self, on_beat):
+    def __init__(self, backend, on_beat):
+        self.backend = backend
         self.on_beat = on_beat
-        self.enabled = pyaudio is not None
+        self.enabled = backend is not None
         self.music_playing = False
         self.device_name = ""
         self._stop = threading.Event()
@@ -98,102 +66,102 @@ class AudioBeats:
         if self._thread.is_alive():
             self._thread.join(timeout=1.5)
 
-    def _measure(self, pa, dev, seconds=0.3):
+    def _measure(self, loopback, device, seconds=0.3):
         try:
-            cap = _Capture(pa, dev)
+            capture = loopback.capture(device)
         except Exception:
             logger.debug("_measure failed", exc_info=True)
             return 0.0
-        total, n = 0.0, 0
+        total, count = 0.0, 0
         end = time.monotonic() + seconds
         while time.monotonic() < end and not self._stop.is_set():
-            a = cap.read()
-            total += float(np.abs(a).sum())
-            n += a.size
+            samples = capture.read()
+            total += float(np.abs(samples).sum())
+            count += samples.size
             time.sleep(0.02)
-        cap.close()
-        return total / n if n else 0.0
+        capture.close()
+        return total / count if count else 0.0
+
+    def _loudest(self, loopback, devices, current):
+        best, best_level = current, 0.0
+        for device in devices:
+            if self._stop.is_set():
+                break
+            level = self._measure(loopback, device)
+            if level > best_level:
+                best, best_level = device, level
+        return best, best_level
 
     def _run(self):
         try:
-            pa = pyaudio.PyAudio()
-            wasapi = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
-            default_name = pa.get_device_info_by_index(
-                wasapi["defaultOutputDevice"]
-            )["name"]
-            devices = list(pa.get_loopback_device_info_generator())
+            loopback = self.backend.open()
         except Exception:
             logger.warning("_run failed", exc_info=True)
             self.enabled = False
             return
+        try:
+            self._listen(loopback)
+        except Exception:
+            logger.warning("_run failed", exc_info=True)
+            self.enabled = False
+        finally:
+            loopback.close()
+
+    def _listen(self, loopback):
+        devices = loopback.devices()
         if not devices:
             self.enabled = False
             return
-        current = next(
-            (d for d in devices if d["name"].startswith(default_name)),
-            devices[0],
-        )
-        cap = None
+        current = loopback.preferred(devices)
+        capture = None
         try:
-            cap = _Capture(pa, current)
-            det = BeatDetector(cap.rate)
-            self.device_name = current["name"]
-            buf = np.zeros(0, dtype=np.float32)
+            capture = loopback.capture(current)
+            detector = BeatDetector(capture.rate)
+            self.device_name = current.name
+            buf = _silence()
             last_sound = time.monotonic()
             last_check = last_scan = 0.0
-            scan_wait = 8.0
+            scan_wait = FIRST_SCAN_WAIT
             while not self._stop.is_set():
-                a = cap.read()
+                samples = capture.read()
                 now = time.monotonic()
-                if a.size:
-                    if float(np.abs(a).mean()) > 0.002:
+                if samples.size:
+                    if float(np.abs(samples).mean()) > SILENCE_LEVEL:
                         last_sound = now
-                        scan_wait = 8.0
-                    buf = np.concatenate([buf, a])
+                        scan_wait = FIRST_SCAN_WAIT
+                    buf = np.concatenate([buf, samples])
                     while buf.size >= BLOCK:
                         block, buf = buf[:BLOCK], buf[BLOCK:]
-                        k = det.feed(block, now)
-                        if k > 0:
+                        strength = detector.feed(block, now)
+                        if strength > 0:
                             try:
-                                self.on_beat(k)
+                                self.on_beat(strength)
                             except Exception:
-                                logger.debug("_run failed", exc_info=True)
+                                logger.debug("_listen failed", exc_info=True)
                 else:
                     time.sleep(0.01)
                 if now - last_check < 0.5:
                     continue
                 last_check = now
                 if (
-                    now - last_sound > 3.0
+                    now - last_sound > QUIET_BEFORE_SCAN
                     and self.music_playing
                     and now - last_scan > scan_wait
                 ):
                     last_scan = now
-                    cap.close()
-                    best, best_lvl = current, 0.0
-                    for d in devices:
-                        if self._stop.is_set():
-                            break
-                        lvl = self._measure(pa, d)
-                        if lvl > best_lvl:
-                            best, best_lvl = d, lvl
-                    if best_lvl > 0.002:
+                    capture.close()
+                    capture = None
+                    best, level = self._loudest(loopback, devices, current)
+                    if level > SILENCE_LEVEL:
                         current = best
-                        scan_wait = 8.0
+                        scan_wait = FIRST_SCAN_WAIT
                     else:
-                        scan_wait = min(120.0, scan_wait * 2)
-                    cap = _Capture(pa, current)
-                    det = BeatDetector(cap.rate)
-                    self.device_name = current["name"]
-                    buf = np.zeros(0, dtype=np.float32)
+                        scan_wait = min(MAX_SCAN_WAIT, scan_wait * 2)
+                    capture = loopback.capture(current)
+                    detector = BeatDetector(capture.rate)
+                    self.device_name = current.name
+                    buf = _silence()
                     last_sound = time.monotonic()
-        except Exception:
-            logger.warning("_run failed", exc_info=True)
-            self.enabled = False
         finally:
-            if cap:
-                cap.close()
-            try:
-                pa.terminate()
-            except Exception:
-                logger.debug("_run failed", exc_info=True)
+            if capture is not None:
+                capture.close()

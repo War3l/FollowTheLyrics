@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -24,9 +23,12 @@ class MediaWorker(QThread):
     MAX_DURATION = 20 * 60
     RETRY_DELAYS = (10, 30, 60, 120, 300)
 
-    def __init__(self, blocked=(), sites_off=(), sites_other=False):
+    def __init__(
+        self, media, titles, blocked=(), sites_off=(), sites_other=False
+    ):
         super().__init__()
-        self.guard = sites.SiteGuard(sites_off, sites_other)
+        self.media = media
+        self.guard = sites.SiteGuard(sites_off, sites_other, titles)
         self._stop = False
         self._cache = {}
         self._retry = {}
@@ -34,10 +36,19 @@ class MediaWorker(QThread):
         self.blocked = set(blocked)
 
     def run(self):
-        from followthelyrics.playback import media
+        if self.media is None:
+            return
+        try:
+            session = self.media.open()
+        except Exception:
+            logger.warning("run failed", exc_info=True)
+            return
+        try:
+            self._poll(session)
+        finally:
+            session.close()
 
-        loop = asyncio.new_event_loop()
-        manager = loop.run_until_complete(media.get_manager())
+    def _poll(self, session):
         pool = ThreadPoolExecutor(max_workers=2)
         last_key = None
         last_sources = None
@@ -46,9 +57,7 @@ class MediaWorker(QThread):
         while not self._stop:
             blocked = frozenset(self.blocked)
             try:
-                np = loop.run_until_complete(
-                    media.get_now_playing(manager, blocked, self.guard)
-                )
+                np = session.now_playing(blocked, self.guard)
             except Exception:
                 logger.debug("run failed", exc_info=True)
                 np = None
@@ -57,7 +66,7 @@ class MediaWorker(QThread):
             if seen != last_seen:
                 last_seen = seen
                 self.browsers.emit(seen)
-            src = media.list_sources(manager)
+            src = session.sources()
             if src != last_sources:
                 last_sources = src
                 self.sources.emit(src)
@@ -87,9 +96,7 @@ class MediaWorker(QThread):
             ):
                 cover_step += 1
                 try:
-                    data = loop.run_until_complete(
-                        media.get_thumbnail(manager, blocked, self.guard)
-                    )
+                    data = session.cover(blocked, self.guard)
                 except Exception:
                     logger.debug("run failed", exc_info=True)
                     data = None

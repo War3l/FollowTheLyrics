@@ -1,6 +1,9 @@
 import ctypes
 import functools
+import sys
 from ctypes import wintypes
+
+assert sys.platform == "win32"
 
 
 class MonitorInfo(ctypes.Structure):
