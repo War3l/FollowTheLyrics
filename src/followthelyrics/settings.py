@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 
 from PyQt6.QtCore import QFile
 from PyQt6.QtCore import QStandardPaths
@@ -264,9 +265,21 @@ def load_config():
     return cfg
 
 
+def write_json(path, data, indent=2):
+    folder = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
+
+
 def save_config(cfg):
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        write_json(CONFIG_PATH, cfg)
     except OSError:
         logger.warning("save_config failed", exc_info=True)

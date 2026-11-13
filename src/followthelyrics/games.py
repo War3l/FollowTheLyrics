@@ -243,8 +243,7 @@ DEFAULT_PROFILES = {
 def load_profiles():
     if not os.path.exists(PROFILES_PATH):
         try:
-            with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-                json.dump(DEFAULT_PROFILES, f, indent=2, ensure_ascii=False)
+            settings.write_json(PROFILES_PATH, DEFAULT_PROFILES)
         except OSError:
             logger.warning("load_profiles failed", exc_info=True)
         return DEFAULT_PROFILES
@@ -272,8 +271,7 @@ def load_profiles():
             changed = True
     if changed:
         try:
-            with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            settings.write_json(PROFILES_PATH, data)
         except OSError:
             logger.warning("load_profiles failed", exc_info=True)
     return data
@@ -320,8 +318,7 @@ def save_zones(key, zones):
         )
         prof["zones_interdites"] = zones
     try:
-        with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        settings.write_json(PROFILES_PATH, data)
         return True
     except OSError:
         logger.warning("save_zones failed", exc_info=True)

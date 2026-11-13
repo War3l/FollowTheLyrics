@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import re
-import threading
 import time
 import unicodedata
 import urllib.error
@@ -13,11 +12,17 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from followthelyrics import settings
+from followthelyrics import updater
 
 logger = logging.getLogger(__name__)
 
 API = "https://lrclib.net/api"
-HEADERS = {"User-Agent": "lyrics-overlay-prototype/0.1"}
+HEADERS = {
+    "User-Agent": (
+        f"FollowTheLyrics/{updater.current_version()} "
+        f"(https://github.com/{updater.REPO})"
+    )
+}
 NE_API = "https://music.163.com/api"
 NE_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com/"}
 
@@ -428,27 +433,28 @@ def _simplify(s: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", s).split())
 
 
-_net = threading.local()
+class _Session:
+    def __init__(self):
+        self.failed = False
 
+    def get_json(self, url: str, headers: dict):
+        try:
+            with urllib.request.urlopen(
+                urllib.request.Request(url, headers=headers), timeout=8
+            ) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code >= 500 or e.code == 429:
+                self.failed = True
+            return None
+        except (OSError, ValueError):
+            logger.warning("lyrics request failed: %s", url, exc_info=True)
+            self.failed = True
+            return None
 
-def _http_json(url: str, headers: dict):
-    try:
-        with urllib.request.urlopen(
-            urllib.request.Request(url, headers=headers), timeout=8
-        ) as r:
-            return json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        if e.code >= 500 or e.code == 429:
-            _net.failed = True
-        return None
-    except (OSError, ValueError):
-        logger.warning("_http_json failed", exc_info=True)
-        _net.failed = True
-        return None
-
-
-def _get(path: str, params: dict):
-    return _http_json(f"{API}/{path}?{urllib.parse.urlencode(params)}", HEADERS)
+    def lrclib(self, path: str, params: dict):
+        query = urllib.parse.urlencode(params)
+        return self.get_json(f"{API}/{path}?{query}", HEADERS)
 
 
 def _best(results, duration: float):
@@ -465,7 +471,7 @@ def _best(results, duration: float):
 
 
 def _lrclib(
-    track: str, art: str, album: str, duration: float
+    session: _Session, track: str, art: str, album: str, duration: float
 ) -> list[Line] | None:
     if art:
         params = {"track_name": track, "artist_name": art}
@@ -473,21 +479,26 @@ def _lrclib(
             params["album_name"] = album
         if duration > 0:
             params["duration"] = round(duration)
-        hit = _get("get", params)
+        hit = session.lrclib("get", params)
         if isinstance(hit, dict) and hit.get("syncedLyrics"):
             return parse_lrc(hit["syncedLyrics"])
         hit = _best(
-            _get("search", {"track_name": track, "artist_name": art}), duration
+            session.lrclib("search", {"track_name": track, "artist_name": art}),
+            duration,
         )
         if hit:
             return parse_lrc(hit["syncedLyrics"])
-    hit = _best(_get("search", {"q": f"{art} {track}".strip()}), duration)
+    hit = _best(
+        session.lrclib("search", {"q": f"{art} {track}".strip()}), duration
+    )
     return parse_lrc(hit["syncedLyrics"]) if hit else None
 
 
-def _netease(track: str, art: str, duration: float):
+def _netease(session: _Session, track: str, art: str, duration: float):
     q = urllib.parse.quote(f"{track} {art}".strip())
-    res = _http_json(f"{NE_API}/search/get?s={q}&type=1&limit=10", NE_HEADERS)
+    res = session.get_json(
+        f"{NE_API}/search/get?s={q}&type=1&limit=10", NE_HEADERS
+    )
     songs = ((res or {}).get("result") or {}).get("songs") or []
     want_t, want_a = _simplify(track), _simplify(art)
     asked_version = bool(_VERSION.search(track))
@@ -525,7 +536,7 @@ def _netease(track: str, art: str, duration: float):
     line_level = None
     for _, sid in scored[:3]:
         ly = (
-            _http_json(
+            session.get_json(
                 f"{NE_API}/song/lyric/v1?id={sid}&lv=1&yv=1&tv=-1", NE_HEADERS
             )
             or {}
@@ -551,32 +562,38 @@ def _candidates(title: str, artist: str):
     return out
 
 
-def fetch_lyrics(
-    title: str, artist: str, album: str = "", duration: float = 0
+def _fetch(
+    session: _Session, title: str, artist: str, album: str, duration: float
 ) -> list[Line] | None:
     fallback = None
     lines = None
     for track, art in _candidates(title, artist):
-        words, ne_lines = _netease(track, art, duration)
+        words, ne_lines = _netease(session, track, art, duration)
         if words:
             lines = add_pauses(words)
             break
         fallback = fallback or ne_lines
     if lines is None:
         for track, art in _candidates(title, artist):
-            lines = _lrclib(track, art, album, duration)
+            lines = _lrclib(session, track, art, album, duration)
             if lines:
                 break
     lines = lines or fallback
     return split_adlibs(extract_singers(lines, artist)) if lines else None
 
 
+def fetch_lyrics(
+    title: str, artist: str, album: str = "", duration: float = 0
+) -> list[Line] | None:
+    return _fetch(_Session(), title, artist, album, duration)
+
+
 def fetch_lyrics_ex(
     title: str, artist: str, album: str = "", duration: float = 0
-):
-    _net.failed = False
-    lines = fetch_lyrics(title, artist, album, duration)
-    return lines, not (lines is None and getattr(_net, "failed", False))
+) -> tuple[list[Line] | None, bool]:
+    session = _Session()
+    lines = _fetch(session, title, artist, album, duration)
+    return lines, not (lines is None and session.failed)
 
 
 def mark_title_lines(
@@ -670,18 +687,17 @@ def cache_save(title: str, artist: str, duration: float, lines):
                 }
                 for line in lines
             ]
-        with open(_cache_path(title, artist), "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "v": CACHE_VERSION,
-                    "title": title,
-                    "artist": artist,
-                    "duration": duration,
-                    "saved": time.time(),
-                    "lines": data,
-                },
-                f,
-                ensure_ascii=False,
-            )
+        settings.write_json(
+            _cache_path(title, artist),
+            {
+                "v": CACHE_VERSION,
+                "title": title,
+                "artist": artist,
+                "duration": duration,
+                "saved": time.time(),
+                "lines": data,
+            },
+            indent=None,
+        )
     except (OSError, TypeError, ValueError):
         logger.warning("cache_save failed", exc_info=True)
