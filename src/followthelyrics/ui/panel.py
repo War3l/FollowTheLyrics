@@ -933,12 +933,16 @@ class Panel(QWidget):
 
     def build_games(self):
         cur = Card()
-        cap = QLabel(i18n.tr("JEU DÉTECTÉ"))
+        cap = QLabel(i18n.tr("Jeu détecté"))
         cap.setProperty("role", "section")
         cur.add(cap)
         self.profile_lbl = QLabel(i18n.tr("Bureau"))
         self.profile_lbl.setProperty("role", "nptitle")
-        cur.add(self.profile_lbl)
+        self.game_logo = QLabel()
+        self.game_logo.setFixedSize(36, 36)
+        self.game_logo.setScaledContents(True)
+        self.game_logo.hide()
+        cur.add(hbox(self.game_logo, self.profile_lbl, spacing=14))
         hint = QLabel(
             i18n.tr(
                 "Les paroles contournent les zones importantes du jeu : vie, "
@@ -1392,6 +1396,11 @@ class Panel(QWidget):
         game = i18n.tr(o.profile.get("nom", o.profile_key) or "Bureau")
         self.profile_lbl.setText(game)
         self.tile_game.set_value(game)
+        logo = logos.pixmap(logos.game_key(o.profile_key))
+        self.tile_game.set_logo(logo)
+        if logo is not None:
+            self.game_logo.setPixmap(logo)
+        self.game_logo.setVisible(logo is not None)
         if getattr(self.app, "exclusive", False):
             msg = i18n.tr(
                 "Plein écran exclusif détecté : les paroles ne peuvent pas "

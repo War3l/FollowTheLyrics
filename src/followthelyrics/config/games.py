@@ -219,6 +219,182 @@ DEFAULT_PROFILES: dict[str, Any] = {
                 "Mode d'affichage > « Fenetre (plein ecran) »."
             ),
         },
+        "VALORANT-Win64-Shipping.exe": {
+            "nom": "Valorant",
+            "zones_interdites": [
+                {"nom": "Minimap", "x": 0.0, "y": 0.0, "l": 0.22, "h": 0.36},
+                {
+                    "nom": "Score, agents, temps",
+                    "x": 0.27,
+                    "y": 0.0,
+                    "l": 0.46,
+                    "h": 0.1,
+                },
+                {
+                    "nom": "Kill feed",
+                    "x": 0.76,
+                    "y": 0.06,
+                    "l": 0.24,
+                    "h": 0.22,
+                },
+                {
+                    "nom": "Viseur / combat",
+                    "x": 0.3,
+                    "y": 0.22,
+                    "l": 0.4,
+                    "h": 0.5,
+                },
+                {
+                    "nom": "Vie, sorts, munitions",
+                    "x": 0.22,
+                    "y": 0.84,
+                    "l": 0.56,
+                    "h": 0.16,
+                },
+                {"nom": "Chat", "x": 0.0, "y": 0.7, "l": 0.24, "h": 0.22},
+            ],
+            "conseil_plein_ecran": (
+                "Dans Valorant : Parametres > Video > Mode d'affichage > « Fenetre plein ecran »."
+            ),
+        },
+        "FortniteClient-Win64-Shipping.exe": {
+            "nom": "Fortnite",
+            "autres_exe": [
+                "FortniteClient-Win64-Shipping_EAC_EOS.exe",
+                "FortniteClient-Win64-Shipping_BE.exe",
+            ],
+            "zones_interdites": [
+                {"nom": "Minimap", "x": 0.8, "y": 0.0, "l": 0.2, "h": 0.3},
+                {"nom": "Quetes", "x": 0.8, "y": 0.3, "l": 0.2, "h": 0.18},
+                {"nom": "Boussole", "x": 0.3, "y": 0.0, "l": 0.4, "h": 0.08},
+                {"nom": "Equipe", "x": 0.0, "y": 0.03, "l": 0.2, "h": 0.2},
+                {
+                    "nom": "Viseur / combat",
+                    "x": 0.32,
+                    "y": 0.25,
+                    "l": 0.36,
+                    "h": 0.45,
+                },
+                {"nom": "Kill feed", "x": 0.0, "y": 0.58, "l": 0.24, "h": 0.22},
+                {
+                    "nom": "Vie, bouclier",
+                    "x": 0.0,
+                    "y": 0.84,
+                    "l": 0.3,
+                    "h": 0.16,
+                },
+                {
+                    "nom": "Inventaire, construction",
+                    "x": 0.68,
+                    "y": 0.78,
+                    "l": 0.32,
+                    "h": 0.22,
+                },
+            ],
+            "conseil_plein_ecran": (
+                "Dans Fortnite : Parametres > Video > Mode fenetre > « Plein ecran fenetre »."
+            ),
+        },
+        "javaw.exe": {
+            "nom": "Minecraft",
+            "autres_exe": ["Minecraft.Windows.exe", "java.exe"],
+            "titre_contient": "Minecraft",
+            "zones_interdites": [
+                {
+                    "nom": "Barre d'objets, vie",
+                    "x": 0.28,
+                    "y": 0.82,
+                    "l": 0.44,
+                    "h": 0.18,
+                },
+                {"nom": "Viseur", "x": 0.38, "y": 0.32, "l": 0.24, "h": 0.36},
+                {"nom": "Chat", "x": 0.0, "y": 0.55, "l": 0.34, "h": 0.3},
+                {
+                    "nom": "Barre de boss",
+                    "x": 0.3,
+                    "y": 0.0,
+                    "l": 0.4,
+                    "h": 0.08,
+                },
+                {"nom": "Effets", "x": 0.88, "y": 0.0, "l": 0.12, "h": 0.14},
+                {
+                    "nom": "Tableau des scores",
+                    "x": 0.84,
+                    "y": 0.3,
+                    "l": 0.16,
+                    "h": 0.36,
+                },
+            ],
+            "conseil_plein_ecran": (
+                "Dans Minecraft : Options > Graphismes > Plein ecran : NON, puis agrandis la fenetre."
+            ),
+        },
+        "GTA5.exe": {
+            "nom": "GTA V",
+            "autres_exe": ["GTA5_Enhanced.exe", "FiveM_GTAProcess.exe"],
+            "zones_interdites": [
+                {"nom": "Radar", "x": 0.0, "y": 0.74, "l": 0.2, "h": 0.26},
+                {
+                    "nom": "Notifications",
+                    "x": 0.0,
+                    "y": 0.48,
+                    "l": 0.2,
+                    "h": 0.26,
+                },
+                {"nom": "Aide", "x": 0.0, "y": 0.0, "l": 0.26, "h": 0.16},
+                {
+                    "nom": "Argent, arme, etoiles",
+                    "x": 0.8,
+                    "y": 0.0,
+                    "l": 0.2,
+                    "h": 0.2,
+                },
+                {
+                    "nom": "Viseur / action",
+                    "x": 0.34,
+                    "y": 0.28,
+                    "l": 0.32,
+                    "h": 0.44,
+                },
+                {
+                    "nom": "Sous-titres",
+                    "x": 0.22,
+                    "y": 0.84,
+                    "l": 0.56,
+                    "h": 0.16,
+                },
+            ],
+            "conseil_plein_ecran": (
+                "Dans GTA V : Parametres > Graphismes > Type d'ecran > « Fenetre sans bordure »."
+            ),
+        },
+        "RobloxPlayerBeta.exe": {
+            "nom": "Roblox",
+            "zones_interdites": [
+                {"nom": "Menu, chat", "x": 0.0, "y": 0.0, "l": 0.3, "h": 0.34},
+                {
+                    "nom": "Liste des joueurs",
+                    "x": 0.8,
+                    "y": 0.0,
+                    "l": 0.2,
+                    "h": 0.36,
+                },
+                {
+                    "nom": "Personnage / action",
+                    "x": 0.32,
+                    "y": 0.25,
+                    "l": 0.36,
+                    "h": 0.45,
+                },
+                {
+                    "nom": "Barre d'objets",
+                    "x": 0.3,
+                    "y": 0.86,
+                    "l": 0.4,
+                    "h": 0.14,
+                },
+            ],
+        },
     },
     "jeu_inconnu": {
         "nom": "Jeu inconnu (plein ecran)",
@@ -332,10 +508,15 @@ def profiles_mtime():
 
 def current_profile(profiles, foreground):
     exe = foreground.exe
+    title = getattr(foreground, "title", "").lower()
     for name, prof in profiles.get("jeux", {}).items():
         names = [name, *list(prof.get("autres_exe", []))]
-        if exe and any(n.lower() == exe.lower() for n in names):
-            return name, prof
+        if not (exe and any(n.lower() == exe.lower() for n in names)):
+            continue
+        wanted = str(prof.get("titre_contient", "")).lower()
+        if wanted and wanted not in title:
+            continue
+        return name, prof
     if foreground.fullscreen:
         return "jeu_inconnu", profiles["jeu_inconnu"]
     return "bureau", profiles["bureau"]

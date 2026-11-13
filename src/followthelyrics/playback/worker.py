@@ -21,6 +21,7 @@ class MediaWorker(QThread):
     cover = pyqtSignal(object, object)
     sources = pyqtSignal(object)
     browsers = pyqtSignal(object)
+    upgrading = pyqtSignal(object, bool)
     COVER_READS = (0.8, 3.5)
     MAX_DURATION = 20 * 60
     RETRY_DELAYS = (10, 30, 60, 120, 300)
@@ -138,7 +139,7 @@ class MediaWorker(QThread):
             self.lyrics.emit(np.key, lines)
             self.translated.emit(np.key)
             if not cache.cache_is_final(np.title, np.artist):
-                self._upgrades.submit(self._upgrade, np, lines)
+                self._queue_upgrade(np, lines)
             return
         try:
             lines, reliable = providers.fetch_lyrics_ex(
@@ -180,7 +181,19 @@ class MediaWorker(QThread):
                 lines,
                 final=providers.has_words(lines),
             )
-        self._upgrades.submit(self._upgrade, np, lines)
+        self._queue_upgrade(np, lines)
+
+    def _queue_upgrade(self, np, lines):
+        if not self.upgrade or providers.has_words(lines):
+            return
+        self.upgrading.emit(np.key, True)
+        self._upgrades.submit(self._upgrade_then_report, np, lines)
+
+    def _upgrade_then_report(self, np, lines):
+        try:
+            self._upgrade(np, lines)
+        finally:
+            self.upgrading.emit(np.key, False)
 
     def _upgrade(self, np, lines):
         if not self.upgrade or providers.has_words(lines):

@@ -86,6 +86,7 @@ class App:
         self.worker.track.connect(self.w_track)
         self.worker.lyrics.connect(self.w_lyrics)
         self.worker.translated.connect(self.w_translated)
+        self.worker.upgrading.connect(self.overlay.on_upgrading)
         self.worker.cover.connect(self.w_cover)
         self.worker.start()
 
