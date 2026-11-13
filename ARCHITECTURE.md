@@ -4,8 +4,8 @@ FollowTheLyrics est une appli de bureau : un seul processus PyQt6, une fenêtre
 transparente par-dessus le jeu, un panneau de contrôle et quelques fils de
 travail. Le code est rangé **par responsabilité**. Une seule frontière est
 abstraite : celle avec le système d'exploitation, parce qu'elle a plusieurs
-implémentations (Windows aujourd'hui, Linux et macOS en mode dégradé, des
-backends natifs demain). Le reste n'a qu'une implémentation par besoin et reste
+implémentations (Windows, Linux, et un backend Qt seul pour macOS en
+attendant le sien). Le reste n'a qu'une implémentation par besoin et reste
 concret.
 
 ## La couche `desktop/`
@@ -19,8 +19,14 @@ seule fois et renvoie un `Desktop` qui les regroupe.
 - `desktop/windows/` : SMTC, WASAPI, `RegisterHotKey`, DWM, registre. Chaque
   module commence par `assert sys.platform == "win32"`, ce qui permet à mypy de
   vérifier le reste du code pour Linux sans voir ces appels.
-- `desktop/generic/` : uniquement Qt. Les services sans équivalent portable
-  valent `None` et l'interface masque ce qui en dépend (démarrage auto,
+- `desktop/linux/` : MPRIS par QtDBus pour le morceau en cours, PulseAudio ou
+  PipeWire par `soundcard` pour la pulsation, X11 par `python-xlib` pour les
+  raccourcis globaux et le programme au premier plan, XDG pour le démarrage
+  auto et les raccourcis du bureau. Sous Wayland, `boot.prepare()` choisit
+  XWayland quand il est là, seul moyen de garder l'overlay au-dessus. Sans
+  serveur X, raccourcis et détection du jeu valent `None` ou restent neutres.
+- `desktop/generic/` : uniquement Qt, pour macOS aujourd'hui. Les services
+  sans équivalent portable valent `None` et l'interface masque ce qui en dépend (démarrage auto,
   installation, mises à jour) ou le signale (raccourcis globaux).
 
 Ajouter un système, c'est écrire `desktop/<systeme>/backend.py` avec une
@@ -49,7 +55,8 @@ src/followthelyrics/
 ├── desktop/
 │   ├── ports.py     contrats avec le système d'exploitation
 │   ├── windows/     backend Windows : SMTC, WASAPI, Win32, DWM, registre
-│   └── generic/     backend Qt seul, pour Linux et macOS
+│   ├── linux/       backend Linux : MPRIS, PulseAudio, X11, XDG
+│   └── generic/     backend Qt seul, pour macOS
 ├── playback/
 │   ├── track.py     NowPlaying : le morceau en cours
 │   ├── sites.py     reconnaît le site du navigateur, ignore vidéos et streaming
@@ -85,6 +92,7 @@ aucun cycle.
 | `playback` | `lyrics` |
 | `desktop.ports` | `playback.track` |
 | `desktop.windows`, `desktop.generic` | `desktop.ports`, `config.settings`, `playback.track` |
+| `desktop.linux` | les mêmes, plus `desktop.generic` et `playback.sites` |
 | `system` | `desktop.ports`, `config.settings`, `version` |
 | `overlay` | `lyrics`, `config.settings` |
 | `ui` | `config`, `desktop.ports`, `system`, `playback.sites`, `version`, jamais `overlay` |
@@ -94,7 +102,7 @@ Deux conséquences utiles :
 
 - `lyrics/` ne connaît ni Qt ni Windows. Tout le traitement des paroles se teste
   sur n'importe quelle machine.
-- Seul `desktop/windows/` parle à Windows. Le reste reçoit les ports par son
+- Seuls `desktop/windows/` et `desktop/linux/` parlent au système. Le reste reçoit les ports par son
   constructeur (`Overlay`, `MediaWorker`, `AudioBeats`, `Hotkeys`,
   `Installation`), ce qui permet de le tester avec de faux backends.
 - Le panneau (`ui/`) ne touche jamais l'overlay directement : `app.py` lui passe

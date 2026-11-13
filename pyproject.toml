@@ -17,6 +17,8 @@ dependencies = [
     "winrt-Windows.Foundation; sys_platform == 'win32'",
     "winrt-Windows.Storage.Streams; sys_platform == 'win32'",
     "PyAudioWPatch; sys_platform == 'win32'",
+    "soundcard>=0.4; sys_platform == 'linux'",
+    "python-xlib>=0.33; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]

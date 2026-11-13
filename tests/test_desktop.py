@@ -1,11 +1,9 @@
-import sys
-
 import pytest
 from PyQt6.QtCore import Qt
 
-from followthelyrics import desktop
 from followthelyrics.config import games
 from followthelyrics.desktop import ports
+from followthelyrics.desktop.generic import backend as generic_backend
 from followthelyrics.desktop.generic import keyboard
 from followthelyrics.system import hotkeys
 from followthelyrics.system import startup
@@ -19,11 +17,10 @@ PROFILES = {
 }
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="backend generique")
 def test_generic_desktop_degrades_without_native_services():
-    system = desktop.current()
+    system = generic_backend.create("macOS")
 
-    assert system.name == desktop.SYSTEM_NAMES.get(sys.platform, sys.platform)
+    assert system.name == "macOS"
     assert system.media is None
     assert system.hotkeys is None
     assert system.installer is None

@@ -1,7 +1,7 @@
 <p align="center"><img src="docs/img/logo.png" width="96" alt=""></p>
 <h1 align="center">FollowTheLyrics</h1>
 <p align="center"><b>Les paroles de ta musique, par-dessus tes jeux.</b><br>
-Mot à mot, en rythme, aux couleurs de la pochette. Windows 10 et 11.</p>
+Mot à mot, en rythme, aux couleurs de la pochette. Windows 10 et 11, et Linux.</p>
 <p align="center">
 <a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe"><b>⬇ Télécharger la dernière version</b></a>
  · <a href="https://war3l.github.io/FollowTheLyrics/">Site de présentation</a>
@@ -20,6 +20,18 @@ Marche avec Spotify, YouTube Music, Deezer, Apple Music… sans connexion à un 
 
 Au premier lancement, un écran de bienvenue explique l'essentiel et propose le démarrage avec
 Windows et un raccourci sur le bureau.
+
+### Sur Linux
+1. Télécharge **[FollowTheLyrics-linux](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux)**,
+   rends-le exécutable (`chmod +x FollowTheLyrics-linux`) et lance-le.
+2. Le morceau en cours vient de **MPRIS** (Spotify, Firefox, Chrome, VLC, mpv avec `mpris`…),
+   la pulsation du son de **PulseAudio ou PipeWire**.
+3. Les raccourcis globaux et la détection du jeu passent par **X11**. Sous Wayland, l'appli
+   s'ouvre via XWayland : les raccourcis marchent quand une fenêtre XWayland est au premier plan
+   (c'est le cas de la plupart des jeux Steam et Proton), et un jeu sous Proton est reconnu par
+   le nom de son `.exe`, donc les profils Windows s'appliquent tels quels.
+4. Le démarrage auto passe par `~/.config/autostart`, les réglages sont dans
+   `~/.config/FollowTheLyrics`.
 
 Fermer le panneau ne quitte pas l'appli : les paroles continuent. L'icône près de l'heure rouvre
 le panneau (clic gauche) ; clic droit → **Quitter** pour arrêter.
@@ -98,7 +110,9 @@ python -m venv .venv
 ```
 `run.bat` fait la même chose sans terminal (`run.bat --demo` pour la démo).
 
-Vérifications, lancées aussi par la CI à chaque pull request :
+Sous Linux : `.venv/bin/python -m pip install -e ".[dev]"` puis `.venv/bin/python -m followthelyrics`.
+
+Vérifications, lancées aussi par la CI à chaque pull request, sous Windows et sous Linux :
 ```
 ruff check src tests tools
 ruff format --check src tests tools
@@ -107,17 +121,19 @@ mypy --platform linux
 pytest
 ```
 
-### Construire le .exe
-- **Sur une pull request**, la CI construit `FollowTheLyrics.exe` et le joint au résultat
-  (onglet *Checks*, artefact `FollowTheLyrics-exe`) : de quoi tester la PR sans rien installer.
-- **En local** : `.venv\Scripts\python -m pip install -e ".[build]"` puis
-  `.venv\Scripts\python tools\build.py` produit `dist\FollowTheLyrics.exe` (2 à 4 minutes).
+### Construire le programme
+- **Sur une pull request**, la CI construit `FollowTheLyrics.exe` et le binaire Linux et les joint
+  au résultat (onglet *Checks*, artefacts `FollowTheLyrics-exe` et `FollowTheLyrics-linux`) : de
+  quoi tester la PR sans rien installer.
+- **En local** : `pip install -e ".[build]"` puis `python tools/build.py` produit
+  `dist\FollowTheLyrics.exe` sous Windows et `dist/FollowTheLyrics` sous Linux (2 à 4 minutes).
+  Le binaire Linux est construit sur Ubuntu 22.04 pour tourner sur les distributions plus récentes.
 
 ### Publier une version
 Sur GitHub : **Actions → Release → Run workflow**, puis le numéro de version (par exemple `1.2.0`)
 et une phrase de nouveautés. Le workflow vérifie que la version est plus récente, lance mypy et les
-tests, construit le `.exe`, pousse le commit de version et son tag, puis crée la release avec le
-`.exe`. Si une étape échoue avant la fin de la construction, rien n'est publié.
+tests sous Windows et sous Linux, construit les deux programmes, pousse le commit de version et
+son tag, puis crée la release avec `FollowTheLyrics.exe` et `FollowTheLyrics-linux`. Si une étape échoue avant la fin de la construction, rien n'est publié.
 Le bouton « Télécharger » du site et la mise à jour automatique pointent toujours vers la dernière release.
 
 - Le site de présentation est dans `docs/` (GitHub Pages).
@@ -132,11 +148,11 @@ Le détail (rôle de chaque module, flux de données, règles de dépendance) es
 | `app.py` | assemble l'appli : overlay, panneau, icône de la barre des tâches, minuteries |
 | `config/` | réglages (`config.json`) et profils de jeux avec leurs zones interdites |
 | `lyrics/` | modèle d'une ligne, lecture des formats LRC et YRC, sources de paroles, cache, analyse (refrains, mots forts) |
-| `desktop/` | tout ce qui touche au système : contrats (`ports.py`), backend Windows, backend Qt pour Linux et macOS |
+| `desktop/` | tout ce qui touche au système : contrats (`ports.py`), backend Windows, backend Linux, backend Qt seul pour macOS |
 | `playback/` | morceau en cours, reconnaissance du site du navigateur, détection des beats, fil de travail |
 | `overlay/` | la fenêtre des paroles et son rendu : animations, couleurs, effets, easter eggs |
 | `ui/` | panneau de contrôle, briques animées, écran de bienvenue, éditeur de zones |
 | `system/` | démarrage auto, installation, mises à jour, raccourcis clavier, au-dessus des ports de `desktop/` |
-| `tests/` | tests pytest, sans Windows ni réseau |
+| `tests/` | tests pytest, sans système particulier ni réseau |
 | `tools/` | fabrication du `.exe`, vidéo et visuels du site, petits scripts de diagnostic |
 | `.github/workflows/` | `ci.yml` (lint, types, tests, `.exe` de test) et `release.yml` (publication) |
