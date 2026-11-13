@@ -198,9 +198,9 @@ def main():
                 cwd=os.path.dirname(exe),
                 env=dict(os.environ, FTL_PORTABLE="1"),
             )
-    else:
-        print("\nEchec de la construction.")
-    return code
+        return 0
+    print("\nEchec de la construction.")
+    return code or 1
 
 
 if __name__ == "__main__":
