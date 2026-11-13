@@ -20,6 +20,7 @@ from followthelyrics import diagnostics
 from followthelyrics import games
 from followthelyrics import hotkeys
 from followthelyrics import install
+from followthelyrics import logs
 from followthelyrics import overlay
 from followthelyrics import panel
 from followthelyrics import settings
@@ -607,6 +608,8 @@ def main():
     ap.add_argument("--translation", action="store_true")
     ap.add_argument("--seed", type=int, default=3)
     args, _unknown = ap.parse_known_args()
+    logs.setup()
+    logger.info("FollowTheLyrics %s", updater.current_version())
 
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
