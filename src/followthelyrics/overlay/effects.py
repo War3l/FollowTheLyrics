@@ -4,9 +4,9 @@ import numpy as np
 from PyQt6.QtCore import QRectF
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
-from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtGui import QImage
 
+from followthelyrics import fonts
 from followthelyrics.overlay import animation
 from followthelyrics.overlay import colors
 
@@ -55,8 +55,10 @@ _FAMILIES = None
 def family_or_default(name):
     global _FAMILIES
     if _FAMILIES is None:
-        _FAMILIES = set(QFontDatabase.families())
-    return name if name in _FAMILIES else "Segoe UI"
+        _FAMILIES = fonts.families()
+    if name in _FAMILIES:
+        return name
+    return "Segoe UI" if "Segoe UI" in _FAMILIES else fonts.BUNDLED
 
 
 def image_rows(img: QImage) -> np.ndarray:
