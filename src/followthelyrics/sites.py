@@ -1,7 +1,10 @@
 import ctypes
+import logging
 import re
 import time
 from ctypes import wintypes
+
+logger = logging.getLogger(__name__)
 
 OTHER = "other"
 
@@ -21,13 +24,22 @@ SITES = [
     ("pandora", "Pandora", r"\bpandora\b"),
     ("jiosaavn", "JioSaavn", r"jiosaavn"),
 ]
-SITE_NAMES = dict((s[0], s[1]) for s in SITES)
+SITE_NAMES = {s[0]: s[1] for s in SITES}
 DOMAINS = [
-    ("ytmusic", "music.youtube.com"), ("youtube", "youtube.com"), ("spotify", "spotify.com"),
-    ("soundcloud", "soundcloud.com"), ("applemusic", "music.apple.com"), ("deezer", "deezer.com"),
-    ("tidal", "tidal.com"), ("amazon", "music.amazon."), ("qobuz", "qobuz.com"),
-    ("bandcamp", "bandcamp.com"), ("audiomack", "audiomack.com"), ("napster", "napster.com"),
-    ("pandora", "pandora.com"), ("jiosaavn", "jiosaavn.com"),
+    ("ytmusic", "music.youtube.com"),
+    ("youtube", "youtube.com"),
+    ("spotify", "spotify.com"),
+    ("soundcloud", "soundcloud.com"),
+    ("applemusic", "music.apple.com"),
+    ("deezer", "deezer.com"),
+    ("tidal", "tidal.com"),
+    ("amazon", "music.amazon."),
+    ("qobuz", "qobuz.com"),
+    ("bandcamp", "bandcamp.com"),
+    ("audiomack", "audiomack.com"),
+    ("napster", "napster.com"),
+    ("pandora", "pandora.com"),
+    ("jiosaavn", "jiosaavn.com"),
 ]
 _HOST = re.compile(r"^(?:[a-z0-9-]+\.)+[a-z]{2,}$")
 
@@ -37,9 +49,15 @@ def site_of_host(artist):
     if not _HOST.match(host):
         return None
     for sid, dom in DOMAINS:
-        if host == dom or ("." + dom) in ("." + host) or (dom.endswith(".") and dom in host):
+        if (
+            host == dom
+            or ("." + dom) in ("." + host)
+            or (dom.endswith(".") and dom in host)
+        ):
             return sid
     return OTHER
+
+
 _SITE_RE = [(sid, re.compile(rx, re.I)) for sid, _name, rx in SITES]
 
 BROWSERS = [
@@ -60,11 +78,22 @@ BROWSERS = [
     ("duckduckgo", "DuckDuckGo", ("duckduckgo.exe",)),
     ("thorium", "Thorium", ("thorium.exe",)),
 ]
-MOZILLA = ("firefox.exe", "zen.exe", "librewolf.exe", "waterfox.exe", "floorp.exe", "mullvadbrowser.exe")
+MOZILLA = (
+    "firefox.exe",
+    "zen.exe",
+    "librewolf.exe",
+    "waterfox.exe",
+    "floorp.exe",
+    "mullvadbrowser.exe",
+)
 _HEX16 = re.compile(r"^[0-9a-f]{16}$", re.I)
-_BROWSER_TAIL = re.compile(r"^(google chrome|opera( gx)?|brave|microsoft edge|mozilla firefox.*|firefox|vivaldi|"
-                           r"arc|chromium|librewolf|waterfox|floorp|zen( browser)?|yandex.*|duckduckgo|thorium)$",
-                           re.I)
+_BROWSER_TAIL = re.compile(
+    r"^(google chrome|opera( gx)?|brave|microsoft edge|mozilla "
+    r"firefox.*|firefox|vivaldi|"
+    r"arc|chromium|librewolf|waterfox|floorp|zen( "
+    r"browser)?|yandex.*|duckduckgo|thorium)$",
+    re.I,
+)
 _SPLIT = re.compile(r"\s+[-–—|]\s+")
 
 
@@ -85,13 +114,19 @@ def is_browser(app_id):
 
 
 def _fold(s):
-    return re.sub(r"\s+", " ", (s or "").replace("​", "")).strip().casefold()
+    return (
+        re.sub(r"\s+", " ", (s or "").replace("\u200b", "")).strip().casefold()
+    )
 
 
 def core_title(window_title):
-    parts = _SPLIT.split((window_title or "").replace("​", "").strip())
-    if len(parts) > 1 and len(parts[-1]) < 40 and _BROWSER_TAIL.search(parts[-1]):
-        cut = (window_title or "").replace("​", "").strip()
+    parts = _SPLIT.split((window_title or "").replace("\u200b", "").strip())
+    if (
+        len(parts) > 1
+        and len(parts[-1]) < 40
+        and _BROWSER_TAIL.search(parts[-1])
+    ):
+        cut = (window_title or "").replace("\u200b", "").strip()
         return cut[: cut.rfind(parts[-1])].rstrip(" -–—|")
     return (window_title or "").strip()
 
@@ -123,7 +158,9 @@ def _exe_name(pid):
     if h:
         buf = ctypes.create_unicode_buffer(520)
         n = wintypes.DWORD(520)
-        if k.QueryFullProcessImageNameW(wintypes.HANDLE(h), 0, buf, ctypes.byref(n)):
+        if k.QueryFullProcessImageNameW(
+            wintypes.HANDLE(h), 0, buf, ctypes.byref(n)
+        ):
             name = buf.value.replace("/", "\\").split("\\")[-1].lower()
         k.CloseHandle(wintypes.HANDLE(h))
     _exe_cache[pid] = name
@@ -154,12 +191,11 @@ def window_titles(exes):
 
         u.EnumWindows(each, 0)
     except Exception:
-        pass
+        logger.debug("window_titles failed", exc_info=True)
     return out
 
 
 class SiteGuard:
-
     def __init__(self, off=(), other=False, titles=window_titles):
         self.off = set(off)
         self.other = bool(other)
@@ -191,7 +227,14 @@ class SiteGuard:
             return OTHER
         first = a.split(",")[0].strip()
         for text, sid in tabs:
-            if not sid and t and t in text and first and first in text and re.search(r"\s[•·]\s", text):
+            if (
+                not sid
+                and t
+                and t in text
+                and first
+                and first in text
+                and re.search(r"\s[•·]\s", text)
+            ):
                 self.last[app_id] = "spotify"
                 return "spotify"
         if app_id in self.last:

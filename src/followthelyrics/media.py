@@ -1,11 +1,17 @@
-import asyncio
+import logging
 import time
 from dataclasses import dataclass
 
 from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
+)
+from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
 )
+from winrt.windows.storage.streams import Buffer
+from winrt.windows.storage.streams import InputStreamOptions
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,13 +41,17 @@ def _app_id(session) -> str:
     try:
         return session.source_app_user_model_id or ""
     except Exception:
+        logger.debug("_app_id failed", exc_info=True)
         return ""
 
 
 def list_sources(manager) -> list[str]:
     try:
-        return sorted({_app_id(s) for s in manager.get_sessions() if _app_id(s)})
+        return sorted(
+            {_app_id(s) for s in manager.get_sessions() if _app_id(s)}
+        )
     except Exception:
+        logger.debug("list_sources failed", exc_info=True)
         return []
 
 
@@ -50,6 +60,7 @@ def _is_playing(s) -> bool:
         info = s.get_playback_info()
         return bool(info and info.playback_status == PlaybackStatus.PLAYING)
     except Exception:
+        logger.debug("_is_playing failed", exc_info=True)
         return False
 
 
@@ -60,16 +71,22 @@ async def _pick_session(manager, blocked=(), guard=None):
     try:
         cur = _app_id(manager.get_current_session())
     except Exception:
+        logger.debug("_pick_session failed", exc_info=True)
         cur = None
-    order = sorted(sessions, key=lambda s: (not _is_playing(s), _app_id(s) != cur))
+    order = sorted(
+        sessions, key=lambda s: (not _is_playing(s), _app_id(s) != cur)
+    )
     for s in order:
         try:
             props = await s.try_get_media_properties_async()
         except Exception:
+            logger.debug("_pick_session failed", exc_info=True)
             props = None
         site = ""
         if guard is not None and props is not None:
-            ok, site = guard.allows(_app_id(s), props.title or "", props.artist or "")
+            ok, site = guard.allows(
+                _app_id(s), props.title or "", props.artist or ""
+            )
             if not ok:
                 continue
         return s, props, site
@@ -80,7 +97,9 @@ async def get_manager():
     return await SessionManager.request_async()
 
 
-async def get_now_playing(manager=None, blocked=(), guard=None) -> NowPlaying | None:
+async def get_now_playing(
+    manager=None, blocked=(), guard=None
+) -> NowPlaying | None:
     if manager is None:
         manager = await get_manager()
     session, props, site = await _pick_session(manager, blocked, guard)
@@ -103,7 +122,7 @@ async def get_now_playing(manager=None, blocked=(), guard=None) -> NowPlaying | 
             if 0 < elapsed < 3600:
                 position += elapsed
         except Exception:
-            pass
+            logger.debug("get_now_playing failed", exc_info=True)
 
     return NowPlaying(
         title=props.title,
@@ -118,8 +137,6 @@ async def get_now_playing(manager=None, blocked=(), guard=None) -> NowPlaying | 
 
 
 async def get_thumbnail(manager=None, blocked=(), guard=None) -> bytes | None:
-    from winrt.windows.storage.streams import Buffer, InputStreamOptions
-
     if manager is None:
         manager = await get_manager()
     session, props, _site = await _pick_session(manager, blocked, guard)
@@ -135,10 +152,3 @@ async def get_thumbnail(manager=None, blocked=(), guard=None) -> bytes | None:
     out = await stream.read_async(buf, size, InputStreamOptions.READ_AHEAD)
     data = bytes(memoryview(out))[: out.length]
     return data or None
-
-
-if __name__ == "__main__":
-    np = asyncio.run(get_now_playing())
-    print(np if np else "Rien ne joue.")
-    img = asyncio.run(get_thumbnail())
-    print(f"pochette : {len(img)} octets, debut {img[:4]!r}" if img else "pas de pochette")

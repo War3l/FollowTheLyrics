@@ -1,13 +1,17 @@
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import sys
 import urllib.request
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread
+from PyQt6.QtCore import pyqtSignal
 
-import bootstrap
+from followthelyrics import bootstrap
+
+logger = logging.getLogger(__name__)
 
 REPO = "War3l/FollowTheLyrics"
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -15,6 +19,9 @@ RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
 ASSET_NAME = "FollowTheLyrics.exe"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 USER_AGENT = "FollowTheLyrics-updater"
+VERSION_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "VERSION"
+)
 
 
 def current_version():
@@ -22,9 +29,9 @@ def current_version():
     if fake:
         return fake
     try:
-        with open(os.path.join(bootstrap.ROOT, "VERSION"), encoding="utf-8") as f:
+        with open(VERSION_PATH, encoding="utf-8") as f:
             return f.read().strip() or "0"
-    except Exception:
+    except OSError:
         return "0"
 
 
@@ -46,28 +53,43 @@ def fetch_latest(timeout=8):
     api = os.environ.get("FTL_UPDATE_API") or API_URL
     if not api.startswith(f"https://api.github.com/repos/{REPO}/"):
         api = API_URL
-    req = urllib.request.Request(api, headers={"User-Agent": USER_AGENT,
-                                                   "Accept": "application/vnd.github+json"})
+    req = urllib.request.Request(
+        api,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/vnd.github+json",
+        },
+    )
     with urllib.request.urlopen(req, timeout=timeout) as r:
         data = json.loads(r.read().decode("utf-8"))
     for asset in data.get("assets", []):
         url = asset.get("browser_download_url", "")
         if asset.get("name") == ASSET_NAME and url.startswith(DOWNLOAD_PREFIX):
             digest = asset.get("digest") or ""
-            return {"version": str(data.get("tag_name", "")).lstrip("vV"), "url": url,
-                    "size": int(asset.get("size") or 0),
-                    "sha256": digest.split(":", 1)[1].lower() if digest.startswith("sha256:") else "",
-                    "notes": (data.get("body") or "").strip()}
+            return {
+                "version": str(data.get("tag_name", "")).lstrip("vV"),
+                "url": url,
+                "size": int(asset.get("size") or 0),
+                "sha256": digest.split(":", 1)[1].lower()
+                if digest.startswith("sha256:")
+                else "",
+                "notes": (data.get("body") or "").strip(),
+            }
     return None
 
 
 def download(info, dest, progress=None, timeout=20):
     if not info["url"].startswith(DOWNLOAD_PREFIX):
         raise ValueError("adresse de telechargement inattendue")
-    req = urllib.request.Request(info["url"], headers={"User-Agent": USER_AGENT})
+    req = urllib.request.Request(
+        info["url"], headers={"User-Agent": USER_AGENT}
+    )
     sha = hashlib.sha256()
     done = 0
-    with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
+    with (
+        urllib.request.urlopen(req, timeout=timeout) as r,
+        open(dest, "wb") as f,
+    ):
         total = info["size"] or int(r.headers.get("Content-Length") or 0)
         while True:
             chunk = r.read(256 * 1024)
@@ -85,7 +107,9 @@ def download(info, dest, progress=None, timeout=20):
     if info["size"] and done != info["size"]:
         raise ValueError("telechargement incomplet")
     if info["sha256"] and sha.hexdigest() != info["sha256"]:
-        raise ValueError("le fichier telecharge ne correspond pas a celui publie")
+        raise ValueError(
+            "le fichier telecharge ne correspond pas a celui publie"
+        )
 
 
 def swap(exe, new):
@@ -107,8 +131,13 @@ def relaunch(exe, version):
         if key.startswith(("_MEIPASS", "_PYI_")):
             env.pop(key, None)
     env.pop("FTL_FAKE_VERSION", None)
-    subprocess.Popen([exe, "--updated", version], env=env, cwd=os.path.dirname(exe), close_fds=True,
-                     creationflags=0x00000008 | 0x00000200)
+    subprocess.Popen(
+        [exe, "--updated", version],
+        env=env,
+        cwd=os.path.dirname(exe),
+        close_fds=True,
+        creationflags=0x00000008 | 0x00000200,
+    )
 
 
 def cleanup_leftovers():
@@ -132,11 +161,16 @@ class UpdateCheck(QThread):
     def run(self):
         try:
             info = fetch_latest()
-            if info and info["version"] and is_newer(info["version"], current_version()):
+            if (
+                info
+                and info["version"]
+                and is_newer(info["version"], current_version())
+            ):
                 self.found.emit(info)
             else:
                 self.nothing.emit(False)
         except Exception:
+            logger.warning("run failed", exc_info=True)
             self.nothing.emit(True)
 
 
@@ -157,12 +191,18 @@ class UpdateInstall(QThread):
             swap(exe, new)
         except PermissionError:
             self._clean(new)
-            self.failed.emit("Impossible d'écrire dans le dossier du programme. Déplace FollowTheLyrics.exe "
-                             "dans un dossier à toi (Bureau, Documents…) puis réessaie.")
+            self.failed.emit(
+                "Impossible d'écrire dans le dossier du programme. Déplace "
+                "FollowTheLyrics.exe "
+                "dans un dossier à toi (Bureau, Documents…) puis réessaie."
+            )
             return
         except Exception as e:
+            logger.warning("run failed", exc_info=True)
             self._clean(new)
-            self.failed.emit(f"La mise à jour a échoué ({e}). Réessaie plus tard.")
+            self.failed.emit(
+                f"La mise à jour a échoué ({e}). Réessaie plus tard."
+            )
             return
         self.installed.emit(self.info["version"])
 

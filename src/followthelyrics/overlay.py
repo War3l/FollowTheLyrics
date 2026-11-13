@@ -1,42 +1,42 @@
-import argparse
 import bisect
+import contextlib
 import ctypes
+import logging
 import math
-import os
 import random
-import re
-import statistics
-import sys
 import time
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
 from types import SimpleNamespace
 
-import bootstrap
-
-bootstrap.prepare()
-
 import numpy as np
+from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QBrush
+from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtGui import QFontMetricsF
+from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtGui import QImage
+from PyQt6.QtGui import QLinearGradient
+from PyQt6.QtGui import QPainter
+from PyQt6.QtGui import QPainterPath
+from PyQt6.QtGui import QPen
+from PyQt6.QtGui import QRegion
+from PyQt6.QtGui import QTransform
+from PyQt6.QtWidgets import QWidget
 
-try:
-    from PyQt6.QtCore import QPointF, QRectF, Qt, QThread, QTimer, pyqtSignal
-except ImportError as _qt_error:
-    bootstrap.report(_qt_error)
-    raise SystemExit(1)
-from PyQt6.QtGui import (
-    QAction, QBrush, QColor, QFont, QFontDatabase, QFontMetricsF, QGuiApplication,
-    QImage, QLinearGradient, QPainter, QPainterPath, QPen, QRegion, QTransform,
-)
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
+from followthelyrics import analysis
+from followthelyrics import animation
+from followthelyrics import colors
+from followthelyrics import easter
+from followthelyrics import lyrics
+from followthelyrics import settings
 
-import colors as cover_colors
-import easter
-import games
-import hotkeys
-from lyrics import (Line, build_line, cache_load, cache_save, extract_singers, fetch_lyrics_ex,
-                    mark_title_lines, split_adlibs, translate_lines)
-from settings import COLORS, DEFAULTS, MODES, POSITIONS, STYLES, load_config, save_config
+logger = logging.getLogger(__name__)
 
 PREV_ALPHA = 0.42
 HIDE_AFTER = 3.0
@@ -46,30 +46,16 @@ NEUTRAL_PALETTE = ["#FFFFFF", "#E8ECF4", "#CBD3E3"]
 WHITE_PALETTE = ["#FFFFFF", "#F4F6FB", "#E6EAF3"]
 
 
-def clamp(x, lo=0.0, hi=1.0):
-    return lo if x < lo else hi if x > hi else x
-
-
-def ease_out(x):
-    return 1 - (1 - x) ** 3
-
-
-def ease_out_back(x):
-    c = 1.9
-    return 1 + (c + 1) * (x - 1) ** 3 + c * (x - 1) ** 2
-
-
-def lerp(a, b, k):
-    return a + (b - a) * k
-
-
 def area(r: QRectF):
     return r.width() * r.height() if r.isValid() else 0.0
 
 
 def mix(c1: QColor, c2: QColor, k):
-    return QColor(int(lerp(c1.red(), c2.red(), k)), int(lerp(c1.green(), c2.green(), k)),
-                  int(lerp(c1.blue(), c2.blue(), k)))
+    return QColor(
+        int(animation.lerp(c1.red(), c2.red(), k)),
+        int(animation.lerp(c1.green(), c2.green(), k)),
+        int(animation.lerp(c1.blue(), c2.blue(), k)),
+    )
 
 
 def _box_blur(a, r, axis):
@@ -85,7 +71,7 @@ def _box_blur(a, r, axis):
 
 
 def gaussian_blur(a, sigma):
-    r = max(1, int(round(sigma * 0.95)))
+    r = max(1, round(sigma * 0.95))
     for _ in range(3):
         a = _box_blur(a, r, 1)
         a = _box_blur(a, r, 0)
@@ -107,263 +93,27 @@ def palette_from_cover(data):
     if img.isNull():
         return None
     img = img.convertToFormat(QImage.Format.Format_RGBA8888).scaled(
-        64, 64, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        64,
+        64,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
     try:
         ptr = img.constBits()
         ptr.setsize(img.sizeInBytes())
-        arr = np.frombuffer(ptr, dtype=np.uint8).reshape(img.height(), img.bytesPerLine())
-        arr = arr[:, :img.width() * 4].reshape(img.height(), img.width(), 4)[:, :, :3].copy()
-        pal = cover_colors.palette_rgb(arr)
+        arr = np.frombuffer(ptr, dtype=np.uint8).reshape(
+            img.height(), img.bytesPerLine()
+        )
+        arr = (
+            arr[:, : img.width() * 4]
+            .reshape(img.height(), img.width(), 4)[:, :, :3]
+            .copy()
+        )
+        pal = colors.palette_rgb(arr)
     except Exception:
+        logger.debug("palette_from_cover failed", exc_info=True)
         pal = None
     return [QColor(*c) for c in pal] if pal else None
-
-
-def compute_word_meta(lines):
-    per_char = []
-    for l in lines:
-        if not l.chars:
-            continue
-        c = 0
-        for w in l.text.split():
-            seg = l.chars[c:c + len(w)]
-            if len(w) >= 2 and seg:
-                d = seg[-1][1] - seg[0][0]
-                if d > 0:
-                    per_char.append(d / len(w))
-            c += len(w) + 1
-    base = statistics.median(per_char) if per_char else 0.07
-    for l in lines:
-        meta = {}
-        if l.chars:
-            c = 0
-            for w in l.text.split():
-                seg = l.chars[c:c + len(w)]
-                if seg:
-                    start, end = seg[0][0], seg[-1][1]
-                    d = end - start
-                    ratio = d / (len(w) * base + 0.12)
-                    meta[c] = (start, end, clamp((ratio - 2.0) / 2.5) if d >= 0.45 else 0.0)
-                c += len(w) + 1
-        l.word_meta = meta
-
-
-def mark_chorus(lines):
-    def key(t):
-        return " ".join(re.sub(r"[^\w]+", " ", t.lower()).split())
-    counts = {}
-    for l in lines:
-        k = key(l.text)
-        if len(k) >= 6:
-            counts[k] = counts.get(k, 0) + 1
-    texts = [l for l in lines if l.text]
-    rep = sum(1 for l in texts if counts.get(key(l.text), 0) >= 2)
-    need = 3 if texts and rep / len(texts) > 0.6 else 2
-    for l in lines:
-        l.chorus = counts.get(key(l.text), 0) >= need
-
-
-COMMON_WORDS = frozenset("""
-    avec dans pour plus mais comme tout tous toute cette elle elles nous vous leur leurs sans sous
-    quand alors aussi encore jamais toujours etre avoir fait faire suis sont etait veux peux vais
-    that this with from your what when where have just like dont cant youre they them then than
-    there here were been will would could should about into over some know want gonna wanna yeah
-    """.split())
-
-
-def word_key(word):
-    table = str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc")
-    return re.sub(r"[^a-z0-9]", "", word.lower().translate(table))
-
-
-def count_word_lines(lines):
-    counts = {}
-    for l in lines:
-        for k in {word_key(w) for w in l.text.split()}:
-            if k:
-                counts[k] = counts.get(k, 0) + 1
-    return counts
-
-
-def held_fx(meta, pos):
-    none = (1.0, 0.0, 0.0, 0.0, 1.0)
-    if not meta:
-        return none
-    start, end, inten = meta
-    if inten <= 0 or pos < start:
-        return none
-    amp = 0.10 + 0.24 * inten
-    if pos <= end:
-        k = ease_out(clamp((pos - start) / max(0.25, end - start)))
-        shake = (0.8 + 2.8 * inten) * k if (end - start) > 0.8 else 0.0
-        dx = shake * math.sin(pos * 61 + start * 13)
-        dy = shake * math.sin(pos * 47 + start * 7 + 1.3)
-        return 1 + amp * k, dx, dy, k, 1 + 0.07 * inten * k
-    after = pos - end
-    if after > 0.5:
-        return none
-    sc = 1 + amp * math.exp(-after * 9) * math.cos(after * 22)
-    return sc, 0.0, 0.0, max(0.0, 1 - after * 3), 1.0
-
-
-class MediaWorker(QThread):
-    track = pyqtSignal(object)
-    lyrics = pyqtSignal(object, object)
-    translated = pyqtSignal(object)
-    cover = pyqtSignal(object, object)
-    sources = pyqtSignal(object)
-    browsers = pyqtSignal(object)
-    COVER_READS = (0.8, 3.5)
-    MAX_DURATION = 20 * 60
-    RETRY_DELAYS = (10, 30, 60, 120, 300)
-
-    def __init__(self, blocked=(), sites_off=(), sites_other=False):
-        super().__init__()
-        from sites import SiteGuard
-        self.guard = SiteGuard(sites_off, sites_other)
-        self._stop = False
-        self._cache = {}
-        self._retry = {}
-        self._pending = set()
-        self.blocked = set(blocked)
-
-    def run(self):
-        import asyncio
-        from media import get_manager, get_now_playing, get_thumbnail, list_sources
-
-        loop = asyncio.new_event_loop()
-        manager = loop.run_until_complete(get_manager())
-        pool = ThreadPoolExecutor(max_workers=2)
-        last_key = None
-        last_sources = None
-        last_seen = None
-        changed_at, cover_step, last_cover = 0.0, 0, None
-        while not self._stop:
-            blocked = frozenset(self.blocked)
-            try:
-                np = loop.run_until_complete(get_now_playing(manager, blocked, self.guard))
-            except Exception:
-                np = None
-            self.track.emit(np)
-            seen = dict(self.guard.seen)
-            if seen != last_seen:
-                last_seen = seen
-                self.browsers.emit(seen)
-            src = list_sources(manager)
-            if src != last_sources:
-                last_sources = src
-                self.sources.emit(src)
-            now = time.monotonic()
-            if np and np.key != last_key:
-                last_key = np.key
-                changed_at, cover_step = now, 0
-                if np.key in self._cache:
-                    self.lyrics.emit(np.key, self._cache[np.key])
-                    self.translated.emit(np.key)
-                elif np.key not in self._pending:
-                    self._pending.add(np.key)
-                    pool.submit(self._fetch, np)
-            elif np and np.key in self._retry and np.key not in self._pending \
-                    and now >= self._retry[np.key][0]:
-                self._pending.add(np.key)
-                pool.submit(self._fetch, np)
-            if np and np.key == last_key and cover_step < len(self.COVER_READS) \
-                    and now - changed_at >= self.COVER_READS[cover_step]:
-                cover_step += 1
-                try:
-                    data = loop.run_until_complete(get_thumbnail(manager, blocked, self.guard))
-                except Exception:
-                    data = None
-                if data and data != last_cover:
-                    last_cover = data
-                    self.cover.emit(np.key, data)
-            time.sleep(0.4)
-        pool.shutdown(wait=False)
-
-    def _fetch(self, np):
-        try:
-            self._fetch_inner(np)
-        finally:
-            self._pending.discard(np.key)
-
-    def _fetch_inner(self, np):
-        if np.duration and np.duration > self.MAX_DURATION:
-            self._cache[np.key] = None
-            self.lyrics.emit(np.key, None)
-            return
-        found, lines = cache_load(np.title, np.artist, np.duration)
-        if found:
-            self._cache[np.key] = lines
-            self.lyrics.emit(np.key, lines)
-            self.translated.emit(np.key)
-            return
-        try:
-            lines, reliable = fetch_lyrics_ex(np.title, np.artist, np.album, np.duration)
-        except Exception:
-            lines, reliable = None, False
-        if not reliable:
-            n = self._retry.get(np.key, (0, 0))[1]
-            if n < len(self.RETRY_DELAYS):
-                self._retry[np.key] = (time.monotonic() + self.RETRY_DELAYS[n], n + 1)
-            else:
-                self._retry.pop(np.key, None)
-            self.lyrics.emit(np.key, None)
-            return
-        self._retry.pop(np.key, None)
-        self._cache[np.key] = lines
-        self.lyrics.emit(np.key, lines)
-        translated_ok = True
-        if lines:
-            try:
-                translated_ok = translate_lines(lines) is not None
-            except Exception:
-                translated_ok = False
-            self.translated.emit(np.key)
-        if translated_ok:
-            cache_save(np.title, np.artist, np.duration, lines)
-
-    def stop(self):
-        self._stop = True
-        self.wait(2000)
-
-
-def _demo_line(t, text, singer=""):
-    if not text:
-        return Line(t, "")
-    segs = [(t, 0.01, f"({singer}) ")] if singer else []
-    for k, w in enumerate(text.split()):
-        held = w.endswith("~")
-        w = w.rstrip("~")
-        dur = 1.6 if held else 0.12 + 0.045 * len(w) + (0.25 if k % 4 == 3 else 0)
-        segs.append((t, dur, w + " "))
-        t += dur + (0.08 if w.endswith(",") else 0.02)
-    return build_line(segs)
-
-
-DEMO_LINES = split_adlibs(extract_singers([
-    _demo_line(2.0, "Les neons dansent sur l'ecran"),
-    _demo_line(5.5, "Je joue la nuit (oh oh), je perds le temps"),
-    _demo_line(9.0, "Monte le son, garde le rythme~", "Nova"),
-    _demo_line(12.5, "Comme un refrain qui revient~"),
-    _demo_line(16.0, ""),
-    _demo_line(19.0, "Monte le son, garde le rythme~", "Kai"),
-    _demo_line(22.5, "Les paroles brillent (yeah), rien ne s'arrete"),
-    _demo_line(26.5, "Une derniere ligne pour la route, et on relance la partie"),
-    _demo_line(32.0, ""),
-]))
-DEMO_LENGTH = 34.0
-DEMO_KEY = ("monte le son", "followthelyrics (demo)")
-
-
-def demo_track(position):
-    return SimpleNamespace(
-        title="Monte le son", artist="FollowTheLyrics (demo)", album="Demo", duration=DEMO_LENGTH,
-        position=position, playing=True, app="demo", key=DEMO_KEY,
-    )
-
-
-class BeatBridge(QThread):
-    beat = pyqtSignal(float)
 
 
 class Overlay(QWidget):
@@ -390,7 +140,7 @@ class Overlay(QWidget):
         self.track_changed_at = -99.0
         self.card_since = -99.0
         self.cover_img: QImage | None = None
-        self.lines: list[Line] | None = None
+        self.lines: list[lyrics.Line] | None = None
         self.times: list[float] = []
         self.word_sync = False
         self.state = "idle"
@@ -451,32 +201,59 @@ class Overlay(QWidget):
         self._band = None
 
     def update_zones(self):
-        W, H = self.width(), self.height()
+        width, height = self.width(), self.height()
         self.zones = []
         for z in self.profile.get("zones_interdites", []):
-            try:
-                self.zones.append(QRectF(z["x"] * W, z["y"] * H, z["l"] * W, z["h"] * H))
-            except Exception:
-                pass
+            with contextlib.suppress(KeyError, TypeError, ValueError):
+                self.zones.append(
+                    QRectF(
+                        z["x"] * width,
+                        z["y"] * height,
+                        z["l"] * width,
+                        z["h"] * height,
+                    )
+                )
 
     def keep_on_top(self):
         if not self.isVisible():
             return
         try:
             u = ctypes.windll.user32
-            u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
-                                       ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+            u.SetWindowPos.argtypes = [
+                wintypes.HWND,
+                wintypes.HWND,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_uint,
+            ]
             u.SetWindowPos.restype = wintypes.BOOL
-            u.SetWindowPos(int(self.winId()), wintypes.HWND(-1), 0, 0, 0, 0,
-                           0x0001 | 0x0002 | 0x0010 | 0x0200)
+            u.SetWindowPos(
+                int(self.winId()),
+                wintypes.HWND(-1),
+                0,
+                0,
+                0,
+                0,
+                0x0001 | 0x0002 | 0x0010 | 0x0200,
+            )
         except Exception:
-            pass
+            logger.debug("keep_on_top failed", exc_info=True)
 
     def install_foreground_hook(self):
         try:
             u = ctypes.windll.user32
-            proto = ctypes.WINFUNCTYPE(None, wintypes.HANDLE, wintypes.DWORD, wintypes.HWND, wintypes.LONG,
-                                       wintypes.LONG, wintypes.DWORD, wintypes.DWORD)
+            proto = ctypes.WINFUNCTYPE(
+                None,
+                wintypes.HANDLE,
+                wintypes.DWORD,
+                wintypes.HWND,
+                wintypes.LONG,
+                wintypes.LONG,
+                wintypes.DWORD,
+                wintypes.DWORD,
+            )
 
             def on_foreground(*_):
                 for delay in (0, 300, 1000, 2500):
@@ -484,10 +261,20 @@ class Overlay(QWidget):
 
             self._fg_proc = proto(on_foreground)
             u.SetWinEventHook.restype = wintypes.HANDLE
-            u.SetWinEventHook.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE, proto,
-                                          wintypes.DWORD, wintypes.DWORD, wintypes.DWORD]
-            self._fg_hook = u.SetWinEventHook(3, 3, None, self._fg_proc, 0, 0, 0)
+            u.SetWinEventHook.argtypes = [
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.HANDLE,
+                proto,
+                wintypes.DWORD,
+                wintypes.DWORD,
+                wintypes.DWORD,
+            ]
+            self._fg_hook = u.SetWinEventHook(
+                3, 3, None, self._fg_proc, 0, 0, 0
+            )
         except Exception:
+            logger.debug("install_foreground_hook failed", exc_info=True)
             self._fg_hook = None
 
     def harden_window(self):
@@ -495,14 +282,20 @@ class Overlay(QWidget):
             hwnd = int(self.winId())
             u = ctypes.windll.user32
             u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
-            u.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+            u.SetWindowLongPtrW.argtypes = [
+                wintypes.HWND,
+                ctypes.c_int,
+                ctypes.c_ssize_t,
+            ]
             ex = u.GetWindowLongPtrW(hwnd, -20)
             u.SetWindowLongPtrW(hwnd, -20, ex | 0x20 | 0x80 | 0x08000000)
         except Exception:
-            pass
+            logger.debug("harden_window failed", exc_info=True)
 
     def raw_position(self):
-        return self.anchor_pos + ((self.clock() - self.anchor_t) if self.playing else 0.0)
+        return self.anchor_pos + (
+            (self.clock() - self.anchor_t) if self.playing else 0.0
+        )
 
     def position(self):
         return self.raw_position() + self.cfg["offset"]
@@ -524,9 +317,14 @@ class Overlay(QWidget):
             self.cover_img = None
             self.accent = [QColor(c) for c in NEUTRAL_PALETTE]
             self.anchor_pos, self.anchor_t = np.position, now
-            self.egg = easter.pick(np, self) if self.cfg.get("easter", True) else None
+            self.egg = (
+                easter.pick(np, self) if self.cfg.get("easter", True) else None
+            )
             self.force_paint = True
-        elif np.playing != self.playing or abs(np.position - self.raw_position()) > 0.35:
+        elif (
+            np.playing != self.playing
+            or abs(np.position - self.raw_position()) > 0.35
+        ):
             self.anchor_pos, self.anchor_t = np.position, now
         self.playing = np.playing
         self.track = np
@@ -536,18 +334,20 @@ class Overlay(QWidget):
             return
         if lines:
             if lines[0].time > 0.5:
-                lines = [Line(0.0, "")] + list(lines)
-            compute_word_meta(lines)
-            mark_chorus(lines)
+                lines = [lyrics.Line(0.0, ""), *list(lines)]
+            analysis.compute_word_meta(lines)
+            analysis.mark_chorus(lines)
             if self.track is not None:
-                mark_title_lines(lines, self.track.title, self.track.artist)
+                lyrics.mark_title_lines(
+                    lines, self.track.title, self.track.artist
+                )
             self._hero_cache = {}
-            self.word_lines = count_word_lines(lines)
+            self.word_lines = analysis.count_word_lines(lines)
             self.cur = self.prev = None
             self.exiting = []
             self.lines = lines
-            self.times = [l.time for l in lines]
-            self.word_sync = any(l.chars for l in lines)
+            self.times = [line.time for line in lines]
+            self.word_sync = any(line.chars for line in lines)
             self.state = "ok"
             if self.egg:
                 self.egg.set_lines(lines)
@@ -603,8 +403,10 @@ class Overlay(QWidget):
         g = QLinearGradient(QPointF(x0, 0), QPointF(x0 + max(roww, 1), 0))
         white = QColor(255, 255, 255)
         key = tuple((c.red(), c.green(), c.blue()) for c in cols)
-        for pos, rgb in cover_colors.ramp(key):
-            g.setColorAt(pos, mix(QColor(*rgb), white, 0.26 if chorus else 0.12))
+        for pos, rgb in colors.ramp(key):
+            g.setColorAt(
+                pos, mix(QColor(*rgb), white, 0.26 if chorus else 0.12)
+            )
         return QBrush(g)
 
     def outline_pen(self):
@@ -620,12 +422,23 @@ class Overlay(QWidget):
             c, base = QColor(255, 255, 255), 55
         else:
             c, base = self.accent[1], 65
-        pen = QPen(QColor(c.red(), c.green(), c.blue(), int(clamp(base + 150 * boost, 0, 255))), 10 + 8 * boost)
+        pen = QPen(
+            QColor(
+                c.red(),
+                c.green(),
+                c.blue(),
+                int(animation.clamp(base + 150 * boost, 0, 255)),
+            ),
+            10 + 8 * boost,
+        )
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         return [pen]
 
     def main_font(self):
-        f = QFont(family_or_default(self.cfg.get("font", DEFAULTS["font"])), 1)
+        f = QFont(
+            family_or_default(self.cfg.get("font", settings.DEFAULTS["font"])),
+            1,
+        )
         f.setPixelSize(int(34 * self.cfg["scale"]))
         f.setWeight(QFont.Weight.Black)
         return f
@@ -681,7 +494,12 @@ class Overlay(QWidget):
             w = max(w, min(tw, maxw * 1.2))
             h += QFontMetricsF(tf).height() * 1.1
         if line.adlib:
-            w += QFontMetricsF(self.small_font(0.6)).horizontalAdvance(f"({line.adlib})") + 12
+            w += (
+                QFontMetricsF(self.small_font(0.6)).horizontalAdvance(
+                    f"({line.adlib})"
+                )
+                + 12
+            )
         return w, h
 
     def column_mode(self):
@@ -691,16 +509,18 @@ class Overlay(QWidget):
         return self.cfg.get("mode") == "edit" and self.cfg.get("stack", True)
 
     def word_score(self, line, word, cstart, index):
-        key = word_key(word)
+        key = analysis.word_key(word)
         score = min(len(key), 12) * 0.04
-        meta = (getattr(line, "word_meta", None) or {}).get(cstart)
+        meta = (line.word_meta or {}).get(cstart)
         if meta:
             score += 3.0 * meta[2]
-        span = getattr(line, "title_span", None)
+        span = line.title_span
         if span and span[0] <= index < span[0] + span[1]:
             score += 2.5
-        if len(key) >= 4 and key not in COMMON_WORDS:
-            score += 1.5 * clamp((self.word_lines.get(key, 1) - 1) / 5)
+        if len(key) >= 4 and key not in analysis.COMMON_WORDS:
+            score += 1.5 * animation.clamp(
+                (self.word_lines.get(key, 1) - 1) / 5
+            )
         return score
 
     def row_scales(self, line, rows):
@@ -715,45 +535,65 @@ class Overlay(QWidget):
                         best, hero = sc, r
                     index += 1
             self._hero_cache[key] = hero
-        return hero, [1.0 if r == hero else max(0.46, 0.64 - 0.12 * (abs(r - hero) - 1)) for r in range(len(rows))]
+        return hero, [
+            1.0 if r == hero else max(0.46, 0.64 - 0.12 * (abs(r - hero) - 1))
+            for r in range(len(rows))
+        ]
 
     def place_line(self, line, avoid):
         if self.column_mode():
             return self.column_place(line)
-        W, H = self.width(), self.height()
+        width, height = self.width(), self.height()
         s = self.cfg["scale"]
         rng = self.rng
         margin = 26 * s
-        top_limit = H * UPPER
-        chorus = getattr(line, "chorus", False)
+        top_limit = height * UPPER
+        chorus = line.chorus
         best = None
         for attempt in range(200):
             if line.text:
                 n = len(line.text)
-                mul = rng.uniform(0.95, 1.1) * (1.35 if n < 14 else 1.15 if n < 26 else 1.0)
+                mul = rng.uniform(0.95, 1.1) * (
+                    1.35 if n < 14 else 1.15 if n < 26 else 1.0
+                )
                 if chorus:
                     mul *= 1.22
                 if attempt >= 100:
                     mul *= 0.78 if attempt < 150 else 0.62
                 if self.stacked():
                     mul *= 1.45
-                    maxw = rng.choice([0.11, 0.14, 0.18, 0.22]) * W / mul
+                    maxw = rng.choice([0.11, 0.14, 0.18, 0.22]) * width / mul
                 else:
-                    maxw = rng.choice([0.18, 0.24, 0.30, 0.36]) * W / mul
+                    maxw = rng.choice([0.18, 0.24, 0.30, 0.36]) * width / mul
                 bw, bh = self.block_size(line, maxw)
                 bw, bh = bw * mul, bh * mul
             else:
                 mul, maxw, bw, bh = 1.0, 0, 90 * s, 34 * s
             room = top_limit - margin - bh
-            if bw > W - 2 * margin or room < 0:
+            if bw > width - 2 * margin or room < 0:
                 continue
             y = margin + room * (rng.random() ** 1.6)
-            r = QRectF(rng.uniform(margin, W - margin - bw), y, bw, bh)
+            r = QRectF(rng.uniform(margin, width - margin - bw), y, bw, bh)
             padded = r.adjusted(-20 * s, -14 * s, 20 * s, 14 * s)
-            score = sum(area(padded.intersected(z)) for z in self.zones) / (bw * bh) * 10
+            score = (
+                sum(area(padded.intersected(z)) for z in self.zones)
+                / (bw * bh)
+                * 10
+            )
             for a in avoid:
-                score += area(padded.adjusted(-30 * s, -30 * s, 30 * s, 30 * s).intersected(a)) / (bw * bh) * 5
-                if abs(r.center().x() - a.center().x()) < W * 0.18 and abs(r.center().y() - a.center().y()) < H * 0.15:
+                score += (
+                    area(
+                        padded.adjusted(
+                            -30 * s, -30 * s, 30 * s, 30 * s
+                        ).intersected(a)
+                    )
+                    / (bw * bh)
+                    * 5
+                )
+                if (
+                    abs(r.center().x() - a.center().x()) < width * 0.18
+                    and abs(r.center().y() - a.center().y()) < height * 0.15
+                ):
                     score += 0.6
             card = self.card_rect()
             if self.card_visible() and card is not None:
@@ -763,35 +603,62 @@ class Overlay(QWidget):
             if score == 0:
                 break
         if best is None:
-            r, mul, maxw = QRectF(margin, margin, 300 * s, 60 * s), 1.0, W * 0.3
+            r, mul, maxw = (
+                QRectF(margin, margin, 300 * s, 60 * s),
+                1.0,
+                width * 0.3,
+            )
         else:
             _, r, mul, maxw = best
         cx = r.center().x()
-        align = "left" if cx < W / 3 else "right" if cx > 2 * W / 3 else "center"
+        align = (
+            "left"
+            if cx < width / 3
+            else "right"
+            if cx > 2 * width / 3
+            else "center"
+        )
         ax = {"left": r.left(), "right": r.right(), "center": cx}[align]
         if line.adlib and align == "right":
-            ax -= QFontMetricsF(self.small_font(0.6)).horizontalAdvance(f"({line.adlib})") * mul + 12
-        enter = "pop" if chorus else rng.choice(["slide", "slide", "pop", "drop"])
+            ax -= (
+                QFontMetricsF(self.small_font(0.6)).horizontalAdvance(
+                    f"({line.adlib})"
+                )
+                * mul
+                + 12
+            )
+        enter = (
+            "pop" if chorus else rng.choice(["slide", "slide", "pop", "drop"])
+        )
         direction = {"left": (-1, 0), "right": (1, 0)}.get(align, (0, -1))
-        return SimpleNamespace(rect=r, ax=ax, cy=r.center().y(), align=align, mul=mul, maxw=maxw,
-                               rot=rng.choice([-4, -3, -2, -1, 0, 0, 1, 2, 3, 4]),
-                               enter=enter, dir=direction, chorus=chorus,
-                               tilt={"left": 1, "right": -1}.get(align, 0) * rng.uniform(26, 34))
+        return SimpleNamespace(
+            rect=r,
+            ax=ax,
+            cy=r.center().y(),
+            align=align,
+            mul=mul,
+            maxw=maxw,
+            rot=rng.choice([-4, -3, -2, -1, 0, 0, 1, 2, 3, 4]),
+            enter=enter,
+            dir=direction,
+            chorus=chorus,
+            tilt={"left": 1, "right": -1}.get(align, 0) * rng.uniform(26, 34),
+        )
 
     def column_band(self):
         if self._band is not None:
             return self._band
-        W, H = self.width(), self.height()
+        width, height = self.width(), self.height()
         s = self.cfg["scale"]
         m = 36 * s
         lh = QFontMetricsF(self.main_font()).height() * 1.05
         band_h = lh * 3.6
-        mw = W * 0.36
+        mw = width * 0.36
         pos = self.cfg.get("position", "left")
-        x = {"left": m, "right": W - m - mw}.get(pos, (W - mw) / 2)
+        x = {"left": m, "right": width - m - mw}.get(pos, (width - mw) / 2)
         best = QRectF(x, m, mw, band_h)
         y = m
-        while y + band_h <= H * UPPER + lh:
+        while y + band_h <= height * UPPER + lh:
             r = QRectF(x, y, mw, band_h)
             if not any(r.intersects(z) for z in self.zones):
                 best = r
@@ -803,11 +670,23 @@ class Overlay(QWidget):
     def column_place(self, line):
         band = self.column_band()
         pos = self.cfg.get("position", "left")
-        chorus = getattr(line, "chorus", False)
+        chorus = line.chorus
         mul = 1.12 if (chorus and self.cfg.get("mode") == "classic") else 1.0
-        ax = {"left": band.left(), "right": band.right()}.get(pos, band.center().x())
-        return SimpleNamespace(rect=band, ax=ax, cy=band.center().y(), align=pos, mul=mul,
-                               maxw=band.width() / mul, rot=0, enter="column", dir=(0, 1), chorus=chorus)
+        ax = {"left": band.left(), "right": band.right()}.get(
+            pos, band.center().x()
+        )
+        return SimpleNamespace(
+            rect=band,
+            ax=ax,
+            cy=band.center().y(),
+            align=pos,
+            mul=mul,
+            maxw=band.width() / mul,
+            rot=0,
+            enter="column",
+            dir=(0, 1),
+            chorus=chorus,
+        )
 
     def entry_height(self, e):
         line = self.lines[e["idx"]]
@@ -829,32 +708,45 @@ class Overlay(QWidget):
             self.cur = None
             return
         avoid = [self.prev["place"].rect] if self.prev else []
-        self.cur = {"idx": idx, "place": self.place_line(self.lines[idx], avoid), "since": now}
+        self.cur = {
+            "idx": idx,
+            "place": self.place_line(self.lines[idx], avoid),
+            "since": now,
+        }
         self.maybe_flash(idx)
 
     def maybe_flash(self, idx):
         line = self.lines[idx]
         mode = self.cfg.get("title_drop", "always")
-        if mode == "never" or self.egg or not getattr(line, "title_drop", False):
+        if mode == "never" or self.egg or not line.title_drop:
             return
         in_game = self.profile_key != "bureau"
         if in_game and mode == "desktop":
             return
         i, n = line.title_span
         words = line.text.split()
-        text = " ".join(words[i:i + n]).strip(",.!?;:…\"'()").upper()
+        text = " ".join(words[i : i + n]).strip(",.!?;:…\"'()").upper()
         cstart = sum(len(w) + 1 for w in words[:i])
-        start = line.chars[cstart][0] if (line.chars and cstart < len(line.chars)) else line.time
+        start = (
+            line.chars[cstart][0]
+            if (line.chars and cstart < len(line.chars))
+            else line.time
+        )
         place = self.flash_place(text, in_game)
         if place is None:
             return
         font, rect = place
-        self.flash = {"text": text, "font": font, "rect": rect, "start": start,
-                      "end": max(self.sung_end(idx) + 1.2, start + 2.2),
-                      "rot": self.rng.choice([-3, -2, -1, 1, 2, 3])}
+        self.flash = {
+            "text": text,
+            "font": font,
+            "rect": rect,
+            "start": start,
+            "end": max(self.sung_end(idx) + 1.2, start + 2.2),
+            "rot": self.rng.choice([-3, -2, -1, 1, 2, 3]),
+        }
 
     def flash_place(self, text, in_game):
-        W, H = self.width(), self.height()
+        width, height = self.width(), self.height()
         base = self.main_font()
         probe = QFont(base)
         probe.setPixelSize(100)
@@ -867,48 +759,61 @@ class Overlay(QWidget):
             return f
 
         if not in_game:
-            px = min(H * 0.26, 100 * W * 0.84 / w100)
+            px = min(height * 0.26, 100 * width * 0.84 / w100)
             w, h = w100 * px / 100, h100 * px / 100
-            return font_for(px), QRectF((W - w) / 2, H * 0.58 - h / 2, w, h)
+            return font_for(px), QRectF(
+                (width - w) / 2, height * 0.58 - h / 2, w, h
+            )
         m = 24 * self.cfg["scale"]
         busy = [e["place"].rect for e in (self.cur, self.prev) if e]
         for frac in (0.62, 0.5, 0.42, 0.34, 0.27, 0.21):
-            px = min(H * 0.15, 100 * W * frac / w100)
+            px = min(height * 0.15, 100 * width * frac / w100)
             if px < base.pixelSize() * 1.5:
                 break
             w, h = w100 * px / 100, h100 * px / 100
-            xs = sorted((m + k * (W - 2 * m - w) / 12 for k in range(13)), key=lambda x: abs(x + w / 2 - W / 2))
+            xs = sorted(
+                (m + k * (width - 2 * m - w) / 12 for k in range(13)),
+                key=lambda x: abs(x + w / 2 - width / 2),
+            )
             y = m
-            while y + h <= H * UPPER:
+            while y + h <= height * UPPER:
                 for x in xs:
                     r = QRectF(x, y, w, h)
                     pad = r.adjusted(-12, -8, 12, 8)
-                    if not any(pad.intersects(z) for z in self.zones) and not any(pad.intersects(b) for b in busy):
+                    if not any(
+                        pad.intersects(z) for z in self.zones
+                    ) and not any(pad.intersects(b) for b in busy):
                         return font_for(px), r
-                y += H * 0.03
+                y += height * 0.03
         return None
 
     def draw_flash(self, p, pos):
         f = self.flash
         if not f or pos < f["start"]:
             return
-        k = clamp((pos - f["start"]) / 0.38)
-        out = clamp((f["end"] - pos) / 0.6)
-        a = ease_out(clamp(k * 1.6)) * out
+        k = animation.clamp((pos - f["start"]) / 0.38)
+        out = animation.clamp((f["end"] - pos) / 0.6)
+        a = animation.ease_out(animation.clamp(k * 1.6)) * out
         if a <= 0.003:
             return
-        sc = lerp(1.4, 1.0, ease_out_back(k)) * (1 + 0.05 * self.beat_pulse()) * (1 + 0.05 * (1 - out))
+        sc = (
+            animation.lerp(1.4, 1.0, animation.ease_out_back(k))
+            * (1 + 0.05 * self.beat_pulse())
+            * (1 + 0.05 * (1 - out))
+        )
         font = f["font"]
         fm = QFontMetricsF(font)
         tw = fm.horizontalAdvance(f["text"])
         c = f["rect"].center()
         p.save()
-        p.setOpacity(clamp(self.alpha * a * 0.95))
+        p.setOpacity(animation.clamp(self.alpha * a * 0.95))
         p.translate(c)
         p.rotate(f["rot"])
         p.scale(sc, sc)
         x, y = -tw / 2, fm.ascent() - fm.height() / 2
-        self.draw_text_fx(p, f["text"], font, x, y, self.fill_brush(x, tw, True), glow=1.5)
+        self.draw_text_fx(
+            p, f["text"], font, x, y, self.fill_brush(x, tw, True), glow=1.5
+        )
         p.restore()
 
     def is_animating(self, now, pos):
@@ -916,7 +821,11 @@ class Overlay(QWidget):
             return True
         if self.egg and self.egg.busy(now, pos):
             return True
-        if now < self.toast_until or now < self.zones_until or self.card_visible():
+        if (
+            now < self.toast_until
+            or now < self.zones_until
+            or self.card_visible()
+        ):
             return True
         if self.beat_pulse() > 0.01:
             return True
@@ -939,7 +848,14 @@ class Overlay(QWidget):
             if e is self.cur and fade > 0:
                 if typewriter:
                     return True
-                if pos < max(self.sung_end(e["idx"]), line.time + len(line.text.split()) * 0.06) + 0.8:
+                if (
+                    pos
+                    < max(
+                        self.sung_end(e["idx"]),
+                        line.time + len(line.text.split()) * 0.06,
+                    )
+                    + 0.8
+                ):
                     return True
         return False
 
@@ -955,7 +871,9 @@ class Overlay(QWidget):
                 self.advance(idx, now)
         self.exiting = [(e, t) for e, t in self.exiting if now - t < 0.45]
         pos_now = self.position()
-        if self.flash and (pos_now > self.flash["end"] or pos_now < self.flash["start"] - 6):
+        if self.flash and (
+            pos_now > self.flash["end"] or pos_now < self.flash["start"] - 6
+        ):
             self.flash = None
 
         alive = []
@@ -974,35 +892,67 @@ class Overlay(QWidget):
         toast_on = now < self.toast_until or now < self.zones_until
         since = now - self.track_changed_at
         show = (
-            not self.user_hidden and self.track is not None and self.playing
+            not self.user_hidden
+            and self.track is not None
+            and self.playing
             and (self.state == "ok" or since < 4.0)
         ) or toast_on
         target = 1.0 if show else 0.0
-        self.alpha += (target - self.alpha) * (1 - math.exp(-dt * (8 if show else 4)))
+        self.alpha += (target - self.alpha) * (
+            1 - math.exp(-dt * (8 if show else 4))
+        )
 
         region = QRegion()
         if self.alpha > 0.003:
             pad = int(120 * self.cfg["scale"])
             if self.column_mode():
                 b = self.column_band()
-                region = QRegion(b.toAlignedRect().adjusted(-pad, -int(b.height()), pad, int(b.height())))
+                region = QRegion(
+                    b.toAlignedRect().adjusted(
+                        -pad, -int(b.height()), pad, int(b.height())
+                    )
+                )
             else:
                 for e in self.visible_entries():
-                    region = region.united(QRegion(e["place"].rect.toAlignedRect().adjusted(-pad, -pad, pad, pad)))
+                    region = region.united(
+                        QRegion(
+                            e["place"]
+                            .rect.toAlignedRect()
+                            .adjusted(-pad, -pad, pad, pad)
+                        )
+                    )
             card = self.card_rect()
             if card is not None and (self.card_visible() or toast_on):
-                region = region.united(QRegion(card.toAlignedRect().adjusted(-40, -10, 40, 70)))
+                region = region.united(
+                    QRegion(card.toAlignedRect().adjusted(-40, -10, 40, 70))
+                )
             for pt in self.particles:
-                region = region.united(QRegion(int(pt["x"]) - 8, int(pt["y"]) - 8, 16, 16))
+                region = region.united(
+                    QRegion(int(pt["x"]) - 8, int(pt["y"]) - 8, 16, 16)
+                )
             if self.flash:
                 g = int(self.flash["font"].pixelSize() * 0.9) + 40
-                region = region.united(QRegion(self.flash["rect"].toAlignedRect().adjusted(-g, -g, g, g)))
-            if now < self.zones_until or (self.egg and self.egg.busy(now, pos_now)):
+                region = region.united(
+                    QRegion(
+                        self.flash["rect"]
+                        .toAlignedRect()
+                        .adjusted(-g, -g, g, g)
+                    )
+                )
+            if now < self.zones_until or (
+                self.egg and self.egg.busy(now, pos_now)
+            ):
                 region = QRegion(self.rect())
         dirty = region.united(self.last_region)
-        animating = abs(target - self.alpha) > 0.002 or self.is_animating(now, pos_now)
-        if not dirty.isEmpty() and (animating or self.was_animating or self.force_paint
-                                    or region != self.last_region):
+        animating = abs(target - self.alpha) > 0.002 or self.is_animating(
+            now, pos_now
+        )
+        if not dirty.isEmpty() and (
+            animating
+            or self.was_animating
+            or self.force_paint
+            or region != self.last_region
+        ):
             self.update(dirty)
         self.was_animating = animating
         self.force_paint = False
@@ -1033,13 +983,28 @@ class Overlay(QWidget):
                 self.draw_column(p, now, pos)
             else:
                 for e, t in self.exiting:
-                    k = clamp((now - t) / 0.4)
+                    k = animation.clamp((now - t) / 0.4)
                     a = PREV_ALPHA * self.done_fade(e["idx"], pos) * (1 - k)
-                    self.draw_entry(p, e, a, 0.88 - 0.06 * k, 0, -14 * k, "prev", pos)
+                    self.draw_entry(
+                        p, e, a, 0.88 - 0.06 * k, 0, -14 * k, "prev", pos
+                    )
                 if self.prev:
-                    k = ease_out(clamp((now - self.prev["prev_since"]) / 0.3))
-                    a = lerp(1.0, PREV_ALPHA, k) * self.done_fade(self.prev["idx"], pos)
-                    self.draw_entry(p, self.prev, a, lerp(1.0, 0.88, k), 0, 0, "prev", pos)
+                    k = animation.ease_out(
+                        animation.clamp((now - self.prev["prev_since"]) / 0.3)
+                    )
+                    a = animation.lerp(1.0, PREV_ALPHA, k) * self.done_fade(
+                        self.prev["idx"], pos
+                    )
+                    self.draw_entry(
+                        p,
+                        self.prev,
+                        a,
+                        animation.lerp(1.0, 0.88, k),
+                        0,
+                        0,
+                        "prev",
+                        pos,
+                    )
                 if self.cur:
                     self.draw_current(p, self.cur, now, pos)
 
@@ -1055,28 +1020,44 @@ class Overlay(QWidget):
         line = self.lines[idx]
         if line.end:
             return line.end
-        nxt = self.times[idx + 1] if idx + 1 < len(self.times) else line.time + 6.0
+        nxt = (
+            self.times[idx + 1]
+            if idx + 1 < len(self.times)
+            else line.time + 6.0
+        )
         return min(nxt, line.time + max(2.0, len(line.text) * 0.09))
 
     def done_fade(self, idx, pos):
         if not self.lines[idx].text:
             return 1.0
-        return clamp(1 - (pos - self.sung_end(idx) - HIDE_AFTER) / 0.5)
+        return animation.clamp(
+            1 - (pos - self.sung_end(idx) - HIDE_AFTER) / 0.5
+        )
 
     def beat_scale(self, chorus):
         return 1 + (0.09 if chorus else 0.05) * self.beat_pulse()
 
     def draw_current(self, p, e, now, pos):
         pl = e["place"]
-        k = clamp((now - e["since"]) / (0.55 if pl.chorus else 0.45))
-        a, sc, ox, oy = ease_out(k) * self.done_fade(e["idx"], pos), 1.0, 0.0, 0.0
+        k = animation.clamp((now - e["since"]) / (0.55 if pl.chorus else 0.45))
+        a, sc, ox, oy = (
+            animation.ease_out(k) * self.done_fade(e["idx"], pos),
+            1.0,
+            0.0,
+            0.0,
+        )
         d = 90 * self.cfg["scale"]
         if pl.enter == "slide":
-            ox, oy = pl.dir[0] * d * (1 - ease_out(k)), pl.dir[1] * d * (1 - ease_out(k))
+            ox, oy = (
+                pl.dir[0] * d * (1 - animation.ease_out(k)),
+                pl.dir[1] * d * (1 - animation.ease_out(k)),
+            )
         elif pl.enter == "pop":
-            sc = lerp(1.7 if pl.chorus else 1.4, 1.0, ease_out_back(k))
+            sc = animation.lerp(
+                1.7 if pl.chorus else 1.4, 1.0, animation.ease_out_back(k)
+            )
         else:
-            oy = -60 * self.cfg["scale"] * (1 - ease_out_back(k))
+            oy = -60 * self.cfg["scale"] * (1 - animation.ease_out_back(k))
         sc *= self.beat_scale(pl.chorus)
         self.draw_entry(p, e, a, sc, ox, oy, "current", pos)
 
@@ -1087,25 +1068,54 @@ class Overlay(QWidget):
         cur_y = band.top() + band.height() * 0.64
         hc = self.entry_height(self.cur) if self.cur else 0
         for e, t in self.exiting:
-            k = clamp((now - t) / 0.4)
+            k = animation.clamp((now - t) / 0.4)
             y = band.top() + band.height() * 0.18 - 30 * s * k
             a = PREV_ALPHA * self.done_fade(e["idx"], pos) * (1 - k)
-            self.draw_entry(p, e, a, 0.72, 0, 0, "prev", pos, at=(e["place"].ax, y))
+            self.draw_entry(
+                p, e, a, 0.72, 0, 0, "prev", pos, at=(e["place"].ax, y)
+            )
         if self.prev:
-            k = ease_out(clamp((now - self.prev["prev_since"]) / 0.4))
+            k = animation.ease_out(
+                animation.clamp((now - self.prev["prev_since"]) / 0.4)
+            )
             hp = self.entry_height(self.prev)
             target = cur_y - hc / 2 - hp * 0.72 / 2 - gap
-            y = lerp(cur_y, target, k)
-            a = lerp(1.0, PREV_ALPHA, k) * self.done_fade(self.prev["idx"], pos)
-            self.draw_entry(p, self.prev, a, lerp(1.0, 0.72, k), 0, 0, "prev", pos,
-                            at=(self.prev["place"].ax, y))
+            y = animation.lerp(cur_y, target, k)
+            a = animation.lerp(1.0, PREV_ALPHA, k) * self.done_fade(
+                self.prev["idx"], pos
+            )
+            self.draw_entry(
+                p,
+                self.prev,
+                a,
+                animation.lerp(1.0, 0.72, k),
+                0,
+                0,
+                "prev",
+                pos,
+                at=(self.prev["place"].ax, y),
+            )
         if self.cur:
             pl = self.cur["place"]
-            k = ease_out(clamp((now - self.cur["since"]) / 0.4))
+            k = animation.ease_out(
+                animation.clamp((now - self.cur["since"]) / 0.4)
+            )
             typewriter = self.cfg.get("mode") == "typewriter"
             y = cur_y + (0 if typewriter else (1 - k) * 28 * s)
-            a = (1.0 if typewriter else k) * self.done_fade(self.cur["idx"], pos)
-            self.draw_entry(p, self.cur, a, self.beat_scale(pl.chorus), 0, 0, "current", pos, at=(pl.ax, y))
+            a = (1.0 if typewriter else k) * self.done_fade(
+                self.cur["idx"], pos
+            )
+            self.draw_entry(
+                p,
+                self.cur,
+                a,
+                self.beat_scale(pl.chorus),
+                0,
+                0,
+                "current",
+                pos,
+                at=(pl.ax, y),
+            )
 
     def draw_entry(self, p, e, alpha, scale_k, ox, oy, mode, pos, at=None):
         if alpha <= 0.003:
@@ -1118,14 +1128,16 @@ class Overlay(QWidget):
         pl = e["place"]
         x, y = at if at else (pl.ax, pl.cy)
         p.save()
-        p.setOpacity(clamp(self.alpha * alpha))
+        p.setOpacity(animation.clamp(self.alpha * alpha))
         p.translate(x + ox, y + oy)
         tilt = getattr(pl, "tilt", 0) if self.cfg.get("tilt", True) else 0
         if tilt and line.text:
             ang = math.radians(abs(tilt))
             depth = max(120.0, pl.rect.width()) * 2.1
             k = math.copysign(math.sin(ang) / depth, tilt)
-            p.setTransform(QTransform(math.cos(ang), 0, k, 0, 1, 0, 0, 0, 1), True)
+            p.setTransform(
+                QTransform(math.cos(ang), 0, k, 0, 1, 0, 0, 0, 1), True
+            )
         p.rotate(pl.rot)
         p.scale(pl.mul * scale_k, pl.mul * scale_k)
         if not line.text:
@@ -1147,7 +1159,7 @@ class Overlay(QWidget):
         for k in range(3):
             pulse = 0.5 + 0.5 * math.sin(t * 4 - k * 0.9)
             c = QColor(cols[k])
-            c.setAlphaF(clamp(0.35 + 0.65 * pulse))
+            c.setAlphaF(animation.clamp(0.35 + 0.65 * pulse))
             p.setBrush(c)
             rr = r * (0.8 + 0.35 * pulse + 0.3 * beat)
             p.drawEllipse(QPointF(x0 + k * step, -4 * s * pulse), rr, rr)
@@ -1156,7 +1168,11 @@ class Overlay(QWidget):
         n = len(line.text)
         if line.chars and len(line.chars) == n:
             return [c[0] for c in line.chars]
-        nxt = self.times[idx + 1] if idx + 1 < len(self.times) else line.time + 4.0
+        nxt = (
+            self.times[idx + 1]
+            if idx + 1 < len(self.times)
+            else line.time + 4.0
+        )
         d = min((nxt - line.time) * 0.9, 0.35 + 0.045 * n)
         return [line.time + d * i / max(1, n) for i in range(n)]
 
@@ -1164,7 +1180,7 @@ class Overlay(QWidget):
         if self.cfg.get("color") == "white":
             return QColor(236, 244, 255)
         c = self.accent[0]
-        h, s, v = c.hsvHueF(), c.hsvSaturationF(), c.valueF()
+        h, s = c.hsvHueF(), c.hsvSaturationF()
         if s < 0.10:
             return QColor(236, 244, 255)
         return QColor.fromHsvF(max(h, 0), min(1.0, s * 1.25 + 0.1), 1.0)
@@ -1173,21 +1189,29 @@ class Overlay(QWidget):
         return 0.85 if self.cfg.get("color") == "white" else 1.0
 
     def halo(self, text, font, color, radius, strength):
-        key = (text, font.family(), font.pixelSize(), str(font.weight()), font.italic(),
-               color.rgb(), int(radius * 10), int(strength * 10))
+        key = (
+            text,
+            font.family(),
+            font.pixelSize(),
+            str(font.weight()),
+            font.italic(),
+            color.rgb(),
+            int(radius * 10),
+            int(strength * 10),
+        )
         hit = self._halo_cache.get(key)
         if hit is not None:
             self._halo_cache.move_to_end(key)
             return hit
         k = 0.5
         f2 = QFont(font)
-        f2.setPixelSize(max(4, int(round(font.pixelSize() * k))))
+        f2.setPixelSize(max(4, round(font.pixelSize() * k)))
         r2 = max(0.8, radius * k)
         fm = QFontMetricsF(f2)
         pad = int(r2 * 3) + 2
-        W = int(fm.horizontalAdvance(text)) + 2 * pad + 4
-        H = int(fm.height()) + 2 * pad + 2
-        img = QImage(W, H, QImage.Format.Format_ARGB32_Premultiplied)
+        width = int(fm.horizontalAdvance(text)) + 2 * pad + 4
+        height = int(fm.height()) + 2 * pad + 2
+        img = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
         img.fill(Qt.GlobalColor.transparent)
         qp = QPainter(img)
         qp.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -1195,42 +1219,91 @@ class Overlay(QWidget):
         path.addText(QPointF(pad, pad + fm.ascent()), f2, text)
         qp.fillPath(path, QColor(255, 255, 255))
         qp.end()
-        raw = np.frombuffer(img.constBits().asstring(img.sizeInBytes()), dtype=np.uint8)
-        a = raw.reshape(H, img.bytesPerLine())[:, :W * 4].reshape(H, W, 4)[:, :, 3].astype(np.float32)
+        raw = np.frombuffer(
+            img.constBits().asstring(img.sizeInBytes()), dtype=np.uint8
+        )
+        a = (
+            raw.reshape(height, img.bytesPerLine())[:, : width * 4]
+            .reshape(height, width, 4)[:, :, 3]
+            .astype(np.float32)
+        )
         a = np.clip(gaussian_blur(a, r2) * strength, 0, 255)
-        out = np.empty((H, W, 4), dtype=np.uint8)
+        out = np.empty((height, width, 4), dtype=np.uint8)
         out[..., 0] = a * (color.blue() / 255)
         out[..., 1] = a * (color.green() / 255)
         out[..., 2] = a * (color.red() / 255)
         out[..., 3] = a
-        q = QImage(out.tobytes(), W, H, W * 4, QImage.Format.Format_ARGB32_Premultiplied).copy()
-        entry = (q, pad / k, fm.ascent() / k, W / k, H / k)
+        q = QImage(
+            out.tobytes(),
+            width,
+            height,
+            width * 4,
+            QImage.Format.Format_ARGB32_Premultiplied,
+        ).copy()
+        entry = (q, pad / k, fm.ascent() / k, width / k, height / k)
         self._halo_cache[key] = entry
         if len(self._halo_cache) > 700:
             self._halo_cache.popitem(last=False)
         return entry
 
-    def blit_halo(self, p, text, font, x, base_y, color, radius, strength, alpha, dy=0.0):
+    def blit_halo(
+        self, p, text, font, x, base_y, color, radius, strength, alpha, dy=0.0
+    ):
         if alpha <= 0.01 or not text.strip():
             return
         img, pad, asc, w, h = self.halo(text, font, color, radius, strength)
         p.save()
-        p.setOpacity(p.opacity() * clamp(alpha))
+        p.setOpacity(p.opacity() * animation.clamp(alpha))
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         p.drawImage(QRectF(x - pad, base_y - asc - pad + dy, w, h), img)
         p.restore()
 
-    def draw_text_fx(self, p, text, font, x, base_y, brush, glow=1.0, shadow=1.0, path=None):
+    def draw_text_fx(
+        self, p, text, font, x, base_y, brush, glow=1.0, shadow=1.0, path=None
+    ):
         px = min(font.pixelSize(), 110)
         white = self.cfg.get("color") == "white"
         if shadow > 0:
-            self.blit_halo(p, text, font, x, base_y, QColor(0, 0, 0), px * 0.32, 1.2, 0.32 * shadow, px * 0.04)
-            self.blit_halo(p, text, font, x, base_y, QColor(0, 0, 0), px * 0.09, 2.0, 0.7 * shadow, px * 0.05)
+            self.blit_halo(
+                p,
+                text,
+                font,
+                x,
+                base_y,
+                QColor(0, 0, 0),
+                px * 0.32,
+                1.2,
+                0.32 * shadow,
+                px * 0.04,
+            )
+            self.blit_halo(
+                p,
+                text,
+                font,
+                x,
+                base_y,
+                QColor(0, 0, 0),
+                px * 0.09,
+                2.0,
+                0.7 * shadow,
+                px * 0.05,
+            )
         if glow > 0:
             gc = self.glow_color()
-            self.blit_halo(p, text, font, x, base_y, gc, px * 0.5, 1.7, 0.55 * glow)
-            self.blit_halo(p, text, font, x, base_y, gc, px * 0.14, 1.8,
-                           min(1.0, (0.65 if white else 0.5) * glow))
+            self.blit_halo(
+                p, text, font, x, base_y, gc, px * 0.5, 1.7, 0.55 * glow
+            )
+            self.blit_halo(
+                p,
+                text,
+                font,
+                x,
+                base_y,
+                gc,
+                px * 0.14,
+                1.8,
+                min(1.0, (0.65 if white else 0.5) * glow),
+            )
         if path is None:
             path = QPainterPath()
             path.addText(QPointF(x, base_y), font, text)
@@ -1241,9 +1314,15 @@ class Overlay(QWidget):
         rows, lh, ascent = self.layout(line.text, font, pl.maxw)
         label_h = self.label_height() if line.singer else 0
         tf = self.small_font(0.5)
-        trans_h = QFontMetricsF(tf).height() * 1.1 if self.show_translation(line) else 0
+        trans_h = (
+            QFontMetricsF(tf).height() * 1.1
+            if self.show_translation(line)
+            else 0
+        )
         stack = self.stacked() and len(rows) > 1
-        hero, scales = self.row_scales(line, rows) if stack else (-1, [1.0] * len(rows))
+        hero, scales = (
+            self.row_scales(line, rows) if stack else (-1, [1.0] * len(rows))
+        )
         rows_h = lh * sum(scales)
         h = rows_h + label_h + trans_h
         style = self.cfg["style"]
@@ -1258,15 +1337,25 @@ class Overlay(QWidget):
             label = line.singer.upper()
             lw = fm.horizontalAdvance(label)
             lx = {"left": 0, "right": -lw}.get(align, -lw / 2)
-            self.draw_text_fx(p, label, lf, lx, fm.ascent(), QBrush(cols[0]), glow=0.35 if current else 0)
+            self.draw_text_fx(
+                p,
+                label,
+                lf,
+                lx,
+                fm.ascent(),
+                QBrush(cols[0]),
+                glow=0.35 if current else 0,
+            )
             p.translate(0, label_h)
 
         last_row_end = (0.0, 0.0)
         if current and self.cfg.get("mode") == "typewriter":
-            last_row_end = self.draw_typed(p, line, rows, lh, ascent, font, align, pos, pl.chorus)
+            last_row_end = self.draw_typed(
+                p, line, rows, lh, ascent, font, align, pos, pl.chorus
+            )
         else:
             timed = current and bool(line.chars)
-            meta = getattr(line, "word_meta", {}) or {}
+            meta = line.word_meta or {}
             chorus = pl.chorus
             word_i = 0
             lit = []
@@ -1280,16 +1369,33 @@ class Overlay(QWidget):
                 p.scale(rs, rs)
                 base_y = ascent
                 plain = stack and r != hero
-                brush = QBrush(QColor(255, 255, 255, 215 if white else 245)) if plain \
+                brush = (
+                    QBrush(QColor(255, 255, 255, 215 if white else 245))
+                    if plain
                     else self.fill_brush(x0, roww, chorus or stack)
+                )
                 for word, wx, ww, cstart in row:
                     x = x0 + wx
                     if not current:
-                        self.draw_text_fx(p, word, font, x, base_y, QBrush(QColor(255, 255, 255, 235)), glow=0.12)
+                        self.draw_text_fx(
+                            p,
+                            word,
+                            font,
+                            x,
+                            base_y,
+                            QBrush(QColor(255, 255, 255, 235)),
+                            glow=0.12,
+                        )
                         word_i += 1
                         continue
-                    sc, dx, dy, glow_k, sx = held_fx(meta.get(cstart), pos) if timed else (1, 0, 0, 0, 1)
-                    glow = base_glow * (1 + 1.4 * glow_k) + (0.25 if chorus else 0)
+                    sc, dx, dy, glow_k, sx = (
+                        animation.held_fx(meta.get(cstart), pos)
+                        if timed
+                        else (1, 0, 0, 0, 1)
+                    )
+                    glow = base_glow * (1 + 1.4 * glow_k) + (
+                        0.25 if chorus else 0
+                    )
                     if plain:
                         glow *= 0.4
                     elif stack:
@@ -1300,32 +1406,68 @@ class Overlay(QWidget):
                         p.translate(cxw + dx, cyw + dy)
                         p.scale(sc * sx, sc)
                         p.translate(-cxw, -cyw)
-                    if self.cfg.get("particles", True) and glow_k > 0.15 \
-                            and pos <= meta.get(cstart, (0, 0, 0))[1]:
-                        self.spawn_particles(p, x, base_y - ascent, ww, ascent, glow_k)
+                    if (
+                        self.cfg.get("particles", True)
+                        and glow_k > 0.15
+                        and pos <= meta.get(cstart, (0, 0, 0))[1]
+                    ):
+                        self.spawn_particles(
+                            p, x, base_y - ascent, ww, ascent, glow_k
+                        )
                     if style == "kinetic":
-                        start = line.chars[cstart][0] if (timed and cstart < len(line.chars)) \
+                        start = (
+                            line.chars[cstart][0]
+                            if (timed and cstart < len(line.chars))
                             else line.time + word_i * 0.06
-                        k = clamp((pos - start) / 0.3)
+                        )
+                        k = animation.clamp((pos - start) / 0.3)
                         if k <= 0:
                             p.restore()
                             word_i += 1
                             continue
-                        e = ease_out_back(k)
+                        e = animation.ease_out_back(k)
                         rot0 = ((cstart * 37) % 25) - 12
                         p.translate(cxw, cyw)
                         p.rotate(rot0 * (1 - e))
-                        p.scale(lerp(1.45, 1.0, e), lerp(1.45, 1.0, e))
+                        p.scale(
+                            animation.lerp(1.45, 1.0, e),
+                            animation.lerp(1.45, 1.0, e),
+                        )
                         p.translate(-cxw, -cyw + 22 * (1 - e))
-                        p.setOpacity(p.opacity() * ease_out(clamp(k * 1.7)))
+                        p.setOpacity(
+                            p.opacity()
+                            * animation.ease_out(animation.clamp(k * 1.7))
+                        )
                         self.draw_text_fx(p, word, font, x, base_y, brush, glow)
                     elif style == "simple" or not timed:
                         self.draw_text_fx(p, word, font, x, base_y, brush, glow)
                     else:
                         wf = self.word_fill(line, cstart, len(word), pos)
-                        self.draw_text_fx(p, word, font, x, base_y, QBrush(QColor(255, 255, 255, 105)), glow=0)
+                        self.draw_text_fx(
+                            p,
+                            word,
+                            font,
+                            x,
+                            base_y,
+                            QBrush(QColor(255, 255, 255, 105)),
+                            glow=0,
+                        )
                         if wf > 0:
-                            lit.append((word, x, ww, wf, sc, dx, dy, sx, glow, cxw, cyw))
+                            lit.append(
+                                (
+                                    word,
+                                    x,
+                                    ww,
+                                    wf,
+                                    sc,
+                                    dx,
+                                    dy,
+                                    sx,
+                                    glow,
+                                    cxw,
+                                    cyw,
+                                )
+                            )
                     p.restore()
                     word_i += 1
                 if style == "karaoke" and timed and lit:
@@ -1334,24 +1476,49 @@ class Overlay(QWidget):
                     fill_x = lx + lw_ * lwf
                     left, top = x0 - 2 * m, base_y - ascent - 2 * m
                     lw_img, lh_img = fill_x - left + m, lh + 4 * m
-                    layer = QImage(int(lw_img) + 2, int(lh_img) + 2, QImage.Format.Format_ARGB32_Premultiplied)
+                    layer = QImage(
+                        int(lw_img) + 2,
+                        int(lh_img) + 2,
+                        QImage.Format.Format_ARGB32_Premultiplied,
+                    )
                     layer.fill(Qt.GlobalColor.transparent)
                     lp = QPainter(layer)
                     lp.setRenderHint(QPainter.RenderHint.Antialiasing)
                     lp.translate(-left, -top)
-                    for word, x, ww, wf, sc, dx, dy, sx, glow, cxw, cyw in lit:
+                    for (
+                        word,
+                        x,
+                        _ww,
+                        _wf,
+                        sc,
+                        dx,
+                        dy,
+                        sx,
+                        glow,
+                        cxw,
+                        cyw,
+                    ) in lit:
                         lp.save()
                         if sc != 1 or dx or dy or sx != 1:
                             lp.translate(cxw + dx, cyw + dy)
                             lp.scale(sc * sx, sc)
                             lp.translate(-cxw, -cyw)
-                        self.draw_text_fx(lp, word, font, x, base_y, brush, glow, shadow=0)
+                        self.draw_text_fx(
+                            lp, word, font, x, base_y, brush, glow, shadow=0
+                        )
                         lp.restore()
-                    lp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-                    fade = QLinearGradient(QPointF(fill_x - m * 0.08, 0), QPointF(fill_x + m * 0.22, 0))
+                    lp.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_DestinationIn
+                    )
+                    fade = QLinearGradient(
+                        QPointF(fill_x - m * 0.08, 0),
+                        QPointF(fill_x + m * 0.22, 0),
+                    )
                     fade.setColorAt(0, QColor(0, 0, 0, 255))
                     fade.setColorAt(1, QColor(0, 0, 0, 0))
-                    lp.fillRect(QRectF(left, top, lw_img + 2, lh_img + 2), QBrush(fade))
+                    lp.fillRect(
+                        QRectF(left, top, lw_img + 2, lh_img + 2), QBrush(fade)
+                    )
                     lp.end()
                     p.drawImage(QPointF(left, top), layer)
                 lit = []
@@ -1363,27 +1530,42 @@ class Overlay(QWidget):
             ad_t = line.adlib_time if line.adlib_time is not None else line.time
             if self.cfg.get("mode") == "typewriter":
                 ad_t = max(ad_t, self.typed_times(line, self.cur["idx"])[-1])
-            k = clamp((pos - ad_t) / 0.3) if (line.chars or self.cfg.get("mode") == "typewriter") else 1.0
+            k = (
+                animation.clamp((pos - ad_t) / 0.3)
+                if (line.chars or self.cfg.get("mode") == "typewriter")
+                else 1.0
+            )
             if k > 0:
                 af = self.small_font(0.6)
                 ex, ey = last_row_end
                 ox, oy = ex + 12, ey - lh * 0.45
                 p.save()
-                p.setOpacity(p.opacity() * 0.92 * ease_out(k))
+                p.setOpacity(p.opacity() * 0.92 * animation.ease_out(k))
                 p.translate(ox, oy)
                 p.rotate(-6)
-                p.translate(-ox, -oy - 8 * (1 - ease_out(k)))
-                self.draw_text_fx(p, f"({line.adlib})", af, ox, oy,
-                                  QBrush(mix(cols[2], QColor(255, 255, 255), 0.45)), glow=0.5)
+                p.translate(-ox, -oy - 8 * (1 - animation.ease_out(k)))
+                self.draw_text_fx(
+                    p,
+                    f"({line.adlib})",
+                    af,
+                    ox,
+                    oy,
+                    QBrush(mix(cols[2], QColor(255, 255, 255), 0.45)),
+                    glow=0.5,
+                )
                 p.restore()
 
         if current and self.show_translation(line):
             fm = QFontMetricsF(tf)
-            text = fm.elidedText(line.translation, Qt.TextElideMode.ElideRight, pl.maxw * 1.2)
+            text = fm.elidedText(
+                line.translation, Qt.TextElideMode.ElideRight, pl.maxw * 1.2
+            )
             tw = fm.horizontalAdvance(text)
             tx = {"left": 0, "right": -tw}.get(align, -tw / 2)
             ty = rows_h + fm.ascent() + 2
-            self.draw_text_fx(p, text, tf, tx, ty, QBrush(QColor(255, 255, 255, 205)), glow=0)
+            self.draw_text_fx(
+                p, text, tf, tx, ty, QBrush(QColor(255, 255, 255, 205)), glow=0
+            )
 
     def draw_typed(self, p, line, rows, lh, ascent, font, align, pos, chorus):
         times = self.typed_times(line, self.cur["idx"])
@@ -1397,8 +1579,12 @@ class Overlay(QWidget):
             if cursor is None:
                 cursor = (x0, base_y)
             brush = self.fill_brush(x0, roww, chorus)
-            for word, wx, ww, cstart in row:
-                vis = sum(1 for i in range(cstart, min(cstart + len(word), len(times))) if times[i] <= pos)
+            for word, wx, _ww, cstart in row:
+                vis = sum(
+                    1
+                    for i in range(cstart, min(cstart + len(word), len(times)))
+                    if times[i] <= pos
+                )
                 if vis == 0:
                     continue
                 sub = word[:vis]
@@ -1414,14 +1600,18 @@ class Overlay(QWidget):
             for grow, al in ((7 * s, 40), (3 * s, 90)):
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QColor(gc.red(), gc.green(), gc.blue(), al))
-                p.drawRoundedRect(rect.adjusted(-grow, -grow * 0.5, grow, grow * 0.5), grow, grow)
+                p.drawRoundedRect(
+                    rect.adjusted(-grow, -grow * 0.5, grow, grow * 0.5),
+                    grow,
+                    grow,
+                )
             p.setBrush(self.colors()[0])
             p.drawRoundedRect(rect, 1.5, 1.5)
         return last_row_end
 
     @staticmethod
     def word_fill(line, cstart, wlen, pos):
-        seg = line.chars[cstart:cstart + wlen] if line.chars else None
+        seg = line.chars[cstart : cstart + wlen] if line.chars else None
         if not seg:
             return 1.0
         done = 0.0
@@ -1438,14 +1628,21 @@ class Overlay(QWidget):
         tr = p.transform()
         cols = self.colors()
         for _ in range(1 + int(k * 2)):
-            pt = tr.map(QPointF(x + self.rng.random() * w, y + self.rng.random() * h))
-            self.particles.append({
-                "x": pt.x(), "y": pt.y(),
-                "vx": self.rng.uniform(-40, 40), "vy": self.rng.uniform(-70, -20),
-                "life": self.rng.uniform(0.5, 1.0), "max": 1.0,
-                "col": QColor(cols[self.rng.randrange(3)]),
-                "size": self.rng.uniform(1.5, 3.5) * self.cfg["scale"],
-            })
+            pt = tr.map(
+                QPointF(x + self.rng.random() * w, y + self.rng.random() * h)
+            )
+            self.particles.append(
+                {
+                    "x": pt.x(),
+                    "y": pt.y(),
+                    "vx": self.rng.uniform(-40, 40),
+                    "vy": self.rng.uniform(-70, -20),
+                    "life": self.rng.uniform(0.5, 1.0),
+                    "max": 1.0,
+                    "col": QColor(cols[self.rng.randrange(3)]),
+                    "size": self.rng.uniform(1.5, 3.5) * self.cfg["scale"],
+                }
+            )
 
     def draw_particles(self, p):
         if not self.particles:
@@ -1454,14 +1651,17 @@ class Overlay(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         for pt in self.particles:
             c = QColor(pt["col"])
-            c.setAlphaF(clamp(pt["life"] / pt["max"]) * self.alpha)
+            c.setAlphaF(animation.clamp(pt["life"] / pt["max"]) * self.alpha)
             p.setBrush(c)
             p.drawEllipse(QPointF(pt["x"], pt["y"]), pt["size"], pt["size"])
         p.restore()
 
     def card_visible(self):
-        return self.cfg.get("card", True) and self.track is not None and \
-            self.clock() - self.card_since < CARD_TIME
+        return (
+            self.cfg.get("card", True)
+            and self.track is not None
+            and self.clock() - self.card_since < CARD_TIME
+        )
 
     def card_fonts(self):
         s = self.cfg["scale"]
@@ -1478,7 +1678,9 @@ class Overlay(QWidget):
     def card_badge(self):
         if self.state == "ok":
             return "MOT À MOT" if self.word_sync else "LIGNE"
-        return {"loading": "RECHERCHE...", "missing": "PAS DE PAROLES"}.get(self.state, "")
+        return {"loading": "RECHERCHE...", "missing": "PAS DE PAROLES"}.get(
+            self.state, ""
+        )
 
     def card_rect(self):
         s = self.cfg["scale"]
@@ -1491,14 +1693,14 @@ class Overlay(QWidget):
         bw = QFontMetricsF(bf).horizontalAdvance(self.card_badge()) + 12 * s
         w = 12 * s + 64 * s + 14 * s + max(tw, aw, bw) + 18 * s
         h = 88 * s
-        W = self.width()
+        width = self.width()
         m = 18 * s
-        spots = [(m, m), (W - m - w, m), ((W - w) / 2, m)]
+        spots = [(m, m), (width - m - w, m), ((width - w) / 2, m)]
         band = None
         if self.column_mode():
             band = self.column_band()
             if self.cfg.get("position") == "left":
-                spots = [(W - m - w, m), ((W - w) / 2, m), (m, m)]
+                spots = [(width - m - w, m), ((width - w) / 2, m), (m, m)]
         for x, y in spots:
             r = QRectF(x, y, w, h)
             if any(r.intersects(z) for z in self.zones):
@@ -1519,14 +1721,31 @@ class Overlay(QWidget):
         p.save()
         if self.card_visible():
             t = now - self.card_since
-            a = ease_out(clamp(t / 0.35)) * clamp((CARD_TIME - t) / 0.5)
-            slide = (1 - ease_out(clamp(t / 0.35))) * 30 * s * (-1 if rect.center().x() < self.width() / 2 else 1)
+            a = animation.ease_out(animation.clamp(t / 0.35)) * animation.clamp(
+                (CARD_TIME - t) / 0.5
+            )
+            slide = (
+                (1 - animation.ease_out(animation.clamp(t / 0.35)))
+                * 30
+                * s
+                * (-1 if rect.center().x() < self.width() / 2 else 1)
+            )
             p.setOpacity(self.alpha * a)
             r = rect.translated(slide, 0)
             g = QLinearGradient(r.topLeft(), r.bottomRight())
             g.setColorAt(0, mix(QColor(14, 14, 20), self.accent[0], 0.22))
             g.setColorAt(1, QColor(12, 12, 18))
-            p.setPen(QPen(QColor(self.accent[0].red(), self.accent[0].green(), self.accent[0].blue(), 110), 1.2))
+            p.setPen(
+                QPen(
+                    QColor(
+                        self.accent[0].red(),
+                        self.accent[0].green(),
+                        self.accent[0].blue(),
+                        110,
+                    ),
+                    1.2,
+                )
+            )
             p.setBrush(QBrush(g))
             p.drawRoundedRect(r, 14 * s, 14 * s)
             cov = QRectF(r.left() + 12 * s, r.top() + 12 * s, 64 * s, 64 * s)
@@ -1549,19 +1768,37 @@ class Overlay(QWidget):
             p.setFont(tf)
             p.setPen(QColor(255, 255, 255, 240))
             fm = QFontMetricsF(tf)
-            p.drawText(QPointF(tx, r.top() + 14 * s + fm.ascent()),
-                       fm.elidedText(tr.title if tr else "", Qt.TextElideMode.ElideRight, 260 * s))
+            p.drawText(
+                QPointF(tx, r.top() + 14 * s + fm.ascent()),
+                fm.elidedText(
+                    tr.title if tr else "", Qt.TextElideMode.ElideRight, 260 * s
+                ),
+            )
             p.setFont(af)
             p.setPen(QColor(255, 255, 255, 170))
             afm = QFontMetricsF(af)
-            p.drawText(QPointF(tx, r.top() + 14 * s + fm.height() + afm.ascent()),
-                       afm.elidedText(tr.artist if tr else "", Qt.TextElideMode.ElideRight, 260 * s))
+            p.drawText(
+                QPointF(tx, r.top() + 14 * s + fm.height() + afm.ascent()),
+                afm.elidedText(
+                    tr.artist if tr else "",
+                    Qt.TextElideMode.ElideRight,
+                    260 * s,
+                ),
+            )
             badge = self.card_badge()
             if badge:
                 bfm = QFontMetricsF(bf)
-                br = QRectF(tx, r.bottom() - 12 * s - bfm.height() - 4 * s,
-                            bfm.horizontalAdvance(badge) + 12 * s, bfm.height() + 4 * s)
-                col = QColor(self.accent[0]) if (self.state == "ok" and self.word_sync) else QColor(180, 180, 190)
+                br = QRectF(
+                    tx,
+                    r.bottom() - 12 * s - bfm.height() - 4 * s,
+                    bfm.horizontalAdvance(badge) + 12 * s,
+                    bfm.height() + 4 * s,
+                )
+                col = (
+                    QColor(self.accent[0])
+                    if (self.state == "ok" and self.word_sync)
+                    else QColor(180, 180, 190)
+                )
                 p.setPen(QPen(col, 1))
                 p.setBrush(QColor(col.red(), col.green(), col.blue(), 40))
                 p.drawRoundedRect(br, br.height() / 2, br.height() / 2)
@@ -1572,7 +1809,12 @@ class Overlay(QWidget):
             p.setOpacity(1.0)
             fm = QFontMetricsF(af)
             tw = fm.horizontalAdvance(self.toast_text)
-            r = QRectF(rect.left(), rect.bottom() + 8 * s, tw + 24 * s, fm.height() + 12 * s)
+            r = QRectF(
+                rect.left(),
+                rect.bottom() + 8 * s,
+                tw + 24 * s,
+                fm.height() + 12 * s,
+            )
             if rect.left() > self.width() / 2:
                 r.moveRight(rect.right())
             p.setPen(Qt.PenStyle.NoPen)
@@ -1580,7 +1822,10 @@ class Overlay(QWidget):
             p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
             p.setFont(af)
             p.setPen(QColor(255, 255, 255, 235))
-            p.drawText(QPointF(r.left() + 12 * s, r.top() + 6 * s + fm.ascent()), self.toast_text)
+            p.drawText(
+                QPointF(r.left() + 12 * s, r.top() + 6 * s + fm.ascent()),
+                self.toast_text,
+            )
         p.restore()
 
     def draw_zones(self, p):
@@ -1588,681 +1833,19 @@ class Overlay(QWidget):
         p.setOpacity(1.0)
         _, af, _ = self.card_fonts()
         p.setFont(af)
-        for z, info in zip(self.zones, self.profile.get("zones_interdites", [])):
+        for z, info in zip(
+            self.zones, self.profile.get("zones_interdites", []), strict=False
+        ):
             p.setPen(QPen(QColor(255, 70, 70, 220), 2))
             p.setBrush(QColor(255, 40, 40, 55))
             p.drawRect(z)
             p.setPen(QColor(255, 255, 255, 230))
-            p.drawText(z.adjusted(8, 6, -8, -6), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                       info.get("nom", ""))
+            p.drawText(
+                z.adjusted(8, 6, -8, -6),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                info.get("nom", ""),
+            )
         p.setPen(QPen(QColor(120, 200, 255, 160), 1.5, Qt.PenStyle.DashLine))
         y = self.height() * UPPER
         p.drawLine(QPointF(0, y), QPointF(self.width(), y))
         p.restore()
-
-
-class App:
-    def __init__(self, app, demo=False, minimized=False, updated=""):
-        from panel import Panel, make_icon
-
-        self.app = app
-        self.quitting = False
-        self.cfg = load_config()
-        self.profiles = games.load_profiles()
-        self.profiles_mtime = games.profiles_mtime()
-        self.overlay = Overlay(self.cfg, self.profiles)
-        self.overlay.show()
-        self.overlay.harden_window()
-        self.overlay.keep_on_top()
-        self.overlay.install_foreground_hook()
-        self.exclusive = False
-        self.exclusive_tip = ""
-        self.check_profile()
-
-        self.demo = False
-        self.real_track = None
-        self.store_lyrics, self.store_cover = {}, {}
-        self.demo_timer = QTimer()
-        self.demo_timer.timeout.connect(self.demo_step)
-
-        self.sources = []
-        self.browsers = {}
-        self.worker = MediaWorker(self.cfg.get("sources_blocked", []), self.cfg.get("sites_off", []),
-                                  self.cfg.get("sites_other", False))
-        self.worker.sources.connect(self.w_sources)
-        self.worker.browsers.connect(self.w_browsers)
-        self.worker.track.connect(self.w_track)
-        self.worker.lyrics.connect(self.w_lyrics)
-        self.worker.translated.connect(self.w_translated)
-        self.worker.cover.connect(self.w_cover)
-        self.worker.start()
-
-        self.beat_bridge = BeatBridge()
-        self.beat_bridge.beat.connect(self.overlay.on_beat)
-        self.audio = None
-        try:
-            from audio import AudioBeats
-            self.audio = AudioBeats(lambda k: self.beat_bridge.beat.emit(k))
-            self.audio.start()
-        except Exception:
-            self.audio = None
-
-        self.profile_timer = QTimer()
-        self.profile_timer.timeout.connect(self.check_profile)
-        self.profile_timer.start(1000)
-
-        self.cfg["hotkeys"] = hotkeys.normalize(self.cfg.get("hotkeys"))
-        self.hotkeys_failed = []
-        self.hotkeys = hotkeys.Hotkeys(self.cfg["hotkeys"])
-        self.hotkeys.pressed.connect(self.on_hotkey)
-        self.hotkeys.failed.connect(self.on_hotkeys_failed)
-
-        self.panel = Panel(self)
-        self.hotkeys.start()
-        self.tray = QSystemTrayIcon(make_icon())
-        self.tray.setToolTip("FollowTheLyrics")
-        menu = QMenu()
-        menu.addAction("Ouvrir le panneau", self.show_panel)
-        self.act_toggle = menu.addAction("Masquer les paroles", self.toggle)
-        menu.addSeparator()
-        menu.addAction("Quitter", self.quit)
-        self.tray_menu = menu
-        self.tray.setContextMenu(menu)
-        self.tray.activated.connect(self.on_tray)
-        self.tray.show()
-        app.aboutToQuit.connect(self.cleanup)
-
-        if demo:
-            self.set_demo(True)
-            self.panel.sync_from_cfg()
-        self.welcome = None
-        self.zone_editor = None
-        self.last_game = None
-        self.setup_updates(updated)
-        if not self.cfg.get("welcomed"):
-            self.show_welcome()
-        elif not minimized:
-            self.show_panel()
-
-    def setup_updates(self, updated):
-        import updater
-        self.update_info = None
-        self.update_check = None
-        self.update_job = None
-        self.cleanup_tries = 0
-        if updated:
-            try:
-                self.tray.showMessage("FollowTheLyrics", f"Mise à jour installée : version {updated}.",
-                                      self.tray.icon(), 5000)
-            except Exception:
-                pass
-        self.cleanup_timer = QTimer()
-        self.cleanup_timer.timeout.connect(self.cleanup_update)
-        self.cleanup_timer.start(3000)
-        if updater.bootstrap.FROZEN or os.environ.get("FTL_FAKE_VERSION"):
-            QTimer.singleShot(5000, lambda: self.check_update())
-            self.update_timer = QTimer()
-            self.update_timer.timeout.connect(lambda: self.check_update())
-            self.update_timer.start(6 * 3600 * 1000)
-
-    def cleanup_update(self):
-        import updater
-        self.cleanup_tries += 1
-        if updater.cleanup_leftovers() or self.cleanup_tries >= 10:
-            self.cleanup_timer.stop()
-
-    def check_update(self, manual=False):
-        import updater
-        if self.update_info:
-            if manual:
-                self.panel.show_update(self.update_info)
-            return
-        if self.update_check and self.update_check.isRunning():
-            return
-        self.update_check = updater.UpdateCheck()
-        self.update_check.found.connect(self.on_update_found)
-        if manual:
-            self.update_check.nothing.connect(self.panel.update_none)
-        self.update_check.start()
-
-    def on_update_found(self, info):
-        self.update_info = info
-        self.panel.show_update(info)
-        try:
-            self.tray.showMessage("FollowTheLyrics", f"La version {info['version']} est disponible. "
-                                  "Ouvre le panneau pour mettre à jour.", self.tray.icon(), 6000)
-        except Exception:
-            pass
-        if os.environ.get("FTL_AUTO_UPDATE"):
-            self.install_update()
-
-    def install_update(self):
-        import updater
-        if not self.update_info or (self.update_job and self.update_job.isRunning()):
-            return
-        if not updater.bootstrap.FROZEN:
-            os.startfile(updater.RELEASES_URL)
-            self.panel.update_failed("Version « code » : télécharge la nouvelle version sur la page ouverte.")
-            return
-        self.update_job = updater.UpdateInstall(self.update_info)
-        self.update_job.progress.connect(self.panel.update_progress)
-        self.update_job.failed.connect(self.panel.update_failed)
-        self.update_job.installed.connect(self.on_update_installed)
-        self.update_job.start()
-
-    def on_update_installed(self, version):
-        import updater
-        try:
-            updater.relaunch(sys.executable, version)
-        except Exception as e:
-            self.panel.update_failed(f"La nouvelle version est installée mais n'a pas pu démarrer ({e}). "
-                                     "Relance FollowTheLyrics.")
-
-    def reload_profiles(self):
-        self.profiles = games.load_profiles()
-        self.profiles_mtime = games.profiles_mtime()
-        self.overlay.profile_key = None
-
-    def open_zone_editor(self, key=None, activate=True):
-        from zone_editor import ZoneEditor
-        if key is None:
-            key = self.overlay.profile_key if self.overlay.profile_key in self.profiles.get("jeux", {}) else self.last_game
-        if self.zone_editor is None:
-            self.zone_editor = ZoneEditor(self, key)
-        else:
-            self.zone_editor.show_game(key)
-        w = self.zone_editor
-        w.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, not activate)
-        w.show()
-        if activate:
-            w.raise_()
-            w.activateWindow()
-
-    def capture_game(self):
-        exe, _full = games.foreground_info()
-        key, _prof = games.current_profile(self.profiles)
-        if key not in self.profiles.get("jeux", {}):
-            own = os.path.basename(sys.executable).lower()
-            if not exe or exe.lower() in ("explorer.exe", own, "python.exe", "pythonw.exe"):
-                self.overlay.toast("Mets-toi dans le jeu, puis " + self.hotkey_text("capture"))
-                return
-            key = exe
-        o = self.overlay
-        o.setWindowOpacity(0.0)
-
-        def grab():
-            try:
-                pm = o.screen().grabWindow(0)
-                os.makedirs(games.CAPTURES_DIR, exist_ok=True)
-                ok = (not pm.isNull()) and pm.save(games.capture_path(key), "JPG", 88)
-            except Exception:
-                ok = False
-            o.setWindowOpacity(1.0)
-            if not ok:
-                o.toast("Capture impossible")
-                return
-            self.last_game = key
-            o.toast("Capture prise : reviens sur FollowTheLyrics pour dessiner les zones")
-            self.open_zone_editor(key, activate=False)
-
-        QTimer.singleShot(150, grab)
-
-    def show_welcome(self):
-        from welcome import Welcome
-        self.welcome = Welcome()
-        self.welcome.finished.connect(self.on_welcome)
-        self.welcome.show()
-        self.welcome.raise_()
-        self.welcome.activateWindow()
-
-    def on_welcome(self, autostart, shortcut, setup=False):
-        import settings
-        self.cfg["welcomed"] = True
-        save_config(self.cfg)
-        self.welcome = None
-        if setup and self.install_here(autostart, shortcut):
-            return
-        if autostart != settings.autostart_enabled():
-            settings.set_autostart(autostart)
-        if shortcut:
-            settings.create_desktop_shortcut()
-        if not self.quitting:
-            self.panel.sync_from_cfg()
-            self.show_panel()
-
-    def w_track(self, np):
-        self.real_track = np
-        if self.audio:
-            self.audio.music_playing = bool(np and np.playing)
-        if self.demo:
-            return
-        o = self.overlay
-        before = o.track_key
-        o.on_track(np)
-        if np and o.track_key != before:
-            if np.key in self.store_lyrics:
-                o.on_lyrics(np.key, self.store_lyrics[np.key])
-            if np.key in self.store_cover:
-                o.on_cover(np.key, self.store_cover[np.key])
-
-    def w_sources(self, ids):
-        for a in ids:
-            if a not in self.sources:
-                self.sources.append(a)
-
-    def w_browsers(self, seen):
-        self.browsers = dict(seen)
-
-    def set_site_enabled(self, site_id, enabled):
-        import sites
-        if site_id == sites.OTHER:
-            self.cfg["sites_other"] = bool(enabled)
-        else:
-            off = set(self.cfg.get("sites_off", []))
-            (off.discard if enabled else off.add)(site_id)
-            self.cfg["sites_off"] = sorted(off)
-        save_config(self.cfg)
-        self.worker.guard.off = set(self.cfg.get("sites_off", []))
-        self.worker.guard.other = bool(self.cfg.get("sites_other", False))
-
-    def set_source_enabled(self, app_id, enabled):
-        blocked = set(self.cfg.get("sources_blocked", []))
-        (blocked.discard if enabled else blocked.add)(app_id)
-        self.cfg["sources_blocked"] = sorted(blocked)
-        save_config(self.cfg)
-        self.worker.blocked = set(blocked)
-
-    def w_lyrics(self, key, lines):
-        self.store_lyrics[key] = lines
-        if not self.demo:
-            self.overlay.on_lyrics(key, lines)
-
-    def w_translated(self, key):
-        if not self.demo:
-            self.overlay.on_translated(key)
-
-    def w_cover(self, key, data):
-        self.store_cover[key] = data
-        if not self.demo:
-            self.overlay.on_cover(key, data)
-
-    def set_demo(self, on):
-        self.demo = bool(on)
-        o = self.overlay
-        o.track_key = None
-        o.track = None
-        if self.demo:
-            self.demo_start = time.monotonic()
-            self.demo_step()
-            o.on_lyrics(DEMO_KEY, DEMO_LINES)
-            self.demo_timer.start(400)
-        else:
-            self.demo_timer.stop()
-            if self.real_track:
-                self.w_track(self.real_track)
-
-    def demo_step(self):
-        pos = (time.monotonic() - self.demo_start) % DEMO_LENGTH
-        self.overlay.on_track(demo_track(pos))
-
-    def check_profile(self):
-        mt = games.profiles_mtime()
-        if mt != self.profiles_mtime:
-            self.profiles_mtime = mt
-            self.profiles = games.load_profiles()
-            self.overlay.profile_key = None
-        key, prof = games.current_profile(self.profiles)
-        if key != self.overlay.profile_key:
-            self.overlay.set_profile(key, prof)
-            if key != "bureau":
-                self.overlay.toast(f"Profil : {prof.get('nom', key)}")
-        excl = games.exclusive_fullscreen()
-        if excl and not self.exclusive:
-            tip = prof.get("conseil_plein_ecran") or \
-                "Passe le jeu en « fenêtré sans bordure » dans ses options vidéo."
-            self.exclusive_tip = tip
-            try:
-                self.tray.showMessage("FollowTheLyrics : jeu en plein écran exclusif",
-                                      "Les paroles ne peuvent pas s'afficher par-dessus. " + tip,
-                                      QSystemTrayIcon.MessageIcon.Warning, 8000)
-            except Exception:
-                pass
-        self.exclusive = excl
-
-    def set_cfg(self, key, value):
-        self.cfg[key] = value
-        save_config(self.cfg)
-        o = self.overlay
-        if key == "scale":
-            o.apply_geometry()
-        elif key in ("mode", "position", "font", "translation", "stack"):
-            o.reset_layout()
-        elif key == "easter" and not value:
-            o.egg = None
-        o.poke()
-
-    def set_visible(self, visible):
-        self.overlay.user_hidden = not visible
-        self.act_toggle.setText("Masquer les paroles" if visible else "Afficher les paroles")
-
-    def toggle(self):
-        self.set_visible(self.overlay.user_hidden)
-        self.overlay.toast("Paroles affichees" if not self.overlay.user_hidden else "Paroles masquees")
-        self.panel.sync_from_cfg()
-
-    def show_zones(self):
-        o = self.overlay
-        o.zones_until = o.clock() + 5.0
-        o.toast(f"Zones : {o.profile.get('nom', o.profile_key)}")
-
-    def edit_profiles(self):
-        try:
-            os.startfile(games.PROFILES_PATH)
-        except Exception:
-            pass
-
-    def hotkey_text(self, name):
-        return hotkeys.pretty(self.cfg["hotkeys"].get(name, ""))
-
-    def set_hotkey(self, name, combo):
-        keys = dict(self.cfg["hotkeys"])
-        stolen = None
-        for other, used in keys.items():
-            if combo and other != name and used == combo:
-                keys[other] = ""
-                stolen = other
-        keys[name] = combo
-        self.apply_hotkeys(keys)
-        return stolen
-
-    def reset_hotkeys(self):
-        self.apply_hotkeys(dict(hotkeys.DEFAULTS))
-
-    def apply_hotkeys(self, keys):
-        self.cfg["hotkeys"] = keys
-        save_config(self.cfg)
-        self.hotkeys.set_bindings(keys)
-
-    def on_hotkeys_failed(self, names):
-        self.hotkeys_failed = list(names)
-        self.panel.hotkeys_changed()
-
-    def on_hotkey(self, name):
-        o = self.overlay
-
-        def cycle(key, options):
-            keys = list(options)
-            self.set_cfg(key, keys[(keys.index(self.cfg[key]) + 1) % len(keys)])
-
-        if name == "toggle":
-            self.toggle()
-            return
-        if name == "capture":
-            self.capture_game()
-            return
-        if name == "zones":
-            self.show_zones()
-        elif name == "mode":
-            cycle("mode", MODES)
-            o.toast(f"Mode : {MODES[self.cfg['mode']][0]}")
-        elif name == "style":
-            cycle("style", STYLES)
-            o.toast(f"Animation : {STYLES[self.cfg['style']]}")
-        elif name == "color":
-            cycle("color", COLORS)
-            o.toast(COLORS[self.cfg["color"]])
-        elif name in ("earlier", "later"):
-            self.set_cfg("offset", round(self.cfg["offset"] + (0.2 if name == "earlier" else -0.2), 2))
-            o.toast(f"Decalage : {self.cfg['offset']:+.1f} s")
-        self.panel.sync_from_cfg()
-
-    def on_tray(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.show_panel()
-
-    def show_panel(self):
-        self.panel.show()
-        self.panel.raise_()
-        self.panel.activateWindow()
-
-    def install_here(self, autostart=None, shortcut=False):
-        import install
-        import settings
-        try:
-            exe = install.install()
-        except Exception as e:
-            install.message(f"L'installation n'a pas pu se faire ({e}).\n\n"
-                            "L'appli continue de marcher depuis ce fichier.", 0x30)
-            return False
-        if autostart is None:
-            autostart = settings.autostart_enabled()
-        settings.set_autostart(bool(autostart), exe=exe)
-        link = settings.desktop_link()
-        if shortcut or (link and os.path.exists(link)):
-            settings.create_desktop_shortcut(exe=exe)
-        install.launch(exe, "--installed")
-        self.quit()
-        return True
-
-    def uninstall(self):
-        import install
-        if install.run_uninstall():
-            self.quit()
-
-    def quit(self):
-        self.quitting = True
-        if self.welcome is not None:
-            self.welcome.close()
-        if self.zone_editor is not None:
-            self.zone_editor.close()
-        self.panel.close()
-        self.app.quit()
-
-    def cleanup(self):
-        self.quitting = True
-        self.tray.hide()
-        if self.audio:
-            self.audio.stop()
-        self.hotkeys.stop()
-        self.worker.stop()
-
-
-def snapshot(path, at, args):
-    fake = [0.0]
-    cfg = dict(DEFAULTS, style=args.style, mode=args.mode, position=args.position,
-               color=args.color, font=args.font)
-    profiles = games.DEFAULT_PROFILES
-    o = Overlay(cfg, profiles, clock=lambda: fake[0], rng=random.Random(args.seed))
-    o.timer.stop()
-    o.top_timer.stop()
-    if args.game:
-        o.set_profile(args.game, profiles["jeux"].get(args.game, profiles["jeu_inconnu"]))
-    start = max(0.0, at - 8.0) if not args.card else at
-    o.on_track(demo_track(start))
-    lines = DEMO_LINES
-    if args.translation:
-        for l in lines:
-            if l.text:
-                l.translation = "Traduction : " + l.text.lower()
-    o.on_lyrics(DEMO_KEY, lines)
-    if args.cover:
-        with open(args.cover, "rb") as f:
-            o.on_cover(o.track_key, f.read())
-    if not args.card:
-        o.card_since = -99
-    while fake[0] < (at - start) + (1.2 if args.card else 0):
-        fake[0] += 0.016
-        o.tick(0.016)
-    if args.zones:
-        o.zones_until = fake[0] + 5
-    img = QImage(o.size(), QImage.Format.Format_ARGB32_Premultiplied)
-    bg = QLinearGradient(0, 0, o.width(), o.height())
-    bg.setColorAt(0, QColor("#1d2b22"))
-    bg.setColorAt(1, QColor("#3d4f5c"))
-    p = QPainter(img)
-    p.fillRect(img.rect(), QBrush(bg))
-    p.end()
-    o.render(img)
-    img.scaledToWidth(960, Qt.TransformationMode.SmoothTransformation).save(path)
-
-
-def selftest(app, out_dir):
-    import traceback
-    import settings
-    report = [f"frozen={settings.FROZEN}", f"data_dir={settings.DATA_DIR}"]
-    report += [f"boot {n}: {r}" for n, r in bootstrap.LOG]
-    try:
-        import media
-        report.append("winrt=ok")
-    except Exception as e:
-        report.append(f"winrt=ERREUR {e!r}")
-    try:
-        import audio
-        report.append("audio=" + ("ok" if audio.pyaudio is not None else "ABSENT"))
-    except Exception as e:
-        report.append(f"audio=ERREUR {e!r}")
-
-    def finish(a):
-        try:
-            o = a.overlay
-            report.append(f"paroles={len(o.lines)} piste={o.track.title if o.track else None}")
-            report.append(f"sources={a.sources}")
-            report.append(f"navigateurs={a.browsers}")
-            report.append(f"reel={a.real_track.title if a.real_track else None}")
-            if a.welcome is not None:
-                a.welcome.grab().save(os.path.join(out_dir, "selftest_welcome.png"))
-            a.panel.show()
-            app.processEvents()
-            a.panel.grab().save(os.path.join(out_dir, "selftest_panel.png"))
-            img = QImage(o.size(), QImage.Format.Format_ARGB32_Premultiplied)
-            img.fill(QColor("#26303a"))
-            o.render(img)
-            img.scaledToWidth(960, Qt.TransformationMode.SmoothTransformation).save(
-                os.path.join(out_dir, "selftest_overlay.png"))
-            report.append("fin=ok")
-        except Exception:
-            report.append("fin=ERREUR\n" + traceback.format_exc())
-        with open(os.path.join(out_dir, "selftest.txt"), "w", encoding="utf-8") as f:
-            f.write("\n".join(report))
-        os._exit(0)
-
-    try:
-        a = App(app, demo=True)
-        QTimer.singleShot(7000, lambda: finish(a))
-        app.exec()
-    except Exception:
-        report.append("demarrage=ERREUR\n" + traceback.format_exc())
-        with open(os.path.join(out_dir, "selftest.txt"), "w", encoding="utf-8") as f:
-            f.write("\n".join(report))
-        os._exit(1)
-
-
-INSTANCE_NAME = "LyricsOverlay-instance" + os.environ.get("FTL_TEST_INSTANCE", "")
-_instance_mutex = None
-
-
-def take_over_instance():
-    global _instance_mutex
-    from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-
-    k = ctypes.WinDLL("kernel32", use_last_error=True)
-    k.CreateMutexW.restype = wintypes.HANDLE
-    k.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
-    k.CloseHandle.argtypes = [wintypes.HANDLE]
-    asked = False
-    deadline = time.monotonic() + 6.0
-    while True:
-        h = k.CreateMutexW(None, False, "Local\\" + INSTANCE_NAME)
-        already = ctypes.get_last_error() == 183
-        if not already or time.monotonic() > deadline:
-            _instance_mutex = h
-            break
-        k.CloseHandle(h)
-        if not asked:
-            asked = True
-            sock = QLocalSocket()
-            sock.connectToServer(INSTANCE_NAME)
-            if sock.waitForConnected(500):
-                sock.write(b"quit")
-                sock.flush()
-                sock.waitForBytesWritten(300)
-            sock.close()
-        time.sleep(0.15)
-    QLocalServer.removeServer(INSTANCE_NAME)
-    server = QLocalServer()
-    return server if server.listen(INSTANCE_NAME) else None
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--demo", action="store_true")
-    ap.add_argument("--updated", default="")
-    ap.add_argument("--minimized", action="store_true")
-    ap.add_argument("--installed", action="store_true")
-    ap.add_argument("--uninstall", action="store_true")
-    ap.add_argument("--quiet", action="store_true")
-    ap.add_argument("--purge", action="store_true")
-    ap.add_argument("--selftest")
-    ap.add_argument("--snapshot")
-    ap.add_argument("--at", type=float, default=7.0)
-    ap.add_argument("--mode", default="edit")
-    ap.add_argument("--position", default="left")
-    ap.add_argument("--color", default="album")
-    ap.add_argument("--font", default=DEFAULTS["font"])
-    ap.add_argument("--style", default="kinetic")
-    ap.add_argument("--game", default="")
-    ap.add_argument("--zones", action="store_true")
-    ap.add_argument("--cover")
-    ap.add_argument("--card", action="store_true")
-    ap.add_argument("--translation", action="store_true")
-    ap.add_argument("--seed", type=int, default=3)
-    args, _unknown = ap.parse_known_args()
-
-    try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FollowTheLyrics.App")
-    except Exception:
-        pass
-    app = QApplication(sys.argv)
-    app.setApplicationName("FollowTheLyrics")
-    app.setQuitOnLastWindowClosed(False)
-    if args.snapshot:
-        snapshot(args.snapshot, args.at, args)
-        return
-    if args.selftest:
-        selftest(app, args.selftest)
-        return
-    import install
-    import settings
-    if args.uninstall:
-        if install.is_installed() and (args.quiet or install.message(
-                "Désinstaller FollowTheLyrics de ce PC ?", 0x24) == 6):
-            take_over_instance()
-            keep = not args.purge
-            if not args.quiet:
-                keep = install.message("Garder tes réglages et tes zones pour une prochaine installation ?",
-                                       0x24) == 6
-            folders = install.uninstall(keep_data=keep)
-            if not args.quiet:
-                install.message("FollowTheLyrics a été désinstallé.")
-            install.delete_later(folders)
-        os._exit(0)
-    if install.hand_over():
-        os._exit(0)
-    server = take_over_instance()
-    if settings.FROZEN:
-        if install.running_installed():
-            try:
-                install.register()
-            except Exception:
-                pass
-        if not os.environ.get("FTL_TEST_INSTANCE"):
-            settings.refresh_autostart()
-    a = App(app, demo=args.demo, minimized=args.minimized, updated=args.updated)
-    if server is not None:
-        server.newConnection.connect(a.quit)
-    code = app.exec()
-    os._exit(code)
-
-
-if __name__ == "__main__":
-    main()

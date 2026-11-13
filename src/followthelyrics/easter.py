@@ -2,9 +2,18 @@ import bisect
 import math
 import re
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import (QBrush, QColor, QFont, QFontMetricsF, QLinearGradient, QPainterPath, QPen,
-                         QPolygonF, QRadialGradient)
+from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QBrush
+from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFontMetricsF
+from PyQt6.QtGui import QLinearGradient
+from PyQt6.QtGui import QPainterPath
+from PyQt6.QtGui import QPen
+from PyQt6.QtGui import QPolygonF
+from PyQt6.QtGui import QRadialGradient
 
 BADGE_TIME = 7.0
 WORD_TIME = 2.4
@@ -32,7 +41,10 @@ def _squash(s):
 
 
 def pick(track, overlay):
-    title, artist = _squash(getattr(track, "title", "")), _squash(getattr(track, "artist", ""))
+    title, artist = (
+        _squash(getattr(track, "title", "")),
+        _squash(getattr(track, "artist", "")),
+    )
     for show in SHOWS:
         if show.title_key in title and show.artist_key in title + artist:
             return show(overlay)
@@ -57,13 +69,17 @@ class FireworkShow:
         self.rockets = []
         self.sparks = []
         self.flashes = []
-        self.colors = [QColor.fromHsv(h, 215, 255) for h in HUES] + [QColor(255, 250, 235)]
+        self.colors = [QColor.fromHsv(h, 215, 255) for h in HUES] + [
+            QColor(255, 250, 235)
+        ]
         self._pens = {}
         self._font = None
         s = self.unit()
-        W = overlay.width()
+        width = overlay.width()
         for dx in (-0.16, 0.16):
-            self.queue.append((self.born + 0.55, W * (0.5 + dx), 70 * s, 0.0, False))
+            self.queue.append(
+                (self.born + 0.55, width * (0.5 + dx), 70 * s, 0.0, False)
+            )
 
     def unit(self):
         return self.o.height() / 1080.0
@@ -77,7 +93,9 @@ class FireworkShow:
                 if line.chars and c < len(line.chars):
                     t = line.chars[c][0]
                 else:
-                    t = line.time + (o.sung_end(idx) - line.time) * c / max(1, len(line.text))
+                    t = line.time + (o.sung_end(idx) - line.time) * c / max(
+                        1, len(line.text)
+                    )
                 self.hits.append(t)
                 self.line_hit.setdefault(idx, t)
         self.hits.sort()
@@ -93,9 +111,9 @@ class FireworkShow:
         return 1.0
 
     def word_rect(self):
-        W, H = self.o.width(), self.o.height()
+        width, height = self.o.width(), self.o.height()
         h = self.word_font().pixelSize() * 1.5
-        return QRectF(W * 0.06, H * 0.44 - h / 2, W * 0.88, h)
+        return QRectF(width * 0.06, height * 0.44 - h / 2, width * 0.88, h)
 
     def word_state(self, pos):
         i = bisect.bisect_right(self.hits, pos) - 1
@@ -108,13 +126,19 @@ class FireworkShow:
         return i, pos - t, end
 
     def busy(self, now, pos):
-        return bool(now - self.born < BADGE_TIME or self.word_state(pos) or self.active(now))
+        return bool(
+            now - self.born < BADGE_TIME
+            or self.word_state(pos)
+            or self.active(now)
+        )
 
     def active(self, now):
         return bool(self.sparks or self.rockets or self.queue or self.flashes)
 
     def word_colors(self, i):
-        return self.colors[i % len(HUES)], [self.colors[(i + j * 2) % len(HUES)].lighter(125) for j in range(5)]
+        return self.colors[i % len(HUES)], [
+            self.colors[(i + j * 2) % len(HUES)].lighter(125) for j in range(5)
+        ]
 
     def tick(self, now, dt, pos):
         if self.last_pos is not None and 0 < pos - self.last_pos < 1.0:
@@ -161,25 +185,54 @@ class FireworkShow:
     def fire(self, i, now):
         n = len(self.hits)
         k = (i + 1) / n
-        W, H = self.o.width(), self.o.height()
+        width, height = self.o.width(), self.o.height()
         rnd = self.rng
         for side in (0.22, 0.78):
-            self.burst(W * (side + rnd.uniform(-0.06, 0.06)), H * rnd.uniform(0.16, 0.34), k, now)
-        count = 2 + round(20 * k ** 1.5)
+            self.burst(
+                width * (side + rnd.uniform(-0.06, 0.06)),
+                height * rnd.uniform(0.16, 0.34),
+                k,
+                now,
+            )
+        count = 2 + round(20 * k**1.5)
         span = 0.5 + 1.9 * k
         for _ in range(count):
-            self.queue.append((now + rnd.uniform(0.0, span), W * rnd.uniform(0.06, 0.94),
-                               H * rnd.uniform(0.10, 0.58), k, True))
+            self.queue.append(
+                (
+                    now + rnd.uniform(0.0, span),
+                    width * rnd.uniform(0.06, 0.94),
+                    height * rnd.uniform(0.10, 0.58),
+                    k,
+                    True,
+                )
+            )
         if i == n - 1:
             for j in range(75):
-                self.queue.append((now + 0.6 + j * 0.11 + rnd.uniform(0, 0.1), W * rnd.uniform(0.05, 0.95),
-                                   H * rnd.uniform(0.08, 0.62), 1.0, j % 3 != 0))
+                self.queue.append(
+                    (
+                        now + 0.6 + j * 0.11 + rnd.uniform(0, 0.1),
+                        width * rnd.uniform(0.05, 0.95),
+                        height * rnd.uniform(0.08, 0.62),
+                        1.0,
+                        j % 3 != 0,
+                    )
+                )
 
     def launch(self, x, y, k, now):
-        H = self.o.height()
+        height = self.o.height()
         dur = self.rng.uniform(0.45, 0.75)
-        self.rockets.append({"x0": x + self.rng.uniform(-90, 90) * self.unit(), "x1": x, "y1": y, "y0": H + 10,
-                             "t0": now, "t1": now + dur, "k": k, "col": self.rng.randrange(len(HUES))})
+        self.rockets.append(
+            {
+                "x0": x + self.rng.uniform(-90, 90) * self.unit(),
+                "x1": x,
+                "y1": y,
+                "y0": height + 10,
+                "t0": now,
+                "t1": now + dur,
+                "k": k,
+                "col": self.rng.randrange(len(HUES)),
+            }
+        )
 
     def burst(self, x, y, k, now):
         rnd = self.rng
@@ -196,14 +249,48 @@ class FireworkShow:
         for j in range(n):
             a = math.tau * (j + rnd.random()) / n
             if kind == "ring":
-                v, life, drag, grav = speed * rnd.uniform(0.95, 1.05), rnd.uniform(0.9, 1.3), 1.9, 0.7
+                v, life, drag, grav = (
+                    speed * rnd.uniform(0.95, 1.05),
+                    rnd.uniform(0.9, 1.3),
+                    1.9,
+                    0.7,
+                )
             elif kind == "willow":
-                v, life, drag, grav = speed * rnd.uniform(0.3, 1.0), rnd.uniform(1.6, 2.3), 2.3, 1.1
+                v, life, drag, grav = (
+                    speed * rnd.uniform(0.3, 1.0),
+                    rnd.uniform(1.6, 2.3),
+                    2.3,
+                    1.1,
+                )
             else:
-                v, life, drag, grav = speed * math.sqrt(rnd.random()) * 1.1, rnd.uniform(0.8, 1.5), 1.7, 0.9
-            c = 0 if kind == "willow" else (white if rnd.random() < 0.12 else (col if j % 2 else second))
-            self.sparks.append([x, y, math.cos(a) * v, math.sin(a) * v, life, life, c,
-                                rnd.choice((1, 1, 2)), drag, grav, rnd.uniform(0, 6.28)])
+                v, life, drag, grav = (
+                    speed * math.sqrt(rnd.random()) * 1.1,
+                    rnd.uniform(0.8, 1.5),
+                    1.7,
+                    0.9,
+                )
+            c = (
+                0
+                if kind == "willow"
+                else (
+                    white if rnd.random() < 0.12 else (col if j % 2 else second)
+                )
+            )
+            self.sparks.append(
+                [
+                    x,
+                    y,
+                    math.cos(a) * v,
+                    math.sin(a) * v,
+                    life,
+                    life,
+                    c,
+                    rnd.choice((1, 1, 2)),
+                    drag,
+                    grav,
+                    rnd.uniform(0, 6.28),
+                ]
+            )
         self.flashes.append((x, y, now, col, (90 + 70 * max(k, 0)) * s))
 
     def pen(self, col, level, size):
@@ -228,12 +315,14 @@ class FireworkShow:
         self.draw_badge(p, now)
 
     def draw_fx(self, p, now):
-        s = self.unit()
         p.setPen(Qt.PenStyle.NoPen)
         for x, y, t0, col, radius in self.flashes:
             k = clamp((now - t0) / 0.22)
             grad = QRadialGradient(QPointF(x, y), radius * (0.5 + k))
-            c0, c1 = QColor(255, 255, 255, int(230 * (1 - k))), QColor(self.colors[col])
+            c0, c1 = (
+                QColor(255, 255, 255, int(230 * (1 - k))),
+                QColor(self.colors[col]),
+            )
             c1.setAlpha(0)
             grad.setColorAt(0, c0)
             grad.setColorAt(1, c1)
@@ -242,8 +331,14 @@ class FireworkShow:
         for r in self.rockets:
             u = clamp((now - r["t0"]) / (r["t1"] - r["t0"]))
             e, e0 = ease_out(u), ease_out(max(0.0, u - 0.12))
-            x, y = r["x0"] + (r["x1"] - r["x0"]) * e, r["y0"] + (r["y1"] - r["y0"]) * e
-            x0, y0 = r["x0"] + (r["x1"] - r["x0"]) * e0, r["y0"] + (r["y1"] - r["y0"]) * e0
+            x, y = (
+                r["x0"] + (r["x1"] - r["x0"]) * e,
+                r["y0"] + (r["y1"] - r["y0"]) * e,
+            )
+            x0, y0 = (
+                r["x0"] + (r["x1"] - r["x0"]) * e0,
+                r["y0"] + (r["y1"] - r["y0"]) * e0,
+            )
             p.setPen(self.pen(0, 3, 1))
             p.drawLine(QPointF(x0, y0), QPointF(x, y))
             p.setPen(self.pen(len(self.colors) - 1, LEVELS, 2))
@@ -254,19 +349,24 @@ class FireworkShow:
                 continue
             level = max(1, min(LEVELS, int(f * 1.6 * LEVELS) + 1))
             p.setPen(self.pen(sp[6], level, sp[7]))
-            p.drawLine(QPointF(sp[0] - sp[2] * 0.045, sp[1] - sp[3] * 0.045), QPointF(sp[0], sp[1]))
+            p.drawLine(
+                QPointF(sp[0] - sp[2] * 0.045, sp[1] - sp[3] * 0.045),
+                QPointF(sp[0], sp[1]),
+            )
 
     def word_font(self):
         base = self.o.main_font()
         key = (base.family(), self.o.width(), self.o.height())
         if self._font is None or self._font[0] != key:
-            W, H = self.o.width(), self.o.height()
+            width, height = self.o.width(), self.o.height()
             probe = QFont(base)
             probe.setPixelSize(100)
             probe.setBold(True)
             w100 = max(1.0, QFontMetricsF(probe).horizontalAdvance(self.WORD))
             font = QFont(probe)
-            font.setPixelSize(int(min(H * 0.30, 100 * W * 0.78 / w100)))
+            font.setPixelSize(
+                int(min(height * 0.30, 100 * width * 0.78 / w100))
+            )
             self._font = (key, font)
         return self._font[1]
 
@@ -284,17 +384,35 @@ class FireworkShow:
         font = self.word_font()
         fm = QFontMetricsF(font)
         tw = fm.horizontalAdvance(self.WORD)
-        W, H = o.width(), o.height()
+        width, height = o.width(), o.height()
         shake = 9 * self.unit() * math.exp(-u * 5)
-        sc = (0.3 + 0.7 * ease_out_back(k)) * (1 + 0.035 * u) * (1 + 0.06 * o.beat_pulse())
+        sc = (
+            (0.3 + 0.7 * ease_out_back(k))
+            * (1 + 0.035 * u)
+            * (1 + 0.06 * o.beat_pulse())
+        )
         p.save()
         p.setOpacity(clamp(o.alpha * a))
-        p.translate(W / 2 + shake * math.sin(u * 70), H * 0.44 + shake * math.cos(u * 57))
+        p.translate(
+            width / 2 + shake * math.sin(u * 70),
+            height * 0.44 + shake * math.cos(u * 57),
+        )
         p.rotate((-2.5, 2.0, -1.5, 2.5)[i % 4])
         p.scale(sc, sc)
         x, y = -tw / 2, fm.ascent() - fm.height() / 2
         px = min(font.pixelSize(), 110)
-        o.blit_halo(p, self.WORD, font, x, y, QColor(0, 0, 0), px * 0.09, 2.0, 0.7, px * 0.05)
+        o.blit_halo(
+            p,
+            self.WORD,
+            font,
+            x,
+            y,
+            QColor(0, 0, 0),
+            px * 0.09,
+            2.0,
+            0.7,
+            px * 0.05,
+        )
         glow, cols = self.word_colors(i)
         o.blit_halo(p, self.WORD, font, x, y, glow, px * 0.5, 1.7, 0.9)
         grad = QLinearGradient(x, 0, x + tw, 0)
@@ -324,11 +442,19 @@ class FireworkShow:
         title, sub = "EASTER EGG", f"{self.name} · attends le refrain…"
         fb, fs = QFontMetricsF(big), QFontMetricsF(small)
         star = 26 * s
-        w = max(fb.horizontalAdvance(title) + 2 * star + 16 * s, fs.horizontalAdvance(sub)) + 44 * s
+        w = (
+            max(
+                fb.horizontalAdvance(title) + 2 * star + 16 * s,
+                fs.horizontalAdvance(sub),
+            )
+            + 44 * s
+        )
         h = fb.height() + fs.height() + 20 * s
         rect = QRectF((o.width() - w) / 2, 18 * s, w, h)
         card = o.card_rect() if o.card_visible() else None
-        if card is not None and card.adjusted(-10, -10, 10, 10).intersects(rect):
+        if card is not None and card.adjusted(-10, -10, 10, 10).intersects(
+            rect
+        ):
             rect.moveTop(card.bottom() + 12 * s)
         p.save()
         p.setOpacity(clamp(o.alpha * a))
@@ -341,7 +467,9 @@ class FireworkShow:
         grad = QLinearGradient(rect.left(), 0, rect.right(), 0)
         shift = (age * 0.35) % 1.0
         for j in range(6):
-            grad.setColorAt(j / 5, QColor.fromHsvF((shift + j / 5 * 0.6) % 1.0, 0.55, 1.0))
+            grad.setColorAt(
+                j / 5, QColor.fromHsvF((shift + j / 5 * 0.6) % 1.0, 0.55, 1.0)
+            )
         tw = fb.horizontalAdvance(title)
         base = rect.top() + 9 * s + fb.ascent()
         path = QPainterPath()
@@ -365,8 +493,16 @@ class FireworkShow:
             p.fillPath(sp, gold)
         p.setFont(small)
         p.setPen(QColor(235, 235, 245, 220))
-        p.drawText(QRectF(rect.left(), base + fb.descent() + 1 * s, rect.width(), fs.height()),
-                   Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, sub)
+        p.drawText(
+            QRectF(
+                rect.left(),
+                base + fb.descent() + 1 * s,
+                rect.width(),
+                fs.height(),
+            ),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            sub,
+        )
         p.restore()
 
 
@@ -384,8 +520,13 @@ class ThunderShow(FireworkShow):
         return bool(self.bolts or self.queue or now - self.flash_t < 0.35)
 
     def word_colors(self, i):
-        return QColor(110, 165, 255), [QColor(215, 232, 255), QColor(255, 255, 255), QColor(150, 195, 255),
-                                       QColor(255, 255, 255), QColor(200, 222, 255)]
+        return QColor(110, 165, 255), [
+            QColor(215, 232, 255),
+            QColor(255, 255, 255),
+            QColor(150, 195, 255),
+            QColor(255, 255, 255),
+            QColor(200, 222, 255),
+        ]
 
     def fire(self, i, now):
         rnd = self.rng
@@ -411,11 +552,17 @@ class ThunderShow(FireworkShow):
 
     def strike(self, now, k):
         rnd = self.rng
-        W, H = self.o.width(), self.o.height()
+        width, height = self.o.width(), self.o.height()
         s = self.unit()
-        depth = H * (rnd.uniform(0.14, 0.22) if k <= 0 else rnd.uniform(0.42, 0.9))
+        depth = height * (
+            rnd.uniform(0.14, 0.22) if k <= 0 else rnd.uniform(0.42, 0.9)
+        )
         steps = 9 if k <= 0 else rnd.randint(13, 19)
-        x, y = W * (rnd.choice((0.32, 0.68)) if k <= 0 else rnd.uniform(0.05, 0.95)), -8.0
+        x, y = (
+            width
+            * (rnd.choice((0.32, 0.68)) if k <= 0 else rnd.uniform(0.05, 0.95)),
+            -8.0,
+        )
         drift = rnd.uniform(-0.35, 0.35) * depth / steps
         pts = [QPointF(x, y)]
         for _ in range(steps):
@@ -433,7 +580,9 @@ class ThunderShow(FireworkShow):
                 by += rnd.uniform(14, 52) * s
                 branch.append(QPointF(bx, by))
             lines.append((QPolygonF(branch), 0.55))
-        self.bolts.append((now, rnd.uniform(0.3, 0.5), lines, rnd.uniform(0, 6.28)))
+        self.bolts.append(
+            (now, rnd.uniform(0.3, 0.5), lines, rnd.uniform(0, 6.28))
+        )
         if k > 0:
             self.flash_t, self.flash_k = now, 0.05 + 0.07 * k
 
@@ -448,9 +597,11 @@ class ThunderShow(FireworkShow):
             u = (now - t0) / life
             a = (1 - u) * (0.65 + 0.35 * math.sin(u * 34 + phase))
             for poly, w in lines:
-                for width, col in ((16 * s * w, QColor(90, 140, 255, int(60 * a))),
-                                   (6 * s * w, QColor(170, 205, 255, int(170 * a))),
-                                   (2.2 * s * w, QColor(255, 255, 255, int(255 * a)))):
+                for width, col in (
+                    (16 * s * w, QColor(90, 140, 255, int(60 * a))),
+                    (6 * s * w, QColor(170, 205, 255, int(170 * a))),
+                    (2.2 * s * w, QColor(255, 255, 255, int(255 * a))),
+                ):
                     pen = QPen(col, width)
                     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
                     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -461,11 +612,19 @@ class ThunderShow(FireworkShow):
 class LightsShow(FireworkShow):
     name, title_key, artist_key = "Blinding Lights", "blindinglights", "weeknd"
     pattern, WORD = r"lights?", "LIGHTS"
-    NEONS = [QColor(255, 45, 85), QColor(255, 50, 190), QColor(255, 125, 40), QColor(165, 70, 255)]
+    NEONS = (
+        QColor(255, 45, 85),
+        QColor(255, 50, 190),
+        QColor(255, 125, 40),
+        QColor(165, 70, 255),
+    )
 
     def __init__(self, overlay):
         super().__init__(overlay)
-        self.queue = [(self.born + 0.5, "beam", 0.3), (self.born + 0.8, "beam", 0.3)]
+        self.queue = [
+            (self.born + 0.5, "beam", 0.3),
+            (self.born + 0.8, "beam", 0.3),
+        ]
         self.beams = []
         self.glares = []
 
@@ -474,7 +633,13 @@ class LightsShow(FireworkShow):
 
     def word_colors(self, i):
         n = self.NEONS
-        return n[i % 2], [n[2].lighter(125), n[0].lighter(120), n[1].lighter(125), n[3].lighter(135), n[1].lighter(125)]
+        return n[i % 2], [
+            n[2].lighter(125),
+            n[0].lighter(120),
+            n[1].lighter(125),
+            n[3].lighter(135),
+            n[1].lighter(125),
+        ]
 
     def fire(self, i, now):
         rnd = self.rng
@@ -484,14 +649,16 @@ class LightsShow(FireworkShow):
             self.queue.append((now + rnd.uniform(0, 0.5 + k), "beam", k))
         if i == len(self.hits) - 1:
             for j in range(40):
-                self.queue.append((now + 0.5 + j * 0.16 + rnd.uniform(0, 0.1), "beam", 1.0))
+                self.queue.append(
+                    (now + 0.5 + j * 0.16 + rnd.uniform(0, 0.1), "beam", 1.0)
+                )
             for j in range(5):
                 self.queue.append((now + 1.2 + j * 1.2, "glare", 1.0))
 
     def update(self, now, dt):
         if self.queue:
             rnd = self.rng
-            W, H = self.o.width(), self.o.height()
+            width, height = self.o.width(), self.o.height()
             later = []
             for q in self.queue:
                 if q[0] > now:
@@ -503,36 +670,71 @@ class LightsShow(FireworkShow):
                     mid = math.pi / 2 if top else -math.pi / 2
                     a0 = mid + rnd.uniform(-0.75, 0.75)
                     a1 = a0 + rnd.choice((-1, 1)) * rnd.uniform(0.35, 0.9)
-                    self.beams.append((now, rnd.uniform(1.1, 1.8), W * rnd.uniform(0.05, 0.95), top, a0, a1,
-                                       rnd.randrange(len(self.NEONS)), rnd.uniform(0.035, 0.07)))
+                    self.beams.append(
+                        (
+                            now,
+                            rnd.uniform(1.1, 1.8),
+                            width * rnd.uniform(0.05, 0.95),
+                            top,
+                            a0,
+                            a1,
+                            rnd.randrange(len(self.NEONS)),
+                            rnd.uniform(0.035, 0.07),
+                        )
+                    )
                 else:
-                    self.glares.append((now, 0.9, W * rnd.choice((0.14, 0.86)) + rnd.uniform(-60, 60),
-                                        H * rnd.uniform(0.18, 0.4), H * (0.28 + 0.2 * k),
-                                        rnd.randrange(len(self.NEONS))))
+                    self.glares.append(
+                        (
+                            now,
+                            0.9,
+                            width * rnd.choice((0.14, 0.86))
+                            + rnd.uniform(-60, 60),
+                            height * rnd.uniform(0.18, 0.4),
+                            height * (0.28 + 0.2 * k),
+                            rnd.randrange(len(self.NEONS)),
+                        )
+                    )
             self.queue = later
         self.beams = [b for b in self.beams if now - b[0] < b[1]]
         self.glares = [g for g in self.glares if now - g[0] < g[1]]
 
     def draw_fx(self, p, now):
-        H = self.o.height()
-        length = H * 1.35
+        height = self.o.height()
+        length = height * 1.35
         p.setPen(Qt.PenStyle.NoPen)
         for t0, life, x, top, a0, a1, col, half in self.beams:
             u = (now - t0) / life
             ang = a0 + (a1 - a0) * u * u * (3 - 2 * u)
             a = math.sin(math.pi * u)
-            o = QPointF(x, -20.0 if top else H + 20.0)
+            o = QPointF(x, -20.0 if top else height + 20.0)
             c0, c1 = QColor(self.NEONS[col]), QColor(self.NEONS[col])
             c0.setAlpha(int(165 * a))
             c1.setAlpha(0)
-            grad = QLinearGradient(o, QPointF(o.x() + length * math.cos(ang), o.y() + length * math.sin(ang)))
+            grad = QLinearGradient(
+                o,
+                QPointF(
+                    o.x() + length * math.cos(ang),
+                    o.y() + length * math.sin(ang),
+                ),
+            )
             grad.setColorAt(0, c0)
             grad.setColorAt(1, c1)
             p.setBrush(QBrush(grad))
-            p.drawPolygon(QPolygonF([
-                o,
-                QPointF(o.x() + length * math.cos(ang - half), o.y() + length * math.sin(ang - half)),
-                QPointF(o.x() + length * math.cos(ang + half), o.y() + length * math.sin(ang + half))]))
+            p.drawPolygon(
+                QPolygonF(
+                    [
+                        o,
+                        QPointF(
+                            o.x() + length * math.cos(ang - half),
+                            o.y() + length * math.sin(ang - half),
+                        ),
+                        QPointF(
+                            o.x() + length * math.cos(ang + half),
+                            o.y() + length * math.sin(ang + half),
+                        ),
+                    ]
+                )
+            )
         for t0, life, x, y, radius, col in self.glares:
             u = (now - t0) / life
             a = (1 - u) ** 2
@@ -546,7 +748,9 @@ class LightsShow(FireworkShow):
             grad.setColorAt(1, c2)
             p.setBrush(QBrush(grad))
             p.drawEllipse(QPointF(x, y), r, r)
-            streak = QLinearGradient(QPointF(x - r * 2.4, y), QPointF(x + r * 2.4, y))
+            streak = QLinearGradient(
+                QPointF(x - r * 2.4, y), QPointF(x + r * 2.4, y)
+            )
             streak.setColorAt(0, QColor(255, 255, 255, 0))
             streak.setColorAt(0.5, QColor(255, 255, 255, int(200 * a)))
             streak.setColorAt(1, QColor(255, 255, 255, 0))
@@ -556,8 +760,17 @@ class LightsShow(FireworkShow):
 
 def _gem_path():
     path = QPainterPath()
-    path.addPolygon(QPolygonF([QPointF(-0.5, -0.15), QPointF(-0.28, -0.42), QPointF(0.28, -0.42),
-                               QPointF(0.5, -0.15), QPointF(0.0, 0.5)]))
+    path.addPolygon(
+        QPolygonF(
+            [
+                QPointF(-0.5, -0.15),
+                QPointF(-0.28, -0.42),
+                QPointF(0.28, -0.42),
+                QPointF(0.5, -0.15),
+                QPointF(0.0, 0.5),
+            ]
+        )
+    )
     path.closeSubpath()
     return path
 
@@ -566,7 +779,9 @@ def _star_path():
     path = QPainterPath()
     for j in range(8):
         r = 1.0 if j % 2 == 0 else 0.16
-        pt = QPointF(r * math.cos(j * math.pi / 4), r * math.sin(j * math.pi / 4))
+        pt = QPointF(
+            r * math.cos(j * math.pi / 4), r * math.sin(j * math.pi / 4)
+        )
         if j:
             path.lineTo(pt)
         else:
@@ -579,9 +794,15 @@ class DiamondShow(FireworkShow):
     name, title_key, artist_key = "Diamonds", "diamonds", "rihanna"
     pattern, WORD = r"diamonds?", "DIAMONDS"
     MAX_GEMS = 170
-    FACETS = [(-0.5, -0.15, 0.5, -0.15), (-0.18, -0.15, 0.0, 0.5), (0.18, -0.15, 0.0, 0.5),
-              (-0.28, -0.42, -0.18, -0.15), (0.28, -0.42, 0.18, -0.15), (0.0, -0.42, -0.18, -0.15),
-              (0.0, -0.42, 0.18, -0.15)]
+    FACETS = (
+        (-0.5, -0.15, 0.5, -0.15),
+        (-0.18, -0.15, 0.0, 0.5),
+        (0.18, -0.15, 0.0, 0.5),
+        (-0.28, -0.42, -0.18, -0.15),
+        (0.28, -0.42, 0.18, -0.15),
+        (0.0, -0.42, -0.18, -0.15),
+        (0.0, -0.42, 0.18, -0.15),
+    )
 
     def __init__(self, overlay):
         super().__init__(overlay)
@@ -590,37 +811,66 @@ class DiamondShow(FireworkShow):
         self.twinkles = []
         self.gem, self.star = _gem_path(), _star_path()
         self.brushes = []
-        for top, low in ((QColor(255, 255, 255), QColor(90, 205, 255)),
-                         (QColor(245, 240, 255), QColor(170, 140, 255)),
-                         (QColor(255, 255, 255), QColor(150, 235, 235))):
+        for top, low in (
+            (QColor(255, 255, 255), QColor(90, 205, 255)),
+            (QColor(245, 240, 255), QColor(170, 140, 255)),
+            (QColor(255, 255, 255), QColor(150, 235, 235)),
+        ):
             g = QLinearGradient(QPointF(-0.4, -0.45), QPointF(0.3, 0.5))
             g.setColorAt(0, top)
             g.setColorAt(0.45, low.lighter(140))
             g.setColorAt(1, low)
             self.brushes.append(QBrush(g))
-        W, s = overlay.width(), self.unit()
+        width, s = overlay.width(), self.unit()
         for dx in (-0.15, -0.12, 0.12, 0.15):
-            self.twinkles.append((self.born + 0.5 + abs(dx), 0.9, W * (0.5 + dx), 60 * s, 22 * s))
+            self.twinkles.append(
+                (
+                    self.born + 0.5 + abs(dx),
+                    0.9,
+                    width * (0.5 + dx),
+                    60 * s,
+                    22 * s,
+                )
+            )
 
     def active(self, now):
         return bool(self.gems or self.twinkles or self.queue)
 
     def word_colors(self, i):
-        return QColor(90, 210, 255), [QColor(190, 240, 255), QColor(255, 255, 255), QColor(160, 215, 255),
-                                      QColor(225, 205, 255), QColor(255, 255, 255), QColor(170, 235, 255)]
+        return QColor(90, 210, 255), [
+            QColor(190, 240, 255),
+            QColor(255, 255, 255),
+            QColor(160, 215, 255),
+            QColor(225, 205, 255),
+            QColor(255, 255, 255),
+            QColor(170, 235, 255),
+        ]
 
     def fire(self, i, now):
         rnd = self.rng
         k = (i + 1) / len(self.hits)
-        W, H = self.o.width(), self.o.height()
+        width, height = self.o.width(), self.o.height()
         s = self.unit()
         for _ in range(6 + int(24 * k)):
             a = rnd.uniform(-math.pi, 0)
             v = rnd.uniform(380, 900) * s * (0.8 + 0.4 * k)
-            self.add_gem(W * rnd.uniform(0.2, 0.8), H * 0.44, math.cos(a) * v, math.sin(a) * v, k)
+            self.add_gem(
+                width * rnd.uniform(0.2, 0.8),
+                height * 0.44,
+                math.cos(a) * v,
+                math.sin(a) * v,
+                k,
+            )
         for _ in range(8 + int(22 * k)):
-            self.twinkles.append((now + rnd.uniform(0, 1.2), rnd.uniform(0.5, 1.0), W * rnd.random(),
-                                  H * rnd.uniform(0.03, 0.75), rnd.uniform(14, 34) * s * (1 + 0.6 * k)))
+            self.twinkles.append(
+                (
+                    now + rnd.uniform(0, 1.2),
+                    rnd.uniform(0.5, 1.0),
+                    width * rnd.random(),
+                    height * rnd.uniform(0.03, 0.75),
+                    rnd.uniform(14, 34) * s * (1 + 0.6 * k),
+                )
+            )
         if i == len(self.hits) - 1:
             for j in range(130):
                 self.queue.append((now + 0.5 + j * 0.055, "rain"))
@@ -632,12 +882,24 @@ class DiamondShow(FireworkShow):
             return
         rnd = self.rng
         life = rnd.uniform(1.8, 2.8)
-        self.gems.append([x, y, vx, vy, rnd.uniform(-40, 40), rnd.uniform(-200, 200),
-                          rnd.uniform(36, 76) * self.unit() * (0.85 + 0.4 * k), life, life, rnd.randrange(3)])
+        self.gems.append(
+            [
+                x,
+                y,
+                vx,
+                vy,
+                rnd.uniform(-40, 40),
+                rnd.uniform(-200, 200),
+                rnd.uniform(36, 76) * self.unit() * (0.85 + 0.4 * k),
+                life,
+                life,
+                rnd.randrange(3),
+            ]
+        )
 
     def update(self, now, dt):
         rnd = self.rng
-        W, H = self.o.width(), self.o.height()
+        width, height = self.o.width(), self.o.height()
         s = self.unit()
         if self.queue:
             later = []
@@ -645,15 +907,28 @@ class DiamondShow(FireworkShow):
                 if q[0] > now:
                     later.append(q)
                 elif q[1] == "rain":
-                    self.add_gem(W * rnd.random(), -40 * s, rnd.uniform(-60, 60) * s, rnd.uniform(150, 420) * s, 1.0)
+                    self.add_gem(
+                        width * rnd.random(),
+                        -40 * s,
+                        rnd.uniform(-60, 60) * s,
+                        rnd.uniform(150, 420) * s,
+                        1.0,
+                    )
                 else:
-                    self.twinkles.append((now, rnd.uniform(0.5, 1.0), W * rnd.random(), H * rnd.uniform(0.03, 0.8),
-                                          rnd.uniform(18, 46) * s))
+                    self.twinkles.append(
+                        (
+                            now,
+                            rnd.uniform(0.5, 1.0),
+                            width * rnd.random(),
+                            height * rnd.uniform(0.03, 0.8),
+                            rnd.uniform(18, 46) * s,
+                        )
+                    )
             self.queue = later
         g, alive = 780 * s, []
         for gem in self.gems:
             gem[7] -= dt
-            if gem[7] <= 0 or gem[1] > H + 80:
+            if gem[7] <= 0 or gem[1] > height + 80:
                 continue
             gem[3] += g * dt
             gem[0] += gem[2] * dt

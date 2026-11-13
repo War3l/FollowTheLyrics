@@ -1,19 +1,21 @@
+import logging
 import threading
 import time
 from collections import deque
 
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 try:
     import pyaudiowpatch as pyaudio
-except Exception:
+except ImportError:
     pyaudio = None
 
 BLOCK = 1024
 
 
 class BeatDetector:
-
     def __init__(self, rate):
         self.rate = rate
         freqs = np.fft.rfftfreq(BLOCK, 1 / rate)
@@ -41,21 +43,30 @@ class BeatDetector:
 
 
 class _Capture:
-
     def __init__(self, pa, dev):
         self.dev = dev
         self.ch = max(1, min(2, int(dev["maxInputChannels"])))
         self.rate = int(dev["defaultSampleRate"])
-        self.stream = pa.open(format=pyaudio.paFloat32, channels=self.ch, rate=self.rate, input=True,
-                              input_device_index=dev["index"], frames_per_buffer=BLOCK)
+        self.stream = pa.open(
+            format=pyaudio.paFloat32,
+            channels=self.ch,
+            rate=self.rate,
+            input=True,
+            input_device_index=dev["index"],
+            frames_per_buffer=BLOCK,
+        )
 
     def read(self):
         try:
             avail = self.stream.get_read_available()
             if avail <= 0:
                 return np.zeros(0, dtype=np.float32)
-            a = np.frombuffer(self.stream.read(avail, exception_on_overflow=False), dtype=np.float32)
+            a = np.frombuffer(
+                self.stream.read(avail, exception_on_overflow=False),
+                dtype=np.float32,
+            )
         except Exception:
+            logger.debug("read failed", exc_info=True)
             return np.zeros(0, dtype=np.float32)
         if self.ch == 2:
             a = a[: a.size - a.size % 2].reshape(-1, 2).mean(axis=1)
@@ -66,11 +77,10 @@ class _Capture:
             self.stream.stop_stream()
             self.stream.close()
         except Exception:
-            pass
+            logger.debug("close failed", exc_info=True)
 
 
 class AudioBeats:
-
     def __init__(self, on_beat):
         self.on_beat = on_beat
         self.enabled = pyaudio is not None
@@ -92,6 +102,7 @@ class AudioBeats:
         try:
             cap = _Capture(pa, dev)
         except Exception:
+            logger.debug("_measure failed", exc_info=True)
             return 0.0
         total, n = 0.0, 0
         end = time.monotonic() + seconds
@@ -107,15 +118,21 @@ class AudioBeats:
         try:
             pa = pyaudio.PyAudio()
             wasapi = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
-            default_name = pa.get_device_info_by_index(wasapi["defaultOutputDevice"])["name"]
+            default_name = pa.get_device_info_by_index(
+                wasapi["defaultOutputDevice"]
+            )["name"]
             devices = list(pa.get_loopback_device_info_generator())
         except Exception:
+            logger.warning("_run failed", exc_info=True)
             self.enabled = False
             return
         if not devices:
             self.enabled = False
             return
-        current = next((d for d in devices if d["name"].startswith(default_name)), devices[0])
+        current = next(
+            (d for d in devices if d["name"].startswith(default_name)),
+            devices[0],
+        )
         cap = None
         try:
             cap = _Capture(pa, current)
@@ -140,13 +157,17 @@ class AudioBeats:
                             try:
                                 self.on_beat(k)
                             except Exception:
-                                pass
+                                logger.debug("_run failed", exc_info=True)
                 else:
                     time.sleep(0.01)
                 if now - last_check < 0.5:
                     continue
                 last_check = now
-                if now - last_sound > 3.0 and self.music_playing and now - last_scan > scan_wait:
+                if (
+                    now - last_sound > 3.0
+                    and self.music_playing
+                    and now - last_scan > scan_wait
+                ):
                     last_scan = now
                     cap.close()
                     best, best_lvl = current, 0.0
@@ -167,6 +188,7 @@ class AudioBeats:
                     buf = np.zeros(0, dtype=np.float32)
                     last_sound = time.monotonic()
         except Exception:
+            logger.warning("_run failed", exc_info=True)
             self.enabled = False
         finally:
             if cap:
@@ -174,4 +196,4 @@ class AudioBeats:
             try:
                 pa.terminate()
             except Exception:
-                pass
+                logger.debug("_run failed", exc_info=True)

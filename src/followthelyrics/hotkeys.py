@@ -1,7 +1,11 @@
 import ctypes
+import logging
 from ctypes import wintypes
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread
+from PyQt6.QtCore import pyqtSignal
+
+logger = logging.getLogger(__name__)
 
 ACTIONS = [
     ("toggle", "Afficher / masquer les paroles", "Ctrl+Alt+L"),
@@ -18,12 +22,42 @@ LABELS = {name: label for name, label, _combo in ACTIONS}
 
 MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_NOREPEAT = 0x0001, 0x0002, 0x0004, 0x4000
 MODS = (("Ctrl", MOD_CTRL), ("Alt", MOD_ALT), ("Shift", MOD_SHIFT))
-MODIFIER_VKS = {0x10, 0x11, 0x12, 0x5B, 0x5C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5}
+MODIFIER_VKS = {
+    0x10,
+    0x11,
+    0x12,
+    0x5B,
+    0x5C,
+    0xA0,
+    0xA1,
+    0xA2,
+    0xA3,
+    0xA4,
+    0xA5,
+}
 
-NAMED = {0x26: "Up", 0x28: "Down", 0x25: "Left", 0x27: "Right", 0x20: "Space", 0x09: "Tab",
-         0x0D: "Enter", 0x2D: "Insert", 0x2E: "Delete", 0x24: "Home", 0x23: "End",
-         0x21: "PageUp", 0x22: "PageDown", 0x13: "Pause", 0x08: "Backspace",
-         0x6A: "NumMul", 0x6B: "NumAdd", 0x6D: "NumSub", 0x6E: "NumDec", 0x6F: "NumDiv"}
+NAMED = {
+    0x26: "Up",
+    0x28: "Down",
+    0x25: "Left",
+    0x27: "Right",
+    0x20: "Space",
+    0x09: "Tab",
+    0x0D: "Enter",
+    0x2D: "Insert",
+    0x2E: "Delete",
+    0x24: "Home",
+    0x23: "End",
+    0x21: "PageUp",
+    0x22: "PageDown",
+    0x13: "Pause",
+    0x08: "Backspace",
+    0x6A: "NumMul",
+    0x6B: "NumAdd",
+    0x6D: "NumSub",
+    0x6E: "NumDec",
+    0x6F: "NumDiv",
+}
 for _i in range(26):
     NAMED[0x41 + _i] = chr(0x41 + _i)
 for _i in range(10):
@@ -33,10 +67,27 @@ for _i in range(24):
     NAMED[0x70 + _i] = f"F{_i + 1}"
 BY_NAME = {name.lower(): vk for vk, name in NAMED.items()}
 
-PRETTY = {"Up": "↑", "Down": "↓", "Left": "←", "Right": "→", "Space": "Espace", "Enter": "Entrée",
-          "Delete": "Suppr", "Home": "Début", "End": "Fin", "PageUp": "Pg préc", "PageDown": "Pg suiv",
-          "Insert": "Inser", "Backspace": "Retour", "Shift": "Maj", "NumMul": "Num *", "NumAdd": "Num +",
-          "NumSub": "Num −", "NumDec": "Num .", "NumDiv": "Num /"}
+PRETTY = {
+    "Up": "↑",
+    "Down": "↓",
+    "Left": "←",
+    "Right": "→",
+    "Space": "Espace",
+    "Enter": "Entrée",
+    "Delete": "Suppr",
+    "Home": "Début",
+    "End": "Fin",
+    "PageUp": "Pg préc",
+    "PageDown": "Pg suiv",
+    "Insert": "Inser",
+    "Backspace": "Retour",
+    "Shift": "Maj",
+    "NumMul": "Num *",
+    "NumAdd": "Num +",
+    "NumSub": "Num −",
+    "NumDec": "Num .",
+    "NumDiv": "Num /",
+}
 
 
 def is_function_key(vk):
@@ -84,16 +135,19 @@ def allowed(mods, vk):
 
 def key_names(combo):
     out = []
-    for part in (combo or "").split("+"):
-        part = part.strip()
+    for raw in (combo or "").split("+"):
+        part = raw.strip()
         if not part:
             continue
         if part.upper().startswith("VK_"):
             try:
-                ch = ctypes.windll.user32.MapVirtualKeyW(int(part[3:], 16), 2) & 0x7FFF
+                ch = (
+                    ctypes.windll.user32.MapVirtualKeyW(int(part[3:], 16), 2)
+                    & 0x7FFF
+                )
                 part = chr(ch).upper() if ch > 32 else part
-            except Exception:
-                pass
+            except (OSError, AttributeError, ValueError):
+                logger.debug("key_names failed", exc_info=True)
         out.append(PRETTY.get(part, part))
     return out
 
@@ -143,11 +197,15 @@ class Hotkeys(QThread):
 
     def _reload(self):
         if self.tid:
-            ctypes.windll.user32.PostThreadMessageW(self.tid, self.WM_RELOAD, 0, 0)
+            ctypes.windll.user32.PostThreadMessageW(
+                self.tid, self.WM_RELOAD, 0, 0
+            )
 
     def stop(self):
         if self.tid:
-            ctypes.windll.user32.PostThreadMessageW(self.tid, self.WM_QUIT, 0, 0)
+            ctypes.windll.user32.PostThreadMessageW(
+                self.tid, self.WM_QUIT, 0, 0
+            )
         self.wait(1000)
 
     def _register(self):

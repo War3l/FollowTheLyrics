@@ -1,13 +1,27 @@
 import ctypes
+import logging
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen
-from PyQt6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
-                             QWidget)
+from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import Qt
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QImage
+from PyQt6.QtGui import QPainter
+from PyQt6.QtGui import QPen
+from PyQt6.QtWidgets import QComboBox
+from PyQt6.QtWidgets import QHBoxLayout
+from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLineEdit
+from PyQt6.QtWidgets import QPushButton
+from PyQt6.QtWidgets import QVBoxLayout
+from PyQt6.QtWidgets import QWidget
 
-import games
-from panel import BG, DIM, TEXT, make_icon, ui_font
-from widgets import SOLID_BORDER as CARD_BORDER, SOLID_CARD as CARD, SOLID_FIELD as FIELD
+from followthelyrics import games
+from followthelyrics import widgets
+
+logger = logging.getLogger(__name__)
 
 ACCENT = "#8B7CFF"
 HANDLE = 9
@@ -30,7 +44,11 @@ class Canvas(QWidget):
         self._drag = None
 
     def view(self):
-        ratio = (self.image.width() / self.image.height()) if self.image is not None else 16 / 9
+        ratio = (
+            (self.image.width() / self.image.height())
+            if self.image is not None
+            else 16 / 9
+        )
         w, h = self.width(), self.height()
         vw = min(w, h * ratio)
         vh = vw / ratio
@@ -38,24 +56,39 @@ class Canvas(QWidget):
 
     def to_frac(self, pos):
         v = self.view()
-        return (min(1.0, max(0.0, (pos.x() - v.left()) / v.width())),
-                min(1.0, max(0.0, (pos.y() - v.top()) / v.height())))
+        return (
+            min(1.0, max(0.0, (pos.x() - v.left()) / v.width())),
+            min(1.0, max(0.0, (pos.y() - v.top()) / v.height())),
+        )
 
     def rect_of(self, z):
         v = self.view()
-        return QRectF(v.left() + z["x"] * v.width(), v.top() + z["y"] * v.height(),
-                      z["l"] * v.width(), z["h"] * v.height())
+        return QRectF(
+            v.left() + z["x"] * v.width(),
+            v.top() + z["y"] * v.height(),
+            z["l"] * v.width(),
+            z["h"] * v.height(),
+        )
 
     def handles(self, z):
         r = self.rect_of(z)
-        return {"tl": r.topLeft(), "tr": r.topRight(), "bl": r.bottomLeft(), "br": r.bottomRight()}
+        return {
+            "tl": r.topLeft(),
+            "tr": r.topRight(),
+            "bl": r.bottomLeft(),
+            "br": r.bottomRight(),
+        }
 
     def hit(self, pos):
-        order = ([self.sel] if 0 <= self.sel < len(self.zones) else []) + \
-            [i for i in reversed(range(len(self.zones))) if i != self.sel]
+        order = ([self.sel] if 0 <= self.sel < len(self.zones) else []) + [
+            i for i in reversed(range(len(self.zones))) if i != self.sel
+        ]
         for i in order:
             for name, pt in self.handles(self.zones[i]).items():
-                if abs(pos.x() - pt.x()) <= HANDLE + 2 and abs(pos.y() - pt.y()) <= HANDLE + 2:
+                if (
+                    abs(pos.x() - pt.x()) <= HANDLE + 2
+                    and abs(pos.y() - pt.y()) <= HANDLE + 2
+                ):
                     return name, i
         for i in order:
             if self.rect_of(self.zones[i]).contains(pos):
@@ -72,7 +105,15 @@ class Canvas(QWidget):
         if mode == "new":
             if not self.view().contains(pos):
                 return
-            self.zones.append({"nom": f"Zone {len(self.zones) + 1}", "x": fx, "y": fy, "l": 0.0, "h": 0.0})
+            self.zones.append(
+                {
+                    "nom": f"Zone {len(self.zones) + 1}",
+                    "x": fx,
+                    "y": fy,
+                    "l": 0.0,
+                    "h": 0.0,
+                }
+            )
             i = len(self.zones) - 1
             mode = "br"
         self.select(i)
@@ -83,9 +124,16 @@ class Canvas(QWidget):
         pos = e.position()
         if self._drag is None:
             mode, _ = self.hit(pos)
-            self.setCursor({"move": Qt.CursorShape.SizeAllCursor, "new": Qt.CursorShape.CrossCursor,
-                            "tl": Qt.CursorShape.SizeFDiagCursor, "br": Qt.CursorShape.SizeFDiagCursor,
-                            "tr": Qt.CursorShape.SizeBDiagCursor, "bl": Qt.CursorShape.SizeBDiagCursor}[mode])
+            self.setCursor(
+                {
+                    "move": Qt.CursorShape.SizeAllCursor,
+                    "new": Qt.CursorShape.CrossCursor,
+                    "tl": Qt.CursorShape.SizeFDiagCursor,
+                    "br": Qt.CursorShape.SizeFDiagCursor,
+                    "tr": Qt.CursorShape.SizeBDiagCursor,
+                    "bl": Qt.CursorShape.SizeBDiagCursor,
+                }[mode]
+            )
             return
         mode, i, (sx, sy), z0 = self._drag
         fx, fy = self.to_frac(pos)
@@ -146,36 +194,65 @@ class Canvas(QWidget):
             p.fillRect(v, QColor("#12151d"))
             p.setPen(QPen(QColor(255, 255, 255, 14), 1))
             for k in range(1, 16):
-                p.drawLine(QPointF(v.left() + v.width() * k / 16, v.top()), QPointF(v.left() + v.width() * k / 16, v.bottom()))
+                p.drawLine(
+                    QPointF(v.left() + v.width() * k / 16, v.top()),
+                    QPointF(v.left() + v.width() * k / 16, v.bottom()),
+                )
             for k in range(1, 9):
-                p.drawLine(QPointF(v.left(), v.top() + v.height() * k / 9), QPointF(v.right(), v.top() + v.height() * k / 9))
-            p.setPen(QColor(DIM))
-            p.setFont(ui_font(16))
-            p.drawText(QRectF(v.left(), v.top() + v.height() * 0.55, v.width(), 60), Qt.AlignmentFlag.AlignCenter,
-                       "Pas encore de capture de ce jeu.\nEn jeu, appuie sur Ctrl + Alt + E : elle s'affichera ici.")
+                p.drawLine(
+                    QPointF(v.left(), v.top() + v.height() * k / 9),
+                    QPointF(v.right(), v.top() + v.height() * k / 9),
+                )
+            p.setPen(QColor(widgets.DIM))
+            p.setFont(widgets.ui_font(16))
+            p.drawText(
+                QRectF(v.left(), v.top() + v.height() * 0.55, v.width(), 60),
+                Qt.AlignmentFlag.AlignCenter,
+                "Pas encore de capture de ce jeu.\nEn jeu, appuie sur Ctrl + "
+                "Alt + E : elle s'affichera ici.",
+            )
         p.setPen(QPen(QColor(120, 200, 255, 190), 1.5, Qt.PenStyle.DashLine))
         y = v.top() + v.height() * UPPER
         p.drawLine(QPointF(v.left(), y), QPointF(v.right(), y))
-        p.setFont(ui_font(11, family="Segoe UI Variable Text"))
+        p.setFont(widgets.ui_font(11, family="Segoe UI Variable Text"))
         p.setPen(QColor(150, 215, 255, 230))
-        p.drawText(QRectF(v.left() + 8, y - 20, 400, 18), Qt.AlignmentFlag.AlignLeft,
-                   "Les paroles s'affichent au-dessus de cette ligne")
+        p.drawText(
+            QRectF(v.left() + 8, y - 20, 400, 18),
+            Qt.AlignmentFlag.AlignLeft,
+            "Les paroles s'affichent au-dessus de cette ligne",
+        )
         for i, z in enumerate(self.zones):
             r = self.rect_of(z)
             on = i == self.sel
-            p.setPen(QPen(QColor(255, 255, 255) if on else QColor(255, 80, 80, 230), 2))
+            p.setPen(
+                QPen(
+                    QColor(255, 255, 255) if on else QColor(255, 80, 80, 230), 2
+                )
+            )
             p.setBrush(QColor(255, 50, 50, 95 if on else 60))
             p.drawRect(r)
             if r.width() > 50 and r.height() > 22:
                 p.setPen(QColor(255, 255, 255, 240))
-                p.setFont(ui_font(12, QFont.Weight.DemiBold))
-                p.drawText(r.adjusted(7, 5, -7, -5), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-                           | Qt.TextFlag.TextWordWrap, z.get("nom", ""))
+                p.setFont(widgets.ui_font(12, QFont.Weight.DemiBold))
+                p.drawText(
+                    r.adjusted(7, 5, -7, -5),
+                    Qt.AlignmentFlag.AlignLeft
+                    | Qt.AlignmentFlag.AlignTop
+                    | Qt.TextFlag.TextWordWrap,
+                    z.get("nom", ""),
+                )
             if on:
                 p.setPen(QPen(QColor("#0c0d12"), 1.5))
                 p.setBrush(QColor("white"))
                 for pt in self.handles(z).values():
-                    p.drawRect(QRectF(pt.x() - HANDLE / 2, pt.y() - HANDLE / 2, HANDLE, HANDLE))
+                    p.drawRect(
+                        QRectF(
+                            pt.x() - HANDLE / 2,
+                            pt.y() - HANDLE / 2,
+                            HANDLE,
+                            HANDLE,
+                        )
+                    )
 
 
 class ZoneEditor(QWidget):
@@ -186,7 +263,7 @@ class ZoneEditor(QWidget):
         self.dirty = False
         self._loading = False
         self.setWindowTitle("FollowTheLyrics — zones à éviter")
-        self.setWindowIcon(make_icon())
+        self.setWindowIcon(widgets.make_icon())
         self.resize(1280, 820)
 
         root = QVBoxLayout(self)
@@ -219,8 +296,11 @@ class ZoneEditor(QWidget):
 
         bottom = QHBoxLayout()
         bottom.setSpacing(10)
-        self.hint = QLabel("Clique et glisse pour dessiner une zone. Glisse une zone pour la déplacer, "
-                           "ses coins pour la redimensionner. Suppr l'efface.")
+        self.hint = QLabel(
+            "Clique et glisse pour dessiner une zone. Glisse une zone pour la "
+            "déplacer, "
+            "ses coins pour la redimensionner. Suppr l'efface."
+        )
         self.hint.setProperty("role", "hint")
         self.hint.setWordWrap(True)
         bottom.addWidget(self.hint, 1)
@@ -233,23 +313,71 @@ class ZoneEditor(QWidget):
         root.addLayout(bottom)
 
         self.setStyleSheet(f"""
-            ZoneEditor {{ background: {BG}; }}
-            QLabel {{ color: {TEXT}; background: transparent; }}
-            QLabel[role="title"] {{ font: 800 20px "Segoe UI Variable Display"; }}
-            QLabel[role="hint"] {{ color: {DIM}; font: 13px "Segoe UI Variable Text"; }}
-            QPushButton {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER}; padding: 9px 16px;
-                           border-radius: 10px; font: 600 13px "Segoe UI Variable Text"; }}
-            QPushButton:hover {{ border-color: {ACCENT}; }}
-            QPushButton:disabled {{ color: #565b6b; }}
-            QPushButton[main="true"] {{ background: {ACCENT}; color: {BG}; border-color: {ACCENT}; font-weight: 800; }}
-            QPushButton[main="true"]:disabled {{ background: #2a2740; color: #6b7080; border-color: #2a2740; }}
-            QLineEdit, QComboBox {{ background: {FIELD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
-                                    border-radius: 10px; padding: 8px 12px; font: 14px "Segoe UI Variable Text"; }}
-            QLineEdit:focus, QComboBox:focus {{ border-color: {ACCENT}; }}
-            QLineEdit:disabled {{ color: #565b6b; }}
-            QComboBox::drop-down {{ border: none; width: 26px; }}
-            QComboBox QAbstractItemView {{ background: {CARD}; color: {TEXT}; border: 1px solid {CARD_BORDER};
-                                           selection-background-color: {ACCENT}; selection-color: {BG}; outline: none; }}
+            ZoneEditor {{
+                background: {widgets.BG};
+            }}
+            QLabel {{
+                color: {widgets.TEXT};
+                background: transparent;
+            }}
+            QLabel[role="title"] {{
+                font: 800 20px "Segoe UI Variable Display";
+            }}
+            QLabel[role="hint"] {{
+                color: {widgets.DIM};
+                font: 13px "Segoe UI Variable Text";
+            }}
+            QPushButton {{
+                background: {widgets.SOLID_FIELD};
+                color: {widgets.TEXT};
+                border: 1px solid {widgets.SOLID_BORDER};
+                padding: 9px 16px;
+                border-radius: 10px;
+                font: 600 13px "Segoe UI Variable Text";
+            }}
+            QPushButton:hover {{
+                border-color: {ACCENT};
+            }}
+            QPushButton:disabled {{
+                color: #565b6b;
+            }}
+            QPushButton[main="true"] {{
+                background: {ACCENT};
+                color: {widgets.BG};
+                border-color: {ACCENT};
+                font-weight: 800;
+            }}
+            QPushButton[main="true"]:disabled {{
+                background: #2a2740;
+                color: #6b7080;
+                border-color: #2a2740;
+            }}
+            QLineEdit, QComboBox {{
+                background: {widgets.SOLID_FIELD};
+                color: {widgets.TEXT};
+                border: 1px solid {widgets.SOLID_BORDER};
+                border-radius: 10px;
+                padding: 8px 12px;
+                font: 14px "Segoe UI Variable Text";
+            }}
+            QLineEdit:focus, QComboBox:focus {{
+                border-color: {ACCENT};
+            }}
+            QLineEdit:disabled {{
+                color: #565b6b;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 26px;
+            }}
+            QComboBox QAbstractItemView {{
+                background: {widgets.SOLID_CARD};
+                color: {widgets.TEXT};
+                border: 1px solid {widgets.SOLID_BORDER};
+                selection-background-color: {ACCENT};
+                selection-color: {widgets.BG};
+                outline: none;
+            }}
         """)
         self.fill_games(key)
 
@@ -284,7 +412,9 @@ class ZoneEditor(QWidget):
     def load(self, key):
         self.key = key
         profiles = self.app.profiles
-        prof = profiles.get("jeux", {}).get(key) or profiles.get("jeu_inconnu", {})
+        prof = profiles.get("jeux", {}).get(key) or profiles.get(
+            "jeu_inconnu", {}
+        )
         self.canvas.zones = [dict(z) for z in prof.get("zones_interdites", [])]
         img = QImage(games.capture_path(key))
         self.canvas.image = None if img.isNull() else img
@@ -324,27 +454,44 @@ class ZoneEditor(QWidget):
         self.set_dirty(True)
 
     def restore_defaults(self):
-        base = games.DEFAULT_PROFILES["jeux"].get(self.key) or games.DEFAULT_PROFILES["jeu_inconnu"]
+        base = (
+            games.DEFAULT_PROFILES["jeux"].get(self.key)
+            or games.DEFAULT_PROFILES["jeu_inconnu"]
+        )
         self.canvas.zones = [dict(z) for z in base.get("zones_interdites", [])]
         self.canvas.select(-1)
         self.set_dirty(True)
 
     def save(self):
-        zones = [{"nom": z.get("nom", "").strip() or f"Zone {n + 1}", "x": z["x"], "y": z["y"], "l": z["l"], "h": z["h"]}
-                 for n, z in enumerate(self.canvas.zones)]
+        zones = [
+            {
+                "nom": z.get("nom", "").strip() or f"Zone {n + 1}",
+                "x": z["x"],
+                "y": z["y"],
+                "l": z["l"],
+                "h": z["h"],
+            }
+            for n, z in enumerate(self.canvas.zones)
+        ]
         if games.save_zones(self.key, zones):
             self.app.reload_profiles()
             self.set_dirty(False)
-            self.hint.setText("Enregistré. Les paroles éviteront ces zones dès maintenant "
-                              "(Ctrl + Alt + Z en jeu pour les revoir).")
+            self.hint.setText(
+                "Enregistré. Les paroles éviteront ces zones dès maintenant "
+                "(Ctrl + Alt + Z en jeu pour les revoir)."
+            )
             self.fill_games(self.key)
         else:
-            self.hint.setText("Impossible d'enregistrer le fichier des profils.")
+            self.hint.setText(
+                "Impossible d'enregistrer le fichier des profils."
+            )
 
     def showEvent(self, e):
         super().showEvent(e)
         try:
             val = ctypes.c_int(1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val)
+            )
         except Exception:
-            pass
+            logger.debug("showEvent failed", exc_info=True)
