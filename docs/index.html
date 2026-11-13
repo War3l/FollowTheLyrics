@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FollowTheLyrics — les paroles de ta musique, par-dessus tes jeux</title>
-<meta name="description" content="FollowTheLyrics affiche les paroles synchronisées de ta musique par-dessus tes jeux, mot à mot, aux couleurs de la pochette. Gratuit, pour Windows.">
+<meta name="description" content="FollowTheLyrics affiche les paroles synchronisées de ta musique par-dessus tes jeux, mot à mot, aux couleurs de la pochette. Gratuit, pour Windows et Linux.">
 <meta property="og:title" content="FollowTheLyrics">
 <meta property="og:description" content="Les paroles de ta musique, par-dessus tes jeux. Mot à mot, aux couleurs de la pochette.">
 <meta property="og:image" content="img/demo.jpg">
@@ -66,8 +66,10 @@ h1,h2,h3{font-family:var(--display);line-height:1.04;letter-spacing:-.03em}
 .nav .dl{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:#fff;color:#0b0b14;font-weight:800;font-size:14px;text-decoration:none;transition:transform .15s}
 .nav .dl:hover{transform:scale(1.04)}
 .nav .dl svg{width:15px;height:15px}
+.nav .lang{padding:8px 11px;border-radius:999px;color:var(--dim);font-weight:800;font-size:13px;letter-spacing:.04em;border:1px solid var(--edge);margin-right:8px;transition:color .2s,border-color .2s}
+.nav .lang:hover{color:var(--text);border-color:var(--edge-hi)}
 @media (max-width:760px){.nav a.l{display:none}}
-@media (max-width:380px){.nav{padding-left:12px}.brand{font-size:15px;gap:7px}.brand svg{width:26px;height:26px}.nav .dl{padding:9px 13px;font-size:13px}}
+@media (max-width:380px){.nav{padding-left:12px}.brand{font-size:15px;gap:7px}.brand svg{width:26px;height:26px}.nav .dl{padding:9px 13px;font-size:13px}.nav .lang{padding:7px 9px;margin-right:5px}}
 
 /* ---- hero ---- */
 .hero{text-align:center;padding:150px 0 0}
@@ -267,24 +269,25 @@ footer a{color:var(--dim)}
   <a class="l" href="#fonctions">Fonctions</a>
   <a class="l" href="#faq">Questions</a>
   <a class="l" href="https://github.com/War3l/FollowTheLyrics">GitHub</a>
+  <button class="lang" id="lang" type="button" aria-label="Switch to English">EN</button>
   <a class="dl" data-dl href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>Télécharger
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg><span>Télécharger</span>
   </a>
 </nav>
 
 <header id="top">
   <div class="wrap hero">
-    <span class="chip glass"><b></b><span id="ver">Gratuit · pour Windows</span></span>
-    <h1><span class="w" style="--i:0">Les</span> <span class="w" style="--i:1">paroles</span> <span class="w" style="--i:2">de</span> <span class="w" style="--i:3">ta</span> <span class="w" style="--i:4">musique,</span><br><span class="w grad" style="--i:6">par-dessus</span> <span class="w grad" style="--i:7">tes</span> <span class="w grad" style="--i:8">jeux.</span></h1>
+    <span class="chip glass"><b></b><span id="ver">Gratuit · Windows et Linux</span></span>
+    <h1 id="h1"><span class="w" style="--i:0">Les</span> <span class="w" style="--i:1">paroles</span> <span class="w" style="--i:2">de</span> <span class="w" style="--i:3">ta</span> <span class="w" style="--i:4">musique,</span><br><span class="w grad" style="--i:6">par-dessus</span> <span class="w grad" style="--i:7">tes</span> <span class="w grad" style="--i:8">jeux.</span></h1>
     <p class="sub">FollowTheLyrics affiche les paroles en rythme, mot à mot, aux couleurs de la pochette. Tu lances ta musique, tu joues, c'est tout.</p>
     <div class="cta">
       <a class="btn main" data-dl href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
-        Télécharger pour Windows
+        <span>Télécharger pour Windows</span>
       </a>
-      <a class="btn ghost glass" href="https://github.com/War3l/FollowTheLyrics">Voir le code</a>
+      <a class="btn ghost glass" data-dl="linux" href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg><span>Télécharger pour Linux</span></a>
     </div>
-    <p class="meta">Windows 10 et 11 · gratuit · aucun compte à connecter</p>
+    <p class="meta">Windows 10 et 11 · Linux · gratuit · aucun compte à connecter</p>
 
     <div class="stage glass">
       <video id="demo" src="img/demo.mp4" poster="img/demo.jpg" muted loop playsinline preload="metadata"
@@ -359,7 +362,7 @@ footer a{color:var(--dim)}
     </div>
     <div class="bento">
       <div class="tile glass shine s4 reveal">
-        <div class="kara" aria-hidden="true"><span style="--i:0">Chaque</span><span style="--i:1">mot</span><span style="--i:2">s'allume</span><span style="--i:3">quand</span><span style="--i:4">il</span><span style="--i:5">est</span><span style="--i:6">chanté</span></div>
+        <div class="kara" id="kara" aria-hidden="true"><span style="--i:0">Chaque</span><span style="--i:1">mot</span><span style="--i:2">s'allume</span><span style="--i:3">quand</span><span style="--i:4">il</span><span style="--i:5">est</span><span style="--i:6">chanté</span></div>
         <h3>Mot à mot</h3><p>Chaque mot s'allume au moment où il est chanté, comme sur Spotify ou Apple Music.</p>
       </div>
       <div class="tile glass shine s2 reveal">
@@ -383,7 +386,7 @@ footer a{color:var(--dim)}
       </div>
       <div class="tile glass shine s3 reveal">
         <div class="apps" aria-hidden="true"><span>Spotify</span><span>YouTube Music</span><span>Deezer</span><span>Apple Music</span><span>Tidal</span><span>ton navigateur</span></div>
-        <h3>Toutes tes applis</h3><p>N'importe quel lecteur que Windows reconnaît. Les paroles sont trouvées toutes seules.</p>
+        <h3>Toutes tes applis</h3><p>N'importe quel lecteur que Windows ou Linux reconnaît. Les paroles sont trouvées toutes seules.</p>
       </div>
       <div class="tile glass shine s3 reveal">
         <svg class="big-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7.5 3v5.600c0 4.400-3 8.200-7.500 9.400-4.500-1.200-7.500-5-7.500-9.400V6z"/><path d="M9 12l2.200 2.200L15.200 10"/></svg>
@@ -413,7 +416,7 @@ footer a{color:var(--dim)}
       <h2>Prêt en une minute</h2>
     </div>
     <ol class="steps">
-      <li class="glass shine reveal"><h3>Télécharge et lance</h3><p>Un seul fichier <b>FollowTheLyrics.exe</b>. Au premier lancement, il propose de s'installer avec une icône dans le menu Démarrer.</p></li>
+      <li class="glass shine reveal"><h3>Télécharge et lance</h3><p>Un seul fichier : <b>FollowTheLyrics.exe</b> pour Windows, <b>FollowTheLyrics-linux</b> pour Linux. Sous Windows, il propose de s'installer avec une icône dans le menu Démarrer.</p></li>
       <li class="glass shine reveal"><h3>Mets ta musique</h3><p>Les paroles sont trouvées toutes seules et gardées en mémoire pour la prochaine écoute.</p></li>
       <li class="glass shine reveal"><h3>Joue en fenêtré sans bordure</h3><p>C'est le mode qui laisse les paroles passer devant le jeu. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> les masque à tout moment.</p></li>
     </ol>
@@ -426,6 +429,7 @@ footer a{color:var(--dim)}
     </div>
     <div class="faq reveal">
       <details class="glass"><summary>Windows affiche « Windows a protégé votre ordinateur »</summary><p>C'est normal pour un petit logiciel qui n'a pas de signature payante. Clique sur « Informations complémentaires », puis « Exécuter quand même ». Le code est entièrement visible sur GitHub.</p></details>
+      <details class="glass"><summary>Comment l'installer sous Linux ?</summary><p>Télécharge <b>FollowTheLyrics-linux</b>, rends-le exécutable avec <code>chmod +x FollowTheLyrics-linux</code>, puis lance-le. La musique est lue par MPRIS (Spotify, Firefox, Chrome, VLC…). Sous Wayland, l'appli passe par XWayland pour rester au-dessus du jeu.</p></details>
       <details class="glass"><summary>Est-ce que je risque un ban dans mon jeu ?</summary><p>FollowTheLyrics est une simple fenêtre transparente posée au-dessus du jeu, comme une fenêtre Discord. Il ne lit pas la mémoire du jeu et n'y injecte rien. Il demande seulement à Windows quel programme est au premier plan.</p></details>
       <details class="glass"><summary>Les paroles n'apparaissent pas par-dessus mon jeu</summary><p>Le jeu est sûrement en plein écran exclusif : Windows n'autorise alors aucune fenêtre par-dessus. Passe-le en « fenêtré sans bordure » dans ses options vidéo. Le logiciel te prévient quand il détecte ce cas.</p></details>
       <details class="glass"><summary>Certaines chansons n'ont pas de paroles mot à mot</summary><p>Tout dépend de ce qui existe pour le morceau. Quand le découpage mot à mot n'est pas disponible, les paroles s'affichent ligne par ligne. Quelques titres rares n'ont pas de paroles du tout.</p></details>
@@ -441,8 +445,9 @@ footer a{color:var(--dim)}
       <div class="cta">
         <a class="btn main" data-dl href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
-          Télécharger FollowTheLyrics
+          <span>Télécharger pour Windows</span>
         </a>
+      <a class="btn ghost glass" data-dl="linux" href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg><span>Télécharger pour Linux</span></a>
       </div>
       <p class="meta"><a href="https://github.com/War3l/FollowTheLyrics/releases">Toutes les versions</a></p>
     </div>
@@ -457,7 +462,8 @@ footer a{color:var(--dim)}
 <div class="toast glass" id="toast" role="status">
   <div>
     <h3>Le téléchargement démarre.</h3>
-    <p>Si Windows affiche un écran bleu, clique sur <b>Informations complémentaires</b>, puis sur <b>Exécuter quand même</b>.</p>
+    <p id="toast-win">Si Windows affiche un écran bleu, clique sur <b>Informations complémentaires</b>, puis sur <b>Exécuter quand même</b>.</p>
+    <p id="toast-linux" hidden>Rends le fichier exécutable avec <b>chmod +x FollowTheLyrics-linux</b>, puis lance-le.</p>
   </div>
   <button id="toast-x" aria-label="Fermer">×</button>
 </div>
@@ -465,26 +471,79 @@ footer a{color:var(--dim)}
 <script>
 (function () {
   var calm = window.matchMedia && matchMedia("(prefers-reduced-motion:reduce)").matches;
+  var v = null, cards = null;
+
+  // ---- Francais / anglais. Le francais est dans la page ; l'anglais est dans EN, range par texte francais.
+  var EN = {"Styles": "Styles", "Fonctions": "Features", "Questions": "FAQ", "Télécharger": "Download", "Télécharger pour Windows": "Download for Windows", "Télécharger pour Linux": "Download for Linux", "FollowTheLyrics affiche les paroles en rythme, mot à mot, aux couleurs de la pochette. Tu lances ta musique, tu joues, c'est tout.": "FollowTheLyrics shows the lyrics in time, word by word, in the colours of the album cover. Start your music, play your game, that's it.", "Windows 10 et 11 · Linux · gratuit · aucun compte à connecter": "Windows 10 and 11 · Linux · free · no account to connect", "Morceau de démonstration": "Demo track", "Le vrai rendu de l'appli, filmé sur un décor de démonstration.": "The app's real rendering, filmed over a demo backdrop.", "Windows affiche « Windows a protégé votre ordinateur » ?": "Windows says “Windows protected your PC”?", "C'est normal au premier lancement : clique sur <b>Informations complémentaires</b>, puis sur <b>Exécuter quand même</b>.": "That's normal on first launch: click <b>More info</b>, then <b>Run anyway</b>.", "Les styles": "Styles", "Choisis <span class=\"grad\">ton</span> affichage": "Pick <span class=\"grad\">your</span> look", "Chaque carte est une vraie capture de l'appli. Fais-les défiler.": "Every card is a real capture of the app. Flip through them.", "Chaque ligne surgit ailleurs": "Every line pops up somewhere new", "Classique": "Classic", "Comme sur Spotify": "Like on Spotify", "Machine à écrire": "Typewriter", "Lettre après lettre": "Letter by letter", "Le titre en géant": "The title, huge", "Quand il est chanté": "When it is sung", "À toi de les trouver": "Yours to find", "Les fonctions": "Features", "Comme un <span class=\"grad\">edit</span>, en direct": "Like an <span class=\"grad\">edit</span>, live", "Pas une ligne de texte dans un coin : les paroles bougent avec la musique.": "Not a line of text in a corner: the lyrics move with the music.", "Mot à mot": "Word by word", "Chaque mot s'allume au moment où il est chanté, comme sur Spotify ou Apple Music.": "Each word lights up the moment it is sung, like on Spotify or Apple Music.", "Couleurs de la pochette": "Album cover colours", "Le texte et son halo prennent les trois couleurs les plus marquantes de l'album.": "The text and its glow take the three most striking colours of the album.", "Ça pulse sur le beat": "It pulses on the beat", "Le texte grossit sur la grosse caisse, le refrain s'affiche plus grand, les mots tenus tremblent.": "The text swells on the kick drum, the chorus shows bigger, held words shake.", "Pensé pour jouer": "Made for gaming", "Les paroles évitent la minimap, la barre de sorts et le chat. Tu peux dessiner tes propres zones.": "Lyrics stay clear of the minimap, the ability bar and the chat. You can draw your own zones.", "Traduction": "Translation", "Une traduction française discrète sous chaque ligne, pour les chansons étrangères.": "A discreet French translation under each line, for foreign songs.", "ton navigateur": "your browser", "Toutes tes applis": "All your apps", "N'importe quel lecteur que Windows ou Linux reconnaît. Les paroles sont trouvées toutes seules.": "Any player that Windows or Linux recognises. Lyrics are found automatically.", "Sans risque": "No risk", "Rien n'est injecté dans le jeu, donc aucun souci d'anti-cheat. Aucun compte de musique n'est demandé.": "Nothing is injected into the game, so no anti-cheat trouble. No music account is required.", "Le panneau": "The panel", "Tout se règle <span class=\"grad\">en direct</span>": "Tune everything <span class=\"grad\">live</span>", "<b>Le style</b> : mode, police, taille, couleurs, effets.": "<b>Style</b>: mode, font, size, colours, effects.", "<b>La musique</b> : quelles applis écouter, décalage des paroles.": "<b>Music</b>: which apps to follow, lyrics offset.", "<b>Le jeu</b> : les zones à éviter, les raccourcis clavier.": "<b>Game</b>: zones to avoid, keyboard shortcuts.", "Prêt en une minute": "Ready in a minute", "Télécharge et lance": "Download and run", "Un seul fichier : <b>FollowTheLyrics.exe</b> pour Windows, <b>FollowTheLyrics-linux</b> pour Linux. Sous Windows, il propose de s'installer avec une icône dans le menu Démarrer.": "A single file: <b>FollowTheLyrics.exe</b> for Windows, <b>FollowTheLyrics-linux</b> for Linux. On Windows, it offers to install itself with a Start menu icon.", "Mets ta musique": "Play your music", "Les paroles sont trouvées toutes seules et gardées en mémoire pour la prochaine écoute.": "Lyrics are found automatically and kept for the next listen.", "Joue en fenêtré sans bordure": "Play in borderless windowed mode", "C'est le mode qui laisse les paroles passer devant le jeu. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> les masque à tout moment.": "That's the mode that lets the lyrics show over the game. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>L</kbd> hides them at any time.", "Les questions fréquentes": "Frequently asked questions", "Windows affiche « Windows a protégé votre ordinateur »": "Windows says “Windows protected your PC”", "C'est normal pour un petit logiciel qui n'a pas de signature payante. Clique sur « Informations complémentaires », puis « Exécuter quand même ». Le code est entièrement visible sur GitHub.": "That's normal for a small program without a paid signature. Click “More info”, then “Run anyway”. The code is fully visible on GitHub.", "Comment l'installer sous Linux ?": "How do I install it on Linux?", "Télécharge <b>FollowTheLyrics-linux</b>, rends-le exécutable avec <code>chmod +x FollowTheLyrics-linux</code>, puis lance-le. La musique est lue par MPRIS (Spotify, Firefox, Chrome, VLC…). Sous Wayland, l'appli passe par XWayland pour rester au-dessus du jeu.": "Download <b>FollowTheLyrics-linux</b>, make it executable with <code>chmod +x FollowTheLyrics-linux</code>, then run it. Music is read through MPRIS (Spotify, Firefox, Chrome, VLC…). On Wayland, the app goes through XWayland to stay above the game.", "Est-ce que je risque un ban dans mon jeu ?": "Can I get banned in my game?", "FollowTheLyrics est une simple fenêtre transparente posée au-dessus du jeu, comme une fenêtre Discord. Il ne lit pas la mémoire du jeu et n'y injecte rien. Il demande seulement à Windows quel programme est au premier plan.": "FollowTheLyrics is just a transparent window sitting above the game, like a Discord window. It does not read the game's memory and injects nothing. It only asks the system which program is in the foreground.", "Les paroles n'apparaissent pas par-dessus mon jeu": "The lyrics don't show over my game", "Le jeu est sûrement en plein écran exclusif : Windows n'autorise alors aucune fenêtre par-dessus. Passe-le en « fenêtré sans bordure » dans ses options vidéo. Le logiciel te prévient quand il détecte ce cas.": "The game is probably in exclusive fullscreen: Windows then allows no window on top. Switch it to “borderless windowed” in its video options. The app warns you when it detects this.", "Certaines chansons n'ont pas de paroles mot à mot": "Some songs have no word-by-word lyrics", "Tout dépend de ce qui existe pour le morceau. Quand le découpage mot à mot n'est pas disponible, les paroles s'affichent ligne par ligne. Quelques titres rares n'ont pas de paroles du tout.": "It depends on what exists for the track. When word-by-word timing isn't available, lyrics show line by line. A few rare tracks have no lyrics at all.", "D'où viennent les paroles ?": "Where do the lyrics come from?", "De NetEase Cloud Music et de LRCLIB, et la traduction de Google Traduction. Ces services ne sont pas officiels et peuvent changer.": "From NetEase Cloud Music and LRCLIB, and the translation from Google Translate. These services are unofficial and may change.", "Est-ce que ça fait baisser les FPS ?": "Does it lower my FPS?", "L'écran n'est redessiné que lorsque quelque chose bouge, et seulement autour du texte.": "The screen is only redrawn when something moves, and only around the text.", "Monte <span class=\"grad\">le son.</span>": "Turn <span class=\"grad\">it up.</span>", "Toutes les versions": "All versions", "FollowTheLyrics · <a href=\"https://github.com/War3l/FollowTheLyrics\">code source sur GitHub</a><br> Projet indépendant, sans lien avec Spotify, Apple, YouTube, Riot Games, CD Projekt ou Blizzard.": "FollowTheLyrics · <a href=\"https://github.com/War3l/FollowTheLyrics\">source code on GitHub</a><br> Independent project, not affiliated with Spotify, Apple, YouTube, Riot Games, CD Projekt or Blizzard.", "Le téléchargement démarre.": "The download is starting.", "Si Windows affiche un écran bleu, clique sur <b>Informations complémentaires</b>, puis sur <b>Exécuter quand même</b>.": "If Windows shows a blue screen, click <b>More info</b>, then <b>Run anyway</b>.", "Rends le fichier exécutable avec <b>chmod +x FollowTheLyrics-linux</b>, puis lance-le.": "Make the file executable with <b>chmod +x FollowTheLyrics-linux</b>, then run it.", "Démonstration : les paroles s'affichent mot à mot par-dessus un jeu": "Demo: lyrics appear word by word over a game", "Revenir au début": "Back to start", "Mettre en pause": "Pause", "Lancer la démo": "Play the demo", "Paroles affichées": "Lyrics shown", "Les styles d'affichage": "Display styles", "Les lignes surgissent à un endroit différent de l'écran, mots empilés et penchés en 3D sur les côtés.": "Lines pop up at a different spot on screen, words stacked and tilted in 3D on the sides.", "Les lignes défilent en haut de l'écran, à gauche, au centre ou à droite. Simple et discret.": "Lines scroll at the top of the screen, left, centre or right. Simple and discreet.", "Les lettres s'écrivent une à une au fil du chant, avec un curseur qui avance.": "Letters are typed one by one as they are sung, with a moving cursor.", "Quand le chanteur prononce le titre du morceau, il s'affiche en très grand au milieu de l'écran.": "When the singer says the track's title, it shows huge in the middle of the screen.", "Quelques morceaux cachent un spectacle spécial. On ne te dit pas lesquels.": "A few tracks hide a special show. We won't tell you which ones.", "Mode Edit : les mots d'une ligne empilés sur le côté de l'écran": "Edit mode: the words of a line stacked on the side of the screen", "Mode Classique : une ligne de paroles centrée en haut de l'écran": "Classic mode: a lyric line centred at the top of the screen", "Mode Machine à écrire : une ligne en train de s'écrire avec un curseur": "Typewriter mode: a line being typed with a cursor", "Le titre du morceau affiché en très grand": "The track title shown very large", "Un spectacle caché, volontairement flouté": "A hidden show, blurred on purpose", "Carte précédente": "Previous card", "Carte suivante": "Next card", "Le panneau de contrôle de FollowTheLyrics": "The FollowTheLyrics control panel", "Fermer": "Close"};
+  var H1_EN = "<span class=\"w\" style=\"--i:0\">Your</span> <span class=\"w\" style=\"--i:1\">music's</span> <span class=\"w\" style=\"--i:2\">lyrics,</span><br><span class=\"w grad\" style=\"--i:4\">right</span> <span class=\"w grad\" style=\"--i:5\">over</span> <span class=\"w grad\" style=\"--i:6\">your</span> <span class=\"w grad\" style=\"--i:7\">games.</span>", META_EN = {"title": "FollowTheLyrics — your music's lyrics, right over your games", "desc": "FollowTheLyrics shows the synced lyrics of your music over your games, word by word, in the colours of the album cover. Free, for Windows and Linux."}, KARA_EN = ["Each", "word", "lights", "up", "as", "it's", "sung"];
+  var META_FR = { title: document.title, desc: document.querySelector('meta[name="description"]').content };
+  var lang = "fr", changed = [], ATTRS = ["data-desc", "aria-label", "alt", "title"], lastRelease = null;
+  function squash(x) { return x.replace(/\s+/g, " ").trim(); }
+  function tr(x) { return lang === "en" && EN[x] ? EN[x] : x; }
+  function showVersion() {
+    var d = lastRelease, free = lang === "en" ? "free" : "gratuit";
+    if (!d) { document.getElementById("ver").textContent = lang === "en" ? "Free · Windows and Linux" : "Gratuit · Windows et Linux"; return; }
+    var txt = "Version " + d.tag_name.replace(/^v/, "");
+    var exe = (d.assets || []).filter(function (a) { return /\.exe$/i.test(a.name); })[0];
+    if (exe) txt += " · " + Math.round(exe.size / 1048576) + (lang === "en" ? " MB" : " Mo");
+    document.getElementById("ver").textContent = txt + " · " + free;
+  }
+  function setLang(to) {
+    changed.forEach(function (c) { if (c.attr) c.el.setAttribute(c.attr, c.fr); else c.el.innerHTML = c.fr; });
+    changed = [];
+    lang = to === "en" ? "en" : "fr";
+    document.documentElement.lang = lang;
+    if (lang === "en") {
+      [].forEach.call(document.body.querySelectorAll("*"), function (el) {
+        if (el.id === "ver" || el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
+        ATTRS.forEach(function (a) {
+          var v = el.getAttribute(a);
+          if (v && EN[v]) { changed.push({ el: el, attr: a, fr: v }); el.setAttribute(a, EN[v]); }
+        });
+        if (!el.firstChild || !document.body.contains(el)) return;
+        var html = el.innerHTML, en = EN[squash(html)];
+        if (en) { changed.push({ el: el, fr: html }); el.innerHTML = en; }
+      });
+      var h1 = document.getElementById("h1");
+      changed.push({ el: h1, fr: h1.innerHTML }); h1.innerHTML = H1_EN;
+      [].forEach.call(document.getElementById("kara").children, function (sp, i) {
+        changed.push({ el: sp, fr: sp.innerHTML }); sp.textContent = KARA_EN[i] || "";
+      });
+    }
+    var m = lang === "en" ? META_EN : META_FR;
+    document.title = m.title;
+    document.querySelector('meta[name="description"]').content = m.desc;
+    var b = document.getElementById("lang");
+    b.textContent = lang === "en" ? "FR" : "EN";
+    b.setAttribute("aria-label", lang === "en" ? "Passer en français" : "Switch to English");
+    showVersion();
+    if (typeof place === "function" && cards) place();
+    if (typeof sync === "function" && v) sync();
+  }
+  document.getElementById("lang").addEventListener("click", function () {
+    var to = lang === "en" ? "fr" : "en";
+    try { localStorage.setItem("ftl-lang", to); } catch (e) {}
+    setLang(to);
+  });
 
   // Numero et poids de la derniere version publiee sur GitHub.
   fetch("https://api.github.com/repos/War3l/FollowTheLyrics/releases/latest")
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (!d || !d.tag_name) return;
-      var txt = "Version " + d.tag_name.replace(/^v/, "");
-      var exe = (d.assets || []).filter(function (a) { return /\.exe$/i.test(a.name); })[0];
-      if (exe) txt += " · " + Math.round(exe.size / 1048576) + " Mo";
-      document.getElementById("ver").textContent = txt + " · gratuit";
+      lastRelease = d;
+      showVersion();
     })
     .catch(function () {});
 
   // Le lecteur en verre pilote la video de demo.
-  var v = document.getElementById("demo"), icon = document.getElementById("pl-icon"), bar = document.getElementById("pl-bar");
+  v = document.getElementById("demo");
+  var icon = document.getElementById("pl-icon"), bar = document.getElementById("pl-bar");
   var toggle = document.getElementById("pl-toggle");
   var PAUSE = "M7 4.5h3.2v15H7zM13.8 4.5H17v15h-3.2z", PLAY = "M8 5.2v13.6a.8.8 0 0 0 1.2.7l11-6.800a.8.8 0 0 0 0-1.400l-11-6.800a.8.8 0 0 0-1.200.7z";
   function sync() {
     icon.setAttribute("d", v.paused ? PLAY : PAUSE);
-    toggle.setAttribute("aria-label", v.paused ? "Lancer la démo" : "Mettre en pause");
+    toggle.setAttribute("aria-label", tr(v.paused ? "Lancer la démo" : "Mettre en pause"));
   }
   v.addEventListener("play", sync);
   v.addEventListener("pause", sync);
@@ -498,7 +557,8 @@ footer a{color:var(--dim)}
   sync();
 
   // Carrousel de cartes en 3D.
-  var flow = document.getElementById("flow"), cards = [].slice.call(flow.querySelectorAll(".fcard"));
+  var flow = document.getElementById("flow");
+  cards = [].slice.call(flow.querySelectorAll(".fcard"));
   var desc = document.getElementById("flow-desc"), dots = document.getElementById("flow-dots");
   var n = cards.length, active = 0, half = Math.floor(n / 2), timer = null;
   cards.forEach(function () { dots.appendChild(document.createElement("i")); });
@@ -562,12 +622,28 @@ footer a{color:var(--dim)}
   var toast = document.getElementById("toast"), hide = null;
   [].forEach.call(document.querySelectorAll("[data-dl]"), function (a) {
     a.addEventListener("click", function () {
+      var linux = a.getAttribute("data-dl") === "linux";
+      document.getElementById("toast-win").hidden = linux;
+      document.getElementById("toast-linux").hidden = !linux;
       toast.classList.add("show");
       clearTimeout(hide);
       hide = setTimeout(function () { toast.classList.remove("show"); }, 16000);
     });
   });
   document.getElementById("toast-x").addEventListener("click", function () { toast.classList.remove("show"); });
+  // Sous Linux, le bouton principal est celui de Linux.
+  if (/linux/i.test(navigator.platform || "") && !/android/i.test(navigator.userAgent || "")) {
+    [].forEach.call(document.querySelectorAll(".cta"), function (c) {
+      var w = c.querySelector(".btn.main"), l = c.querySelector('[data-dl="linux"]');
+      if (!w || !l) return;
+      w.className = "btn ghost glass"; l.className = "btn main"; c.insertBefore(l, w);
+    });
+  }
+  // Langue : ?lang=en dans l'adresse, sinon le dernier choix, sinon la langue du navigateur.
+  var want = (location.search.match(/[?&]lang=(en|fr)/) || [])[1];
+  if (!want) { try { want = localStorage.getItem("ftl-lang"); } catch (e) {} }
+  if (!want) want = /^fr/i.test(navigator.language || "fr") ? "fr" : "en";
+  setLang(want);
 })();
 </script>
 </body>
