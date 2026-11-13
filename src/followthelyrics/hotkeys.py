@@ -1,14 +1,8 @@
-"""Raccourcis clavier globaux (marchent meme quand le jeu a le focus), modifiables.
-
-Une combinaison est rangee en texte : « Ctrl+Alt+L », « Ctrl+Shift+F5 », « F9 »…
-Une chaine vide veut dire « pas de raccourci pour cette action ».
-"""
 import ctypes
 from ctypes import wintypes
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-# (action, ce que ca fait, combinaison d'origine) : l'ordre est celui du panneau
 ACTIONS = [
     ("toggle", "Afficher / masquer les paroles", "Ctrl+Alt+L"),
     ("mode", "Changer de mode d'affichage", "Ctrl+Alt+M"),
@@ -50,7 +44,6 @@ def is_function_key(vk):
 
 
 def parse(combo):
-    """« Ctrl+Alt+L » -> (modificateurs, touche), ou None si ce n'est pas une combinaison."""
     if not isinstance(combo, str) or not combo.strip():
         return None
     mods, vk = 0, None
@@ -78,21 +71,18 @@ def parse(combo):
 
 
 def make(mods, vk):
-    """(modificateurs, touche) -> texte range dans les reglages."""
     parts = [name for name, flag in MODS if mods & flag]
     parts.append(NAMED.get(vk) or f"VK_{vk:02X}")
     return "+".join(parts)
 
 
 def allowed(mods, vk):
-    """Ctrl ou Alt obligatoire (sinon on ne pourrait plus taper la touche), sauf F1…F24."""
     if vk in MODIFIER_VKS or vk == 0x1B:
         return False
     return bool(mods & (MOD_CTRL | MOD_ALT)) or is_function_key(vk)
 
 
 def key_names(combo):
-    """Les touches a afficher, une par une : « Ctrl+Alt+Up » -> ["Ctrl", "Alt", "↑"]."""
     out = []
     for part in (combo or "").split("+"):
         part = part.strip()
@@ -113,7 +103,6 @@ def pretty(combo):
 
 
 def normalize(saved):
-    """Reglages lus sur le disque -> une combinaison valide (ou vide) par action, sans doublon."""
     saved = saved if isinstance(saved, dict) else {}
     out, used = {}, set()
     for name, _label, default in ACTIONS:
@@ -131,7 +120,7 @@ def normalize(saved):
 
 class Hotkeys(QThread):
     pressed = pyqtSignal(str)
-    failed = pyqtSignal(list)  # actions dont la combinaison est refusee (deja prise par une autre appli)
+    failed = pyqtSignal(list)
     WM_HOTKEY, WM_QUIT, WM_RELOAD = 0x0312, 0x0012, 0x8001
 
     def __init__(self, bindings):
@@ -140,13 +129,11 @@ class Hotkeys(QThread):
         self.paused = False
         self.tid = 0
 
-    # ---- appele depuis l'appli -------------------------------------------------
     def set_bindings(self, bindings):
         self.bindings = dict(bindings)
         self._reload()
 
     def pause(self):
-        """Pendant qu'on choisit une nouvelle combinaison : plus aucun raccourci actif."""
         self.paused = True
         self._reload()
 
@@ -155,7 +142,7 @@ class Hotkeys(QThread):
         self._reload()
 
     def _reload(self):
-        if self.tid:  # RegisterHotKey doit etre appele par le fil qui lit les messages
+        if self.tid:
             ctypes.windll.user32.PostThreadMessageW(self.tid, self.WM_RELOAD, 0, 0)
 
     def stop(self):
@@ -163,7 +150,6 @@ class Hotkeys(QThread):
             ctypes.windll.user32.PostThreadMessageW(self.tid, self.WM_QUIT, 0, 0)
         self.wait(1000)
 
-    # ---- fil des raccourcis ------------------------------------------------------
     def _register(self):
         user32 = ctypes.windll.user32
         ids, bad = {}, []
@@ -183,7 +169,7 @@ class Hotkeys(QThread):
     def run(self):
         user32 = ctypes.windll.user32
         msg = wintypes.MSG()
-        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)  # cree la file de messages du fil
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
         self.tid = ctypes.windll.kernel32.GetCurrentThreadId()
         ids = self._register()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:

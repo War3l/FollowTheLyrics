@@ -1,14 +1,3 @@
-"""Easter eggs : des morceaux precis qui declenchent un spectacle a part.
-
-Chaque spectacle guette un mot du titre dans les paroles. Quand il est chante, le mot
-s'affiche en geant au milieu de l'ecran a la place de la ligne, avec un effet qui lui est
-propre. Plus la chanson avance, plus l'effet grossit ; le dernier declenche le final.
-
-  Firework (Katy Perry)        feux d'artifice
-  Thunderstruck (AC/DC)        eclairs et orage
-  Blinding Lights (The Weeknd) faisceaux de neons et eblouissement
-  Diamonds (Rihanna)           diamants qui jaillissent puis pleuvent
-"""
 import bisect
 import math
 import re
@@ -17,12 +6,11 @@ from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import (QBrush, QColor, QFont, QFontMetricsF, QLinearGradient, QPainterPath, QPen,
                          QPolygonF, QRadialGradient)
 
-BADGE_TIME = 7.0     # duree du bandeau « EASTER EGG » en debut de morceau
-WORD_TIME = 2.4      # duree du mot geant
+BADGE_TIME = 7.0
+WORD_TIME = 2.4
 MAX_SPARKS = 1300
-LEVELS = 6           # niveaux d'opacite des etincelles (les stylos sont prepares une fois)
+LEVELS = 6
 
-# teintes des fusees : or, orange, rouge, rose, violet, cyan, vert
 HUES = [45, 28, 355, 325, 275, 190, 130]
 
 
@@ -44,7 +32,6 @@ def _squash(s):
 
 
 def pick(track, overlay):
-    """Le spectacle qui va avec ce morceau, ou None (presque toujours)."""
     title, artist = _squash(getattr(track, "title", "")), _squash(getattr(track, "artist", ""))
     for show in SHOWS:
         if show.title_key in title and show.artist_key in title + artist:
@@ -53,22 +40,20 @@ def pick(track, overlay):
 
 
 class FireworkShow:
-    """Le premier spectacle. Les autres en heritent : ils gardent le bandeau, le mot geant et
-    le reperage du mot, et remplacent l'effet (active, fire, update, draw_fx, word_colors)."""
-    name = "Firework"            # ecrit dans le bandeau
-    title_key = "firework"       # a trouver dans le titre (minuscules, sans espaces)
-    artist_key = "katyperry"     # a trouver dans le titre ou l'artiste
-    pattern = r"firework"        # le mot guette dans les paroles
-    WORD = "FIREWORK"            # le mot affiche en geant
+    name = "Firework"
+    title_key = "firework"
+    artist_key = "katyperry"
+    pattern = r"firework"
+    WORD = "FIREWORK"
 
     def __init__(self, overlay):
         self.o = overlay
         self.rng = overlay.rng
         self.born = overlay.clock()
-        self.hits = []        # moments (s) ou le mot est chante
-        self.line_hit = {}    # ligne -> moment du premier mot de cette ligne
+        self.hits = []
+        self.line_hit = {}
         self.last_pos = None
-        self.queue = []       # (heure, x, y, force, fusee ?)
+        self.queue = []
         self.rockets = []
         self.sparks = []
         self.flashes = []
@@ -77,13 +62,12 @@ class FireworkShow:
         self._font = None
         s = self.unit()
         W = overlay.width()
-        for dx in (-0.16, 0.16):  # deux petites gerbes de chaque cote du bandeau
+        for dx in (-0.16, 0.16):
             self.queue.append((self.born + 0.55, W * (0.5 + dx), 70 * s, 0.0, False))
 
     def unit(self):
         return self.o.height() / 1080.0
 
-    # ---- ou le mot est-il chante ? ------------------------------------------
     def set_lines(self, lines):
         o = self.o
         self.hits, self.line_hit = [], {}
@@ -92,7 +76,7 @@ class FireworkShow:
                 c = m.start()
                 if line.chars and c < len(line.chars):
                     t = line.chars[c][0]
-                else:  # pas de timing mot par mot : on estime d'apres la place dans la ligne
+                else:
                     t = line.time + (o.sung_end(idx) - line.time) * c / max(1, len(line.text))
                 self.hits.append(t)
                 self.line_hit.setdefault(idx, t)
@@ -100,8 +84,6 @@ class FireworkShow:
         self.last_pos = None
 
     def line_alpha(self, idx, pos, rect=None):
-        """La ligne normale s'efface au moment ou le mot geant la remplace ; les autres
-        lignes se cachent le temps du mot si elles sont dessous."""
         t = self.line_hit.get(idx)
         if t is not None:
             return clamp((t - pos) / 0.15)
@@ -116,7 +98,6 @@ class FireworkShow:
         return QRectF(W * 0.06, H * 0.44 - h / 2, W * 0.88, h)
 
     def word_state(self, pos):
-        """-> (numero, secondes depuis le debut, fin) du mot geant a l'ecran, ou None."""
         i = bisect.bisect_right(self.hits, pos) - 1
         if i < 0:
             return None
@@ -130,16 +111,13 @@ class FireworkShow:
         return bool(now - self.born < BADGE_TIME or self.word_state(pos) or self.active(now))
 
     def active(self, now):
-        """Vrai tant que l'effet a quelque chose a l'ecran ou en attente."""
         return bool(self.sparks or self.rockets or self.queue or self.flashes)
 
     def word_colors(self, i):
-        """-> (couleur du halo, couleurs du degrade des lettres)."""
         return self.colors[i % len(HUES)], [self.colors[(i + j * 2) % len(HUES)].lighter(125) for j in range(5)]
 
-    # ---- animation ---------------------------------------------------------------
     def tick(self, now, dt, pos):
-        if self.last_pos is not None and 0 < pos - self.last_pos < 1.0:  # pas un saut dans le morceau
+        if self.last_pos is not None and 0 < pos - self.last_pos < 1.0:
             for i, t in enumerate(self.hits):
                 if self.last_pos < t <= pos:
                     self.fire(i, now)
@@ -181,12 +159,10 @@ class FireworkShow:
         self.flashes = [f for f in self.flashes if now - f[2] < 0.22]
 
     def fire(self, i, now):
-        """Le mot vient d'etre chante pour la (i+1)e fois : de plus en plus de fusees."""
         n = len(self.hits)
         k = (i + 1) / n
         W, H = self.o.width(), self.o.height()
         rnd = self.rng
-        # deux explosions tout de suite, de part et d'autre du mot
         for side in (0.22, 0.78):
             self.burst(W * (side + rnd.uniform(-0.06, 0.06)), H * rnd.uniform(0.16, 0.34), k, now)
         count = 2 + round(20 * k ** 1.5)
@@ -194,7 +170,7 @@ class FireworkShow:
         for _ in range(count):
             self.queue.append((now + rnd.uniform(0.0, span), W * rnd.uniform(0.06, 0.94),
                                H * rnd.uniform(0.10, 0.58), k, True))
-        if i == n - 1:  # bouquet final
+        if i == n - 1:
             for j in range(75):
                 self.queue.append((now + 0.6 + j * 0.11 + rnd.uniform(0, 0.1), W * rnd.uniform(0.05, 0.95),
                                    H * rnd.uniform(0.08, 0.62), 1.0, j % 3 != 0))
@@ -226,12 +202,10 @@ class FireworkShow:
             else:
                 v, life, drag, grav = speed * math.sqrt(rnd.random()) * 1.1, rnd.uniform(0.8, 1.5), 1.7, 0.9
             c = 0 if kind == "willow" else (white if rnd.random() < 0.12 else (col if j % 2 else second))
-            # x, y, vx, vy, vie, vie max, couleur, taille, frein, poids, scintillement
             self.sparks.append([x, y, math.cos(a) * v, math.sin(a) * v, life, life, c,
                                 rnd.choice((1, 1, 2)), drag, grav, rnd.uniform(0, 6.28)])
         self.flashes.append((x, y, now, col, (90 + 70 * max(k, 0)) * s))
 
-    # ---- dessin ------------------------------------------------------------------
     def pen(self, col, level, size):
         key = (col, level, size)
         pen = self._pens.get(key)
@@ -277,7 +251,7 @@ class FireworkShow:
         for sp in self.sparks:
             f = sp[4] / sp[5]
             if f < 0.45 and math.sin(sp[4] * 38 + sp[10]) < -0.2:
-                continue  # scintille avant de s'eteindre
+                continue
             level = max(1, min(LEVELS, int(f * 1.6 * LEVELS) + 1))
             p.setPen(self.pen(sp[6], level, sp[7]))
             p.drawLine(QPointF(sp[0] - sp[2] * 0.045, sp[1] - sp[3] * 0.045), QPointF(sp[0], sp[1]))
@@ -374,7 +348,7 @@ class FireworkShow:
         path.addText(QPointF(rect.center().x() - tw / 2, base), big, title)
         p.setPen(Qt.PenStyle.NoPen)
         p.fillPath(path, QBrush(grad))
-        for side in (-1, 1):  # une petite etoile de chaque cote, qui tourne et pulse
+        for side in (-1, 1):
             cx = rect.center().x() + side * (tw / 2 + star * 0.75)
             cy = base - fb.ascent() * 0.38
             r = star * 0.36 * (0.85 + 0.25 * math.sin(age * 6 + side))
@@ -396,17 +370,14 @@ class FireworkShow:
         p.restore()
 
 
-# --------------------------------------------------------------------------
-# Thunderstruck : eclairs, puis l'orage
-# --------------------------------------------------------------------------
 class ThunderShow(FireworkShow):
     name, title_key, artist_key = "Thunderstruck", "thunderstruck", "acdc"
     pattern, WORD = r"thunder", "THUNDER"
 
     def __init__(self, overlay):
         super().__init__(overlay)
-        self.queue = [(self.born + 0.6, 0.0)]   # (heure, force) : un eclair d'annonce pres du bandeau
-        self.bolts = []                         # (debut, duree, [(trace, epaisseur)], phase)
+        self.queue = [(self.born + 0.6, 0.0)]
+        self.bolts = []
         self.flash_t, self.flash_k = -99.0, 0.0
 
     def active(self, now):
@@ -421,7 +392,7 @@ class ThunderShow(FireworkShow):
         k = (i + 1) / len(self.hits)
         for j in range(1 + int(2.6 * k)):
             self.queue.append((now + j * rnd.uniform(0.06, 0.2), k))
-        if i == len(self.hits) - 1:  # l'orage : plusieurs secondes d'eclairs
+        if i == len(self.hits) - 1:
             t = now + 0.4
             for _ in range(34):
                 t += rnd.uniform(0.06, 0.3)
@@ -439,7 +410,6 @@ class ThunderShow(FireworkShow):
         self.bolts = [b for b in self.bolts if now - b[0] < b[1]]
 
     def strike(self, now, k):
-        """Un eclair : une ligne brisee qui descend du haut de l'ecran, avec des branches."""
         rnd = self.rng
         W, H = self.o.width(), self.o.height()
         s = self.unit()
@@ -465,7 +435,7 @@ class ThunderShow(FireworkShow):
             lines.append((QPolygonF(branch), 0.55))
         self.bolts.append((now, rnd.uniform(0.3, 0.5), lines, rnd.uniform(0, 6.28)))
         if k > 0:
-            self.flash_t, self.flash_k = now, 0.05 + 0.07 * k  # lueur douce, jamais un flash blanc
+            self.flash_t, self.flash_k = now, 0.05 + 0.07 * k
 
     def draw_fx(self, p, now):
         s = self.unit()
@@ -476,7 +446,7 @@ class ThunderShow(FireworkShow):
         p.setBrush(Qt.BrushStyle.NoBrush)
         for t0, life, lines, phase in self.bolts:
             u = (now - t0) / life
-            a = (1 - u) * (0.65 + 0.35 * math.sin(u * 34 + phase))  # tremble avant de s'eteindre
+            a = (1 - u) * (0.65 + 0.35 * math.sin(u * 34 + phase))
             for poly, w in lines:
                 for width, col in ((16 * s * w, QColor(90, 140, 255, int(60 * a))),
                                    (6 * s * w, QColor(170, 205, 255, int(170 * a))),
@@ -488,9 +458,6 @@ class ThunderShow(FireworkShow):
                     p.drawPolyline(poly)
 
 
-# --------------------------------------------------------------------------
-# Blinding Lights : faisceaux de neons et eblouissement
-# --------------------------------------------------------------------------
 class LightsShow(FireworkShow):
     name, title_key, artist_key = "Blinding Lights", "blindinglights", "weeknd"
     pattern, WORD = r"lights?", "LIGHTS"
@@ -498,9 +465,9 @@ class LightsShow(FireworkShow):
 
     def __init__(self, overlay):
         super().__init__(overlay)
-        self.queue = [(self.born + 0.5, "beam", 0.3), (self.born + 0.8, "beam", 0.3)]  # (heure, quoi, force)
-        self.beams = []    # (debut, duree, x, du haut ?, angle de depart, angle d'arrivee, couleur, largeur)
-        self.glares = []   # (debut, duree, x, y, rayon, couleur)
+        self.queue = [(self.born + 0.5, "beam", 0.3), (self.born + 0.8, "beam", 0.3)]
+        self.beams = []
+        self.glares = []
 
     def active(self, now):
         return bool(self.beams or self.glares or self.queue)
@@ -515,7 +482,7 @@ class LightsShow(FireworkShow):
         self.queue.append((now, "glare", k))
         for _ in range(2 + int(5 * k)):
             self.queue.append((now + rnd.uniform(0, 0.5 + k), "beam", k))
-        if i == len(self.hits) - 1:  # final : les projecteurs balaient tout l'ecran
+        if i == len(self.hits) - 1:
             for j in range(40):
                 self.queue.append((now + 0.5 + j * 0.16 + rnd.uniform(0, 0.1), "beam", 1.0))
             for j in range(5):
@@ -579,7 +546,6 @@ class LightsShow(FireworkShow):
             grad.setColorAt(1, c2)
             p.setBrush(QBrush(grad))
             p.drawEllipse(QPointF(x, y), r, r)
-            # trait de lumiere horizontal, comme un reflet d'objectif
             streak = QLinearGradient(QPointF(x - r * 2.4, y), QPointF(x + r * 2.4, y))
             streak.setColorAt(0, QColor(255, 255, 255, 0))
             streak.setColorAt(0.5, QColor(255, 255, 255, int(200 * a)))
@@ -588,9 +554,6 @@ class LightsShow(FireworkShow):
             p.drawEllipse(QPointF(x, y), r * 2.4, max(1.5, r * 0.025))
 
 
-# --------------------------------------------------------------------------
-# Diamonds : des diamants jaillissent, puis il en pleut
-# --------------------------------------------------------------------------
 def _gem_path():
     path = QPainterPath()
     path.addPolygon(QPolygonF([QPointF(-0.5, -0.15), QPointF(-0.28, -0.42), QPointF(0.28, -0.42),
@@ -622,9 +585,9 @@ class DiamondShow(FireworkShow):
 
     def __init__(self, overlay):
         super().__init__(overlay)
-        self.queue = []     # (heure, quoi)
-        self.gems = []      # x, y, vx, vy, angle, rotation, taille, vie, vie max, teinte
-        self.twinkles = []  # (debut, duree, x, y, taille)
+        self.queue = []
+        self.gems = []
+        self.twinkles = []
         self.gem, self.star = _gem_path(), _star_path()
         self.brushes = []
         for top, low in ((QColor(255, 255, 255), QColor(90, 205, 255)),
@@ -636,7 +599,7 @@ class DiamondShow(FireworkShow):
             g.setColorAt(1, low)
             self.brushes.append(QBrush(g))
         W, s = overlay.width(), self.unit()
-        for dx in (-0.15, -0.12, 0.12, 0.15):  # quelques eclats autour du bandeau
+        for dx in (-0.15, -0.12, 0.12, 0.15):
             self.twinkles.append((self.born + 0.5 + abs(dx), 0.9, W * (0.5 + dx), 60 * s, 22 * s))
 
     def active(self, now):
@@ -651,14 +614,14 @@ class DiamondShow(FireworkShow):
         k = (i + 1) / len(self.hits)
         W, H = self.o.width(), self.o.height()
         s = self.unit()
-        for _ in range(6 + int(24 * k)):   # jaillissent de derriere le mot
+        for _ in range(6 + int(24 * k)):
             a = rnd.uniform(-math.pi, 0)
             v = rnd.uniform(380, 900) * s * (0.8 + 0.4 * k)
             self.add_gem(W * rnd.uniform(0.2, 0.8), H * 0.44, math.cos(a) * v, math.sin(a) * v, k)
         for _ in range(8 + int(22 * k)):
             self.twinkles.append((now + rnd.uniform(0, 1.2), rnd.uniform(0.5, 1.0), W * rnd.random(),
                                   H * rnd.uniform(0.03, 0.75), rnd.uniform(14, 34) * s * (1 + 0.6 * k)))
-        if i == len(self.hits) - 1:  # final : pluie de diamants
+        if i == len(self.hits) - 1:
             for j in range(130):
                 self.queue.append((now + 0.5 + j * 0.055, "rain"))
             for j in range(60):

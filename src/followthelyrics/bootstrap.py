@@ -1,13 +1,3 @@
-"""Demarrage blinde du .exe.
-
-Qt a besoin des bibliotheques C++ de Microsoft (msvcp140.dll...). Windows peut en
-choisir une autre copie que la notre : une vieille version installee par un autre
-logiciel, un fichier qui traine a cote du .exe, une DLL injectee par un outil.
-Qt echoue alors avec « DLL load failed while importing QtCore ».
-
-prepare() charge NOS copies en premier, par leur chemin complet : Windows reutilise
-ensuite ces copies-la. report() ecrit un rapport lisible si ca echoue quand meme.
-"""
 import ctypes
 import os
 import sys
@@ -21,7 +11,7 @@ RUNTIME = ("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_1
            "msvcp140_2.dll", "msvcp140_atomic_wait.dll", "concrt140.dll")
 QT = ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll")
 
-LOG = []  # (nom, resultat) pour le rapport
+LOG = []
 
 _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _k32.LoadLibraryExW.restype = wintypes.HMODULE
@@ -76,7 +66,6 @@ def _load(path):
 
 
 def prepare():
-    """A appeler avant tout import de PyQt6 (et de numpy)."""
     if not FROZEN:
         return
     try:
@@ -86,12 +75,11 @@ def prepare():
             os.add_dll_directory(QT_BIN)
             for name in QT:
                 _load(os.path.join(QT_BIN, name))
-    except Exception as e:  # ne jamais empecher le demarrage a cause du blindage
+    except Exception as e:
         LOG.append(("prepare", f"exception {e!r}"))
 
 
 def report(error):
-    """Qt n'a pas pu demarrer : rapport dans un fichier + fenetre d'explication."""
     lines = ["FollowTheLyrics n'a pas pu demarrer.", "", f"Erreur : {error}", ""]
     try:
         v = sys.getwindowsversion()

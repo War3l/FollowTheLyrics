@@ -1,11 +1,3 @@
-"""Recuperation des paroles synchronisees.
-
-Ordre des sources :
-  1. NetEase Cloud Music, format YRC : timing de CHAQUE MOT (comme Apple Music).
-     API non officielle : peut changer sans prevenir.
-  2. LRCLIB : timing de chaque ligne.
-  3. NetEase, timing par ligne (si LRCLIB n'a rien).
-"""
 import hashlib
 import json
 import os
@@ -32,7 +24,6 @@ _JUNK = re.compile(
 )
 _YRC_LINE = re.compile(r"^\[(\d+),(\d+)\](.*)$")
 _YRC_WORD = re.compile(r"\((\d+),(\d+),-?\d+\)")
-# Lignes de credits chinoises de NetEase : "作词 : ...", "作曲 : ...", etc.
 _CREDIT = re.compile(r"^\s*[一-鿿 ]{1,8}\s*[:：]|纯音乐|作词|作曲|编曲|制作人|混音|母带|监制|出品")
 _VERSION = re.compile(r"\b(live|remix|instrumental|cover|karaoke|acoustic|sped up|slowed|"
                       r"nightcore|8d|伴奏|现场)\b", re.IGNORECASE)
@@ -42,13 +33,12 @@ _VERSION = re.compile(r"\b(live|remix|instrumental|cover|karaoke|acoustic|sped u
 class Line:
     time: float
     text: str
-    singer: str = ""          # nom du chanteur s'il etait indique, ex. "(Jennie)"
-    # Timing de chaque caractere de `text` (debut, fin) en secondes, si on l'a.
+    singer: str = ""
     chars: list[tuple[float, float]] | None = field(default=None, repr=False)
-    end: float | None = None  # fin de la ligne chantee, si connue
-    adlib: str = ""           # choeurs entre parentheses, affiches a part : "(yeah)"
+    end: float | None = None
+    adlib: str = ""
     adlib_time: float | None = None
-    translation: str = ""     # traduction francaise (si la chanson n'est pas en francais)
+    translation: str = ""
 
 
 def norm_text(s: str) -> str:
@@ -59,7 +49,6 @@ _PUNCT = set(",.!?;:…")
 
 
 def _squash(line: Line, idxs):
-    """Garde les caracteres idxs de la ligne (avec leurs timings), espaces nettoyes."""
     text, times = [], []
     for i in idxs:
         ch = line.text[i]
@@ -81,9 +70,6 @@ def _squash(line: Line, idxs):
 
 
 def split_adlibs(lines: list[Line]) -> list[Line]:
-    """ "Je joue la nuit (oh oh), je perds" -> texte "Je joue la nuit, je perds" + choeur "oh oh".
-
-    Si toute la ligne est entre parentheses, c'est la ligne chantee : on la garde."""
     out = []
     for l in lines:
         if "(" not in l.text:
@@ -109,9 +95,6 @@ def split_adlibs(lines: list[Line]) -> list[Line]:
 
 
 def translate_lines(lines: list[Line], target: str = "fr") -> str | None:
-    """Traduit toutes les lignes d'un coup (Google Traduction, service gratuit non officiel).
-
-    Remplit Line.translation. Renvoie la langue detectee, ou None si echec."""
     texts = list(dict.fromkeys(l.text for l in lines if l.text))
     if not texts:
         return None
@@ -127,7 +110,7 @@ def translate_lines(lines: list[Line], target: str = "fr") -> str | None:
         return None
     src = data[2] if len(data) > 2 else None
     if src == target:
-        return src  # deja en francais : rien a traduire
+        return src
     full = "".join(seg[0] for seg in (data[0] or []) if seg and seg[0])
     parts = full.split("\n")
     if len(parts) != len(texts):
@@ -135,13 +118,11 @@ def translate_lines(lines: list[Line], target: str = "fr") -> str | None:
     mapping = {t: p.strip() for t, p in zip(texts, parts)}
     for l in lines:
         tr = mapping.get(l.text, "")
-        # inutile d'afficher une "traduction" identique (onomatopees, noms...)
         l.translation = tr if tr and tr.lower() != l.text.lower() else ""
     return src
 
 
 def build_line(segments) -> Line | None:
-    """segments : [(debut_s, duree_s, texte), ...] -> Line avec timing par caractere."""
     text, times = [], []
     pending_space = False
     for start, dur, txt in segments:
@@ -166,10 +147,6 @@ def build_line(segments) -> Line | None:
     return Line(first[0], "".join(text), chars=times, end=last[0] + last[1])
 
 
-# --------------------------------------------------------------------------
-# Noms de chanteurs
-# --------------------------------------------------------------------------
-# Mots chantes qu'on trouve souvent entre parentheses : ce ne sont PAS des noms.
 _INTERJ = {
     "oh", "ooh", "oooh", "ohh", "o", "ah", "ahh", "aah", "uh", "uhh", "huh", "yeah", "yeh",
     "ya", "yah", "yea", "hey", "ho", "hoo", "woo", "wooh", "whoa", "woah", "wow", "na", "nah",
@@ -177,7 +154,6 @@ _INTERJ = {
     "ok", "oui", "non", "ouais", "wee", "skrrt", "brr", "go", "come", "on", "yes", "no", "uh-huh",
     "ha", "haha", "shh", "hello", "bye", "boom", "bang", "pow", "sha", "doo", "dum", "ba", "bam",
 }
-# Etiquettes de structure ou de groupe : a retirer aussi.
 _SECTION = re.compile(
     r"^(all|both|tous|toutes|ensemble|together|everyone|group|chorus|pre-?chorus|refrain|"
     r"pr[eé]-?refrain|verse|couplet|bridge|pont|intro|outro|hook|interlude|instrumental)\b",
@@ -193,7 +169,6 @@ def _name_words(x: str):
 
 
 def _plausible_name(x: str) -> bool:
-    """Forme d'un nom : 1 a 4 mots qui commencent par une majuscule, pas une interjection."""
     words = _name_words(x)
     if not words or len(words) > 4 or len(x) > 30:
         return False
@@ -204,7 +179,6 @@ def _plausible_name(x: str) -> bool:
 
 
 def _sub_line(l: Line, rest: str, singer: str) -> Line:
-    """Garde seulement `rest` (la fin du texte), avec les timings qui vont avec."""
     rest = norm_text(rest)
     chars = None
     if l.chars:
@@ -216,12 +190,9 @@ def _sub_line(l: Line, rest: str, singer: str) -> Line:
 
 
 def extract_singers(lines: list[Line], artist: str = "") -> list[Line]:
-    """Retire les noms de chanteurs "(Jennie) ...", "[Verse 2: Lisa]", "Rose: ..."
-    du texte chante, et les met dans Line.singer."""
     artist_l = artist.lower()
 
     def candidate(text):
-        """-> (etiquette, reste, forme) ou None. forme: '(' '[' ou ':'"""
         m = _LEAD_TAG.match(text)
         if m:
             return m.group(1), m.group(2).strip(), text.lstrip()[0]
@@ -230,7 +201,6 @@ def extract_singers(lines: list[Line], artist: str = "") -> list[Line]:
             return m.group(1), m.group(2).strip(), ":"
         return None
 
-    # 1er passage : quelles etiquettes reviennent, et combien de noms differents ?
     counts: dict[str, int] = {}
     for l in lines:
         c = candidate(l.text)
@@ -244,12 +214,12 @@ def extract_singers(lines: list[Line], artist: str = "") -> list[Line]:
         return x.lower() in artist_l or any(w.lower() in artist_l for w in _name_words(x) if len(w) > 2)
 
     def is_tag(tag, form):
-        if _SECTION.match(tag) or form == "[":  # [ ... ] en debut de ligne = annotation
+        if _SECTION.match(tag) or form == "[":
             return True
         if not _plausible_name(tag):
             return False
         strong = in_artist(tag) or counts.get(tag.lower(), 0) >= 2 or bool(_CONNECTOR.search(tag))
-        if form == ":":  # "Nom: ..." -> on exige une preuve, sinon "Listen: ..." serait coupe
+        if form == ":":
             return strong
         return strong or several
 
@@ -260,18 +230,17 @@ def extract_singers(lines: list[Line], artist: str = "") -> list[Line]:
         tagged = bool(c and is_tag(c[0], c[2]))
         if not tagged:
             if not l.text:
-                out.append(Line(l.time, "", ""))  # vraie pause instrumentale
+                out.append(Line(l.time, "", ""))
                 continue
             out.append(Line(l.time, l.text, pending, l.chars, l.end))
             pending = ""
             continue
         singer, rest = c[0], c[1]
-        if ":" in singer:  # "[Verse 2: Lisa]" -> "Lisa"
+        if ":" in singer:
             singer = singer.split(":", 1)[1].strip()
         if _SECTION.match(singer):
             singer = ""
         if not rest:
-            # ligne qui ne contient que l'etiquette : on la colle a la ligne suivante
             pending = singer or pending
             continue
         out.append(_sub_line(l, rest, singer or pending))
@@ -280,8 +249,6 @@ def extract_singers(lines: list[Line], artist: str = "") -> list[Line]:
 
 
 def add_pauses(lines: list[Line], min_gap: float = 4.0) -> list[Line]:
-    """Avec le timing par mot on connait la fin de chaque ligne : on insere une
-    ligne vide (les petits points) pendant les longues pauses instrumentales."""
     out = []
     for a, b in zip(lines, lines[1:] + [None]):
         out.append(a)
@@ -290,9 +257,6 @@ def add_pauses(lines: list[Line], min_gap: float = 4.0) -> list[Line]:
     return out
 
 
-# --------------------------------------------------------------------------
-# Formats
-# --------------------------------------------------------------------------
 def parse_lrc(lrc: str) -> list[Line]:
     lines: list[Line] = []
     for raw in lrc.splitlines():
@@ -309,12 +273,11 @@ def parse_lrc(lrc: str) -> list[Line]:
 
 
 def parse_yrc(yrc: str) -> list[Line]:
-    """Format NetEase : [debut_ms,duree_ms](debut_ms,duree_ms,0)mot(...)mot ..."""
     lines: list[Line] = []
     for raw in yrc.splitlines():
         m = _YRC_LINE.match(raw.strip())
         if not m:
-            continue  # lignes JSON de metadonnees, etc.
+            continue
         body = m.group(3)
         marks = list(_YRC_WORD.finditer(body))
         segs = []
@@ -330,9 +293,6 @@ def parse_yrc(yrc: str) -> list[Line]:
     return lines
 
 
-# --------------------------------------------------------------------------
-# Sources
-# --------------------------------------------------------------------------
 def clean_title(title: str) -> str:
     title = _JUNK.sub("", title)
     title = re.sub(r"\s*[\(\[]\s*(feat|ft)\.?[^\)\]]*[\)\]]", "", title, flags=re.I)
@@ -346,7 +306,7 @@ def _simplify(s: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", s).split())
 
 
-_net = threading.local()  # pour savoir si une recherche a echoue a cause du reseau
+_net = threading.local()
 
 
 def _http_json(url: str, headers: dict):
@@ -356,7 +316,7 @@ def _http_json(url: str, headers: dict):
     except urllib.error.HTTPError as e:
         if e.code >= 500 or e.code == 429:
             _net.failed = True
-        return None  # 404 = vraiment pas trouve
+        return None
     except Exception:
         _net.failed = True
         return None
@@ -375,7 +335,7 @@ def _best(results, duration: float):
     if duration > 0:
         synced.sort(key=lambda r: abs((r.get("duration") or 0) - duration))
         if abs((synced[0].get("duration") or 0) - duration) > 15:
-            return None  # trop different : probablement pas la bonne version
+            return None
     return synced[0]
 
 
@@ -397,7 +357,6 @@ def _lrclib(track: str, art: str, album: str, duration: float) -> list[Line] | N
 
 
 def _netease(track: str, art: str, duration: float):
-    """-> (lignes mot a mot ou None, lignes par ligne ou None)"""
     q = urllib.parse.quote(f"{track} {art}".strip())
     res = _http_json(f"{NE_API}/search/get?s={q}&type=1&limit=10", NE_HEADERS)
     songs = ((res or {}).get("result") or {}).get("songs") or []
@@ -419,7 +378,7 @@ def _netease(track: str, art: str, duration: float):
         d = (s.get("duration") or 0) / 1000
         diff = abs(d - duration) if duration > 0 and d > 0 else None
         if diff is not None and diff > 6:
-            continue  # autre version du morceau : les timings seraient faux
+            continue
         dur_ok = diff is not None and diff <= 3
         if not (art_ok or dur_ok):
             continue
@@ -447,7 +406,6 @@ def _netease(track: str, art: str, duration: float):
 def _candidates(title: str, artist: str):
     t = clean_title(title)
     out = [(t, artist)]
-    # Video YouTube classique : "Artiste - Titre" dans le titre
     if " - " in t:
         a, b = t.split(" - ", 1)
         out.append((clean_title(b), a.strip()))
@@ -455,8 +413,6 @@ def _candidates(title: str, artist: str):
 
 
 def fetch_lyrics(title: str, artist: str, album: str = "", duration: float = 0) -> list[Line] | None:
-    """Renvoie une liste de lignes horodatees (avec timing par mot si possible),
-    ou None si rien de synchronise."""
     fallback = None
     lines = None
     for track, art in _candidates(title, artist):
@@ -475,22 +431,12 @@ def fetch_lyrics(title: str, artist: str, album: str = "", duration: float = 0) 
 
 
 def fetch_lyrics_ex(title: str, artist: str, album: str = "", duration: float = 0):
-    """-> (lignes ou None, fiable). fiable=False : rien trouve MAIS le reseau a eu un souci,
-    donc il faudra reessayer plus tard (ne pas retenir "pas de paroles")."""
     _net.failed = False
     lines = fetch_lyrics(title, artist, album, duration)
     return lines, not (lines is None and getattr(_net, "failed", False))
 
 
-# --------------------------------------------------------------------------
-# Titre de la chanson dans les paroles
-# --------------------------------------------------------------------------
 def mark_title_lines(lines: list[Line], title: str, artist: str = "", cooldown: float = 20.0):
-    """Repere les lignes ou le chanteur dit le titre du morceau.
-
-    Met line.title_span = (index du 1er mot, nb de mots) et line.title_drop = True
-    pour les occurrences espacees d'au moins `cooldown` secondes (sinon un refrain
-    qui repete le titre l'afficherait en geant en permanence)."""
     wanted = []
     for t, _ in _candidates(title, artist):
         w = _simplify(t).split()
@@ -505,7 +451,7 @@ def mark_title_lines(lines: list[Line], title: str, artist: str = "", cooldown: 
         for tw in wanted:
             n = len(tw)
             if n > 7 or (n == 1 and len(tw[0]) < 4):
-                continue  # titre trop long, ou mot trop banal ("si", "oh")
+                continue
             for i in range(len(words) - n + 1):
                 if words[i:i + n] == tw:
                     l.title_span = (i, n)
@@ -517,16 +463,13 @@ def mark_title_lines(lines: list[Line], title: str, artist: str = "", cooldown: 
             last = l.time
 
 
-# --------------------------------------------------------------------------
-# Cache sur le disque : paroles instantanees aux ecoutes suivantes, meme hors ligne
-# --------------------------------------------------------------------------
 try:
     from settings import DATA_DIR as _DATA_DIR
 except Exception:
     _DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(_DATA_DIR, "cache")
 CACHE_VERSION = 1
-MISSING_TTL = 7 * 86400  # un titre "sans paroles" est recherche de nouveau apres 7 jours
+MISSING_TTL = 7 * 86400
 
 
 def _cache_path(title: str, artist: str) -> str:
@@ -535,14 +478,13 @@ def _cache_path(title: str, artist: str) -> str:
 
 
 def cache_load(title: str, artist: str, duration: float = 0):
-    """-> (trouve, lignes ou None)"""
     try:
         with open(_cache_path(title, artist), encoding="utf-8") as f:
             d = json.load(f)
         if d.get("v") != CACHE_VERSION:
             return False, None
         if duration > 0 and d.get("duration", 0) > 0 and abs(d["duration"] - duration) > 6:
-            return False, None  # autre version du morceau
+            return False, None
         if d["lines"] is None:
             return (time.time() - d.get("saved", 0) < MISSING_TTL), None
         out = []

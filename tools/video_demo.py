@@ -1,5 +1,3 @@
-"""Video de demo : le vrai rendu de l'overlay, image par image, sur un faux decor de jeu.
-usage : video_demo.py <dossier du projet> <ffmpeg> <sortie.mp4> <affiche.jpg> [pochette]"""
 import math
 import os
 import random
@@ -51,7 +49,6 @@ def box(p, r, radius=10):
 
 
 def draw_game(p, t):
-    """Faux jeu : route de nuit en perspective + interface (carte, barre de sorts, chat)."""
     sky = QLinearGradient(0, 0, 0, HORIZON)
     sky.setColorAt(0, QColor("#070912"))
     sky.setColorAt(0.7, QColor("#1b1f4a"))
@@ -75,7 +72,6 @@ def draw_game(p, t):
     ground.setColorAt(0, QColor("#1a1030"))
     ground.setColorAt(1, QColor("#05060c"))
     p.fillRect(QRectF(0, HORIZON, W, H - HORIZON), QBrush(ground))
-    # grille en perspective qui avance
     for i in range(-14, 15):
         a = 70 if i else 150
         p.setPen(QPen(QColor(120, 220, 255, a), 2))
@@ -86,7 +82,6 @@ def draw_game(p, t):
         y = HORIZON + (H - HORIZON) * z ** 2.4
         p.setPen(QPen(QColor(255, 110, 190, int(40 + 150 * z)), 1 + 2.5 * z))
         p.drawLine(QPointF(0, y), QPointF(W, y))
-    # interface du jeu
     f = QFont("Segoe UI", 11, QFont.Weight.DemiBold)
     p.setFont(f)
     m = QRectF(W - 330, H - 330, 300, 300)
@@ -149,9 +144,9 @@ img = QImage(W, H, QImage.Format.Format_ARGB32_Premultiplied)
 frames = int(LENGTH * FPS)
 next_beat, beat_n = 0.0, 0
 for n in range(frames):
-    for _ in range(2):  # l'appli tourne a ~60 images/s
+    for _ in range(2):
         fake[0] += 1 / (FPS * 2)
-        if fake[0] >= next_beat:  # faux tempo : 120 battements par minute
+        if fake[0] >= next_beat:
             o.on_beat(1.0 if beat_n % 4 == 0 else 0.6)
             beat_n += 1
             next_beat += 0.5

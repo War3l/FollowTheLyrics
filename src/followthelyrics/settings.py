@@ -1,23 +1,20 @@
-"""Reglages partages entre l'overlay et le panneau (sauves dans config.json)."""
 import json
 import os
 import sys
 
 APP_NAME = "FollowTheLyrics"
-OLD_NAMES = ("LyricsOverlay", "Lyrics Overlay")  # anciens noms du projet
+OLD_NAMES = ("LyricsOverlay", "Lyrics Overlay")
 HERE = os.path.dirname(os.path.abspath(__file__))
-FROZEN = bool(getattr(sys, "frozen", False))  # True dans le .exe
+FROZEN = bool(getattr(sys, "frozen", False))
 
 
 def _data_dir():
-    """Ou ranger reglages, profils et cache. En .exe : AppData (le .exe peut etre
-    n'importe ou, meme dans un dossier protege). En mode script : a cote du code."""
     if not FROZEN:
         return HERE
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     path = os.path.join(base, APP_NAME)
     old = os.path.join(base, "LyricsOverlay")
-    try:  # reglages de l'ancien nom du projet : on les reprend
+    try:
         if os.path.isdir(old) and not os.path.exists(path):
             os.rename(old, path)
     except Exception:
@@ -32,13 +29,11 @@ def _data_dir():
 DATA_DIR = _data_dir()
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 
-# ---- demarrage avec Windows / raccourci bureau -----------------------------
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _RUN_NAME = APP_NAME
 
 
 def launch_command(minimized=False, exe=None):
-    """La commande qui relance l'appli (le .exe, ou pythonw + script)."""
     if exe or FROZEN:
         cmd = f'"{exe or sys.executable}"'
     else:
@@ -49,7 +44,6 @@ def launch_command(minimized=False, exe=None):
 
 
 def autostart_command():
-    """La commande inscrite pour le demarrage avec Windows ('' s'il est coupe)."""
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
@@ -64,7 +58,6 @@ def autostart_enabled():
 
 
 def set_autostart(on, exe=None):
-    """Lance (ou non) l'appli a l'ouverture de session, reduite pres de l'heure."""
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
@@ -81,9 +74,8 @@ def set_autostart(on, exe=None):
 
 
 def refresh_autostart():
-    """Si le .exe a ete deplace, on corrige le chemin enregistre."""
     was_old = False
-    try:  # entree de l'ancien nom du projet
+    try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE) as k:
             for old in OLD_NAMES:
@@ -97,7 +89,7 @@ def refresh_autostart():
         pass
     if was_old or autostart_enabled():
         set_autostart(True)
-    try:  # raccourci bureau de l'ancien nom : il pointe vers un .exe qui n'existe plus
+    try:
         from PyQt6.QtCore import QStandardPaths
         desktop = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
         old_link = os.path.join(desktop, "Lyrics Overlay.lnk")
@@ -109,7 +101,6 @@ def refresh_autostart():
 
 
 def desktop_link():
-    """Chemin du raccourci « FollowTheLyrics » sur le bureau ('' si le bureau est introuvable)."""
     try:
         from PyQt6.QtCore import QStandardPaths
         desktop = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
@@ -119,7 +110,6 @@ def desktop_link():
 
 
 def create_desktop_shortcut(exe=None):
-    """Raccourci « FollowTheLyrics » sur le bureau (seulement pour le .exe)."""
     if not (exe or FROZEN):
         return False
     try:
@@ -145,7 +135,6 @@ TITLE_DROP = {"always": "Toujours", "desktop": "Hors jeu", "never": "Jamais"}
 
 
 def app_label(app_id: str) -> str:
-    """Nom lisible d'une appli a partir de son identifiant Windows."""
     low = app_id.lower()
     for needle, name in (("spotify", "Spotify"), ("operagx", "Opera GX"), ("opera", "Opera"),
                          ("chrome", "Google Chrome"), ("msedge", "Microsoft Edge"), ("firefox", "Firefox"),
@@ -158,7 +147,6 @@ def app_label(app_id: str) -> str:
     name = app_id.split("!")[0].split("\\")[-1]
     return name[:-4] if name.lower().endswith(".exe") else name
 
-# Polices conseillees (affichees en premier si elles sont installees)
 RECOMMENDED_FONTS = [
     "Segoe UI Variable Display", "Bahnschrift", "Segoe UI Black", "Arial Black", "Impact",
     "Franklin Gothic Heavy", "Gill Sans Ultra Bold", "Montserrat", "Poppins", "Inter",

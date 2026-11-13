@@ -1,8 +1,3 @@
-"""Panneau de controle : un menu a gauche, une page par sujet a droite.
-
-Accueil (musique en cours) · Affichage · Style · Musique · Jeux · Raccourcis · Général.
-Tout s'applique en direct ; les briques dessinees a la main sont dans widgets.py.
-"""
 import ctypes
 import os
 import sys
@@ -19,7 +14,7 @@ import hotkeys
 import sites
 from settings import (COLORS, FROZEN, MODES, POSITIONS, RECOMMENDED_FONTS, STYLES, TITLE_DROP, app_label,
                       autostart_enabled, set_autostart)
-from widgets import (BG, BRAND, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, TEXT, UI,  # noqa: F401
+from widgets import (BG, BRAND, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, TEXT, UI,
                      dark_caption, enable_backdrop, mix, qss,
                      ColorCard, CoverView, Equalizer, HotkeyButton, MiniPlayer, ModeCard, NavTile,
                      ProgressView, Segmented, SideNav, Toggle, alpha, fmt_time, icon_pixmap,
@@ -27,7 +22,6 @@ from widgets import (BG, BRAND, CARD, CARD_BORDER, DEFAULT_ACCENT, DIM, FIELD, T
 
 SITE_URL = "https://war3l.github.io/FollowTheLyrics/"
 
-# (cle, nom dans le menu, icone, titre de la page, phrase d'explication)
 PAGES = [
     ("home", "Accueil", "home", "Accueil", "Ce qui joue en ce moment, et tes réglages en un coup d'œil."),
     ("display", "Affichage", "screen", "Affichage", "Où et comment les paroles apparaissent à l'écran."),
@@ -40,7 +34,6 @@ PAGES = [
 
 
 class FontPreview(QWidget):
-    """Apercu du texte avec la police et les couleurs choisies (meme rendu qu'a l'ecran)."""
 
     def __init__(self, app, parent=None):
         super().__init__(parent)
@@ -52,7 +45,7 @@ class FontPreview(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         g = QLinearGradient(r.topLeft(), r.bottomRight())
-        g.setColorAt(0, QColor(0, 0, 0, 104))  # un petit ecran sombre dans le verre
+        g.setColorAt(0, QColor(0, 0, 0, 104))
         g.setColorAt(1, QColor(0, 0, 0, 56))
         p.setPen(QPen(QColor(CARD_BORDER), 1))
         p.setBrush(QBrush(g))
@@ -78,7 +71,6 @@ class FontPreview(QWidget):
 
 
 class Card(QFrame):
-    """Bloc de reglages : un titre, une phrase, puis des lignes separees par un trait fin."""
 
     def __init__(self, title=None, hint=None):
         super().__init__()
@@ -104,7 +96,6 @@ class Card(QFrame):
         return widget
 
     def add_row(self, label, widget, hint=None):
-        """Une ligne : le nom du reglage a gauche, sa commande a droite."""
         if self.rows:
             sep = QFrame()
             sep.setFixedHeight(1)
@@ -153,9 +144,6 @@ def hbox(*widgets, spacing=10, stretch=True):
     return w
 
 
-# --------------------------------------------------------------------------
-# Le panneau
-# --------------------------------------------------------------------------
 class Panel(QWidget):
     def __init__(self, app):
         super().__init__()
@@ -167,12 +155,11 @@ class Panel(QWidget):
         self.setMinimumSize(1020, 660)
         self._accent_name = None
         self._cover_src = None
-        # Verre : sous Windows 11 la fenetre est transparente et Windows floute ce qu'il y a derriere.
         self._can_glass = sys.getwindowsversion().build >= 22621
-        self._glass_ok = False  # Windows a-t-il accepte ?
+        self._glass_ok = False
         if self._can_glass:
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._aura = [QColor(c) for c in BRAND]  # couleurs des lueurs du fond (celles de la pochette)
+        self._aura = [QColor(c) for c in BRAND]
         self._aura_from = list(self._aura)
         self._aura_to = list(self._aura)
         self._aura_anim = make_anim(self, self._aura_step, 900)
@@ -221,12 +208,11 @@ class Panel(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(200)
-        self.anim_timer = QTimer(self)  # petites animations en boucle (egaliseur, cartes de mode)
+        self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.tick)
         self.anim_timer.start(33)
         self.refresh()
 
-    # ---- menu lateral ---------------------------------------------------------
     def build_sidebar(self):
         side = QFrame()
         side.setObjectName("Side")
@@ -300,7 +286,6 @@ class Panel(QWidget):
         return scroll
 
     def go(self, key, animate=True):
-        """Affiche une page (fondu + leger glissement vers le haut)."""
         info = next(p for p in PAGES if p[0] == key)
         self.nav.select(key, emit=False)
         self.page_title.setText(info[3])
@@ -342,7 +327,6 @@ class Panel(QWidget):
                 if c.alive():
                     c.update()
 
-    # ---- mise a jour ---------------------------------------------------------
     def build_update_bar(self):
         bar = QFrame()
         bar.setProperty("role", "update")
@@ -391,12 +375,10 @@ class Panel(QWidget):
         self.app.check_update(manual=True)
 
     def update_none(self, error):
-        """Reponse a « Rechercher une mise a jour » quand il n'y a rien de neuf."""
         self.check_btn.setEnabled(True)
         self.check_lbl.setText("Impossible de joindre GitHub. Vérifie ta connexion." if error
                                else "Tu as déjà la dernière version.")
 
-    # ---- page Accueil -----------------------------------------------------------
     def build_home(self):
         hero = Card()
         hero.lay.setSpacing(16)
@@ -469,7 +451,6 @@ class Panel(QWidget):
                      "Des paroles de démonstration tournent en boucle : pratique pour régler le style.")
         return [hero, self.fs_warn, tiles, demo]
 
-    # ---- page Affichage -----------------------------------------------------------
     def build_display(self):
         modes = Card("Mode", "Passe la souris sur une carte pour voir le mode en action.")
         cards = QHBoxLayout()
@@ -512,7 +493,6 @@ class Panel(QWidget):
                       "Pochette, titre et artiste quelques secondes au début du morceau.")
         return [modes, place, extra]
 
-    # ---- page Style -----------------------------------------------------------------
     def build_style(self):
         self.preview = FontPreview(self.app)
 
@@ -565,7 +545,6 @@ class Panel(QWidget):
         fonts.add(self.font_list)
         return [self.preview, colors, motion, fonts]
 
-    # ---- page Musique ---------------------------------------------------------------
     def build_music(self):
         src = Card("Applis écoutées",
                    "Décoche celles qui ne servent pas à la musique. Les médias de plus de 20 minutes sont "
@@ -636,7 +615,6 @@ class Panel(QWidget):
         return [src, web, lyr]
 
     def refresh_web(self):
-        """Dit ce que l'appli a reconnu dans le navigateur en ce moment."""
         seen = tuple(sorted(getattr(self.app, "browsers", {}).items()))
         if seen == self._web_shown:
             return
@@ -680,7 +658,6 @@ class Panel(QWidget):
             lay.addWidget(t)
             self.sources_box.addWidget(line)
 
-    # ---- page Jeux -------------------------------------------------------------------
     def build_games(self):
         cur = Card()
         cap = QLabel("JEU DÉTECTÉ")
@@ -734,7 +711,6 @@ class Panel(QWidget):
         tip.add(t)
         return [cur, self.fs_warn2, how, tip]
 
-    # ---- page Raccourcis -----------------------------------------------------------------
     def build_keys(self):
         card = Card("Tes raccourcis", "Clique sur un raccourci, puis appuie sur la nouvelle combinaison "
                     "(avec Ctrl ou Alt, ou une touche F1 à F24). Échap annule, Suppr retire le raccourci.")
@@ -766,7 +742,6 @@ class Panel(QWidget):
         self.hotkeys_changed()
 
     def hotkeys_changed(self):
-        """Les raccourcis ont change (ou Windows vient de dire lesquels il refuse)."""
         keys = self.app.cfg["hotkeys"]
         failed = [n for n in getattr(self.app, "hotkeys_failed", []) if keys.get(n)]
         for name, b in self.key_buttons.items():
@@ -787,7 +762,6 @@ class Panel(QWidget):
             tip += f"\nEn jeu : {hotkeys.pretty(up)} et {hotkeys.pretty(down)}."
         self.offset_row.hint_label.setText(tip)
 
-    # ---- page General ----------------------------------------------------------------------
     def build_general(self):
         start = Card("Démarrage")
         self.autostart = Toggle()
@@ -833,7 +807,6 @@ class Panel(QWidget):
         about.add_row("FollowTheLyrics", site, "Les paroles de ta musique, par-dessus tes jeux. Gratuit et libre.")
         return cards + [upd, about]
 
-    # ---- polices -----------------------------------------------------------
     def populate_fonts(self):
         skip = ("MDL2", "Fluent Icons", "Wingdings", "Webdings", "Marlett", "Symbol", "Emoji", "HoloLens",
                 "Segoe Fluent", "Bookshelf", "MT Extra")
@@ -894,7 +867,6 @@ class Panel(QWidget):
         if not self.size.isSliderDown() and not self._building:
             self.set("scale", v / 100)
 
-    # ---- reglages ----------------------------------------------------------
     def set(self, key, value):
         if self._building:
             return
@@ -942,7 +914,6 @@ class Panel(QWidget):
         for c in list(self.mode_cards.values()) + list(self.color_cards.values()):
             c.update()
 
-    # ---- musique en cours ---------------------------------------------------
     def refresh(self):
         if not self.isVisible():
             return
@@ -1011,7 +982,7 @@ class Panel(QWidget):
             self.preview.update()
         aura = [QColor(c) for c in (o.accent[:3] if o.cover_img is not None and len(o.accent) >= 3 else BRAND)]
         if [c.name() for c in aura] != [c.name() for c in self._aura_to]:
-            self._aura_from, self._aura_to = list(self._aura), aura  # fondu vers les nouvelles couleurs
+            self._aura_from, self._aura_to = list(self._aura), aura
             run_anim(self._aura_anim, 0.0, 1.0)
 
     def _aura_step(self, v):
@@ -1019,17 +990,14 @@ class Panel(QWidget):
         self.update()
 
     def glass_on(self):
-        """Vrai si le fond laisse voir, floute, ce qu'il y a derriere la fenetre."""
         return self._glass_ok and bool(self.app.cfg.get("glass", True))
 
-    # ---- style ---------------------------------------------------------------
     def apply_style(self, accent: QColor):
         self._accent_name = accent.name()
         UI["accent"] = QColor(accent)
         a = accent.name()
         r, g, b = accent.red(), accent.green(), accent.blue()
         ft = '"Segoe UI Variable Text"'
-        # verre : plus clair en haut a gauche, comme eclaire de la
         glass = ("qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.105), "
                  "stop:0.45 rgba(255,255,255,0.055), stop:1 rgba(255,255,255,0.03))")
         edge, field = qss(CARD_BORDER), qss(FIELD)
@@ -1107,8 +1075,6 @@ class Panel(QWidget):
         self.update()
 
     def paintEvent(self, _):
-        """Le fond : une teinte sombre (a moitie transparente quand le verre de Windows est la),
-        puis trois lueurs aux couleurs de la pochette. Les cartes de verre se posent dessus."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         glass = self.glass_on()
@@ -1128,7 +1094,7 @@ class Panel(QWidget):
 
     def showEvent(self, e):
         super().showEvent(e)
-        try:  # barre de titre sombre (Windows 10/11)
+        try:
             val = ctypes.c_int(1)
             ctypes.windll.dwmapi.DwmSetWindowAttribute(int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val))
         except Exception:
@@ -1139,7 +1105,6 @@ class Panel(QWidget):
         self.refresh()
 
     def closeEvent(self, e):
-        """Fermer le panneau ne quitte pas : les paroles continuent (icone pres de l'heure pour le rouvrir)."""
         if getattr(self.app, "quitting", False):
             e.accept()
             return
