@@ -9,7 +9,7 @@ import urllib.request
 from PyQt6.QtCore import QThread
 from PyQt6.QtCore import pyqtSignal
 
-from followthelyrics import bootstrap
+from followthelyrics.system import bootstrap
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ ASSET_NAME = "FollowTheLyrics.exe"
 DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 USER_AGENT = "FollowTheLyrics-updater"
 VERSION_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "VERSION"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION"
 )
 
 

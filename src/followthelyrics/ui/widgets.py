@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import QAbstractButton
 from PyQt6.QtWidgets import QSizePolicy
 from PyQt6.QtWidgets import QWidget
 
-from followthelyrics import hotkeys
+from followthelyrics.system import hotkeys
 
 logger = logging.getLogger(__name__)
 

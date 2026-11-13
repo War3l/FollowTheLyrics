@@ -10,7 +10,7 @@ from PyQt6.QtCore import QIODevice
 from PyQt6.QtNetwork import QLocalSocket
 from PyQt6.QtWidgets import QApplication
 
-from followthelyrics import widgets
+from followthelyrics.ui import widgets
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE = os.path.join(HERE, "src", "followthelyrics")

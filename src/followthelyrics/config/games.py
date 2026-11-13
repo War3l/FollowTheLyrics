@@ -4,8 +4,8 @@ import logging
 import os
 from ctypes import wintypes
 
-from followthelyrics import settings
-from followthelyrics import win32
+from followthelyrics.config import settings
+from followthelyrics.system import win32
 
 logger = logging.getLogger(__name__)
 

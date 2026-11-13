@@ -2,7 +2,7 @@ import logging
 import logging.handlers
 import os
 
-from followthelyrics import settings
+from followthelyrics.config import settings
 
 LOG_DIR = os.path.join(settings.DATA_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "followthelyrics.log")

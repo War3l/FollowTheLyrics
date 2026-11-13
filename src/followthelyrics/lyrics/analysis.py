@@ -1,7 +1,7 @@
 import re
 import statistics
 
-from followthelyrics import animation
+from followthelyrics.overlay import animation
 
 
 def compute_word_meta(lines):

@@ -1,6 +1,6 @@
 import argparse
 
-from followthelyrics import lyrics
+from followthelyrics.lyrics import providers
 
 
 def main():
@@ -9,7 +9,9 @@ def main():
     parser.add_argument("artist", nargs="?", default="")
     parser.add_argument("duration", nargs="?", type=float, default=0.0)
     args = parser.parse_args()
-    lines = lyrics.fetch_lyrics(args.title, args.artist, duration=args.duration)
+    lines = providers.fetch_lyrics(
+        args.title, args.artist, duration=args.duration
+    )
     if not lines:
         print("Pas de paroles synchronisees")
         return

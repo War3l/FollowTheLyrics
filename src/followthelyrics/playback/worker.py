@@ -6,8 +6,9 @@ from concurrent.futures import ThreadPoolExecutor
 from PyQt6.QtCore import QThread
 from PyQt6.QtCore import pyqtSignal
 
-from followthelyrics import lyrics
-from followthelyrics import sites
+from followthelyrics.lyrics import cache
+from followthelyrics.lyrics import providers
+from followthelyrics.playback import sites
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class MediaWorker(QThread):
         self.blocked = set(blocked)
 
     def run(self):
-        from followthelyrics import media
+        from followthelyrics.playback import media
 
         loop = asyncio.new_event_loop()
         manager = loop.run_until_complete(media.get_manager())
@@ -109,14 +110,14 @@ class MediaWorker(QThread):
             self._cache[np.key] = None
             self.lyrics.emit(np.key, None)
             return
-        found, lines = lyrics.cache_load(np.title, np.artist, np.duration)
+        found, lines = cache.cache_load(np.title, np.artist, np.duration)
         if found:
             self._cache[np.key] = lines
             self.lyrics.emit(np.key, lines)
             self.translated.emit(np.key)
             return
         try:
-            lines, reliable = lyrics.fetch_lyrics_ex(
+            lines, reliable = providers.fetch_lyrics_ex(
                 np.title, np.artist, np.album, np.duration
             )
         except Exception:
@@ -139,13 +140,13 @@ class MediaWorker(QThread):
         translated_ok = True
         if lines:
             try:
-                translated_ok = lyrics.translate_lines(lines) is not None
+                translated_ok = providers.translate_lines(lines) is not None
             except Exception:
                 logger.warning("_fetch_inner failed", exc_info=True)
                 translated_ok = False
             self.translated.emit(np.key)
         if translated_ok:
-            lyrics.cache_save(np.title, np.artist, np.duration, lines)
+            cache.cache_save(np.title, np.artist, np.duration, lines)
 
     def stop(self):
         self._stop = True

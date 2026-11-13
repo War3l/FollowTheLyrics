@@ -1,6 +1,6 @@
 import asyncio
 
-from followthelyrics import media
+from followthelyrics.playback import media
 
 
 def main():

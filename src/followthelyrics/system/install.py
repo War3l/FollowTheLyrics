@@ -13,8 +13,8 @@ if sys.platform == "win32":
 
 import contextlib
 
-from followthelyrics import settings
-from followthelyrics import updater
+from followthelyrics.config import settings
+from followthelyrics.system import updater
 
 logger = logging.getLogger(__name__)
 

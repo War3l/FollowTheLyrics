@@ -1,6 +1,6 @@
 import importlib
 
-from followthelyrics import bootstrap
+from followthelyrics.system import bootstrap
 
 
 def main():
