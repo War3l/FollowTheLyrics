@@ -3,9 +3,11 @@
 <p align="center"><b>Les paroles de ta musique, par-dessus tes jeux.</b><br>
 Mot à mot, en rythme, aux couleurs de la pochette. Windows 10 et 11, et Linux.</p>
 <p align="center">
-<a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe"><b>⬇ Télécharger la dernière version</b></a>
+<a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe"><b>⬇ Télécharger pour Windows</b></a>
+ · <a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux"><b>⬇ Télécharger pour Linux</b></a>
  · <a href="https://war3l.github.io/FollowTheLyrics/">Site de présentation</a>
 </p>
+<p align="center"><b>Français</b> · <a href="README.en.md">English</a></p>
 
 ![Le titre du morceau affiché en géant](docs/img/titre.png)
 ![Le panneau de contrôle](docs/img/panel.png)
