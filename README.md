@@ -81,7 +81,7 @@ Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci 
   Ça marche aussi pour un jeu sans profil : il est créé à l'enregistrement. Panneau → **Dessiner les zones**.
 
 ## Sous le capot
-- Relancer **Lancer.bat** remplace automatiquement la version déjà ouverte.
+- Relancer **run.bat** remplace automatiquement la version déjà ouverte.
 - Les paroles trouvées sont gardées dans le dossier `cache` : instantanées aux écoutes suivantes, même hors ligne.
 - Après une coupure réseau, la recherche est retentée toute seule (10 s, 30 s, 1 min…).
 - L'écran n'est redessiné que quand quelque chose bouge.
@@ -96,7 +96,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 .venv\Scripts\python -m followthelyrics          (--demo pour des paroles de test)
 ```
-`Lancer.bat` fait la même chose sans terminal (`Lancer.bat --demo` pour la démo).
+`run.bat` fait la même chose sans terminal (`run.bat --demo` pour la démo).
 
 Vérifications, lancées aussi par la CI à chaque pull request :
 ```
