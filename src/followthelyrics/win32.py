@@ -12,6 +12,18 @@ class MonitorInfo(ctypes.Structure):
     )
 
 
+WinEventProc = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)(
+    None,
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    wintypes.HWND,
+    wintypes.LONG,
+    wintypes.LONG,
+    wintypes.DWORD,
+    wintypes.DWORD,
+)
+
+
 @functools.cache
 def user32():
     lib = ctypes.WinDLL("user32", use_last_error=True)
@@ -28,6 +40,36 @@ def user32():
         wintypes.HANDLE,
         ctypes.POINTER(MonitorInfo),
     ]
+    lib.SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint,
+    ]
+    lib.SetWindowPos.restype = wintypes.BOOL
+    lib.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+    lib.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    lib.SetWindowLongPtrW.argtypes = [
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_ssize_t,
+    ]
+    lib.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+    lib.SetWinEventHook.argtypes = [
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+        WinEventProc,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    lib.SetWinEventHook.restype = wintypes.HANDLE
+    lib.UnhookWinEvent.argtypes = [wintypes.HANDLE]
+    lib.UnhookWinEvent.restype = wintypes.BOOL
     return lib
 
 

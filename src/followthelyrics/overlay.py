@@ -1,6 +1,5 @@
 import bisect
 import contextlib
-import ctypes
 import logging
 import math
 import random
@@ -11,6 +10,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QRect
 from PyQt6.QtCore import QRectF
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QTimer
@@ -35,10 +35,14 @@ from followthelyrics import colors
 from followthelyrics import easter
 from followthelyrics import lyrics
 from followthelyrics import settings
+from followthelyrics import win32
 
 logger = logging.getLogger(__name__)
 
 PREV_ALPHA = 0.42
+ACTIVE_INTERVAL_MS = 16
+IDLE_INTERVAL_MS = 200
+PATH_CACHE_SIZE = 512
 HIDE_AFTER = 3.0
 CARD_TIME = 4.5
 UPPER = 0.5
@@ -162,6 +166,12 @@ class Overlay(QWidget):
         self._layout_cache = {}
         self._band = None
         self._halo_cache = OrderedDict()
+        self._path_cache = OrderedDict()
+        self._card_fonts = None
+        self._card_rect = None
+        self._scratch = None
+        self._fg_hook = None
+        self._zones_key = ()
         self._hero_cache = {}
         self.word_lines = {}
         self.flash = None
@@ -173,7 +183,7 @@ class Overlay(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
-        self.timer.start(16)
+        self.timer.start(ACTIVE_INTERVAL_MS)
         self.top_timer = QTimer(self)
         self.top_timer.timeout.connect(self.keep_on_top)
         self.top_timer.start(500)
@@ -194,6 +204,14 @@ class Overlay(QWidget):
 
     def poke(self):
         self.force_paint = True
+        self.wake()
+
+    def wake(self):
+        if (
+            self.timer.isActive()
+            and self.timer.interval() != ACTIVE_INTERVAL_MS
+        ):
+            self.timer.setInterval(ACTIVE_INTERVAL_MS)
 
     def set_profile(self, key, profile):
         self.profile_key, self.profile = key, profile
@@ -213,23 +231,13 @@ class Overlay(QWidget):
                         z["h"] * height,
                     )
                 )
+        self._zones_key = tuple(z.getRect() for z in self.zones)
 
     def keep_on_top(self):
         if not self.isVisible():
             return
         try:
-            u = ctypes.windll.user32
-            u.SetWindowPos.argtypes = [
-                wintypes.HWND,
-                wintypes.HWND,
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_uint,
-            ]
-            u.SetWindowPos.restype = wintypes.BOOL
-            u.SetWindowPos(
+            win32.user32().SetWindowPos(
                 int(self.winId()),
                 wintypes.HWND(-1),
                 0,
@@ -243,50 +251,32 @@ class Overlay(QWidget):
 
     def install_foreground_hook(self):
         try:
-            u = ctypes.windll.user32
-            proto = ctypes.WINFUNCTYPE(
-                None,
-                wintypes.HANDLE,
-                wintypes.DWORD,
-                wintypes.HWND,
-                wintypes.LONG,
-                wintypes.LONG,
-                wintypes.DWORD,
-                wintypes.DWORD,
-            )
 
             def on_foreground(*_):
                 for delay in (0, 300, 1000, 2500):
                     QTimer.singleShot(delay, self.keep_on_top)
 
-            self._fg_proc = proto(on_foreground)
-            u.SetWinEventHook.restype = wintypes.HANDLE
-            u.SetWinEventHook.argtypes = [
-                wintypes.DWORD,
-                wintypes.DWORD,
-                wintypes.HANDLE,
-                proto,
-                wintypes.DWORD,
-                wintypes.DWORD,
-                wintypes.DWORD,
-            ]
-            self._fg_hook = u.SetWinEventHook(
+            self._fg_proc = win32.WinEventProc(on_foreground)
+            self._fg_hook = win32.user32().SetWinEventHook(
                 3, 3, None, self._fg_proc, 0, 0, 0
             )
         except Exception:
             logger.debug("install_foreground_hook failed", exc_info=True)
             self._fg_hook = None
 
+    def remove_foreground_hook(self):
+        if not self._fg_hook:
+            return
+        try:
+            win32.user32().UnhookWinEvent(self._fg_hook)
+        except OSError:
+            logger.debug("remove_foreground_hook failed", exc_info=True)
+        self._fg_hook = None
+
     def harden_window(self):
         try:
             hwnd = int(self.winId())
-            u = ctypes.windll.user32
-            u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
-            u.SetWindowLongPtrW.argtypes = [
-                wintypes.HWND,
-                ctypes.c_int,
-                ctypes.c_ssize_t,
-            ]
+            u = win32.user32()
             ex = u.GetWindowLongPtrW(hwnd, -20)
             u.SetWindowLongPtrW(hwnd, -20, ex | 0x20 | 0x80 | 0x08000000)
         except Exception:
@@ -321,6 +311,7 @@ class Overlay(QWidget):
                 easter.pick(np, self) if self.cfg.get("easter", True) else None
             )
             self.force_paint = True
+            self.wake()
         elif (
             np.playing != self.playing
             or abs(np.position - self.raw_position()) > 0.35
@@ -355,6 +346,7 @@ class Overlay(QWidget):
             self.state = "missing"
         self.track_changed_at = self.clock()
         self.force_paint = True
+        self.wake()
 
     def on_translated(self, key):
         self._layout_cache.clear()
@@ -382,6 +374,7 @@ class Overlay(QWidget):
     def toast(self, text):
         self.toast_text = text
         self.toast_until = self.clock() + 2.0
+        self.wake()
 
     def current_index(self, pos):
         return bisect.bisect_right(self.times, pos) - 1
@@ -957,6 +950,10 @@ class Overlay(QWidget):
         self.was_animating = animating
         self.force_paint = False
         self.last_region = region
+        idle = not animating and self.alpha < 0.003 and target == 0.0
+        interval = IDLE_INTERVAL_MS if idle else ACTIVE_INTERVAL_MS
+        if self.timer.isActive() and self.timer.interval() != interval:
+            self.timer.setInterval(interval)
 
     def visible_entries(self):
         out = [e for e, _ in self.exiting]
@@ -1305,9 +1302,32 @@ class Overlay(QWidget):
                 min(1.0, (0.65 if white else 0.5) * glow),
             )
         if path is None:
-            path = QPainterPath()
-            path.addText(QPointF(x, base_y), font, text)
+            path = self.text_path(text, font).translated(x, base_y)
         p.fillPath(path, brush)
+
+    def text_path(self, text, font):
+        key = (text, font.key())
+        path = self._path_cache.get(key)
+        if path is not None:
+            self._path_cache.move_to_end(key)
+            return path
+        path = QPainterPath()
+        path.addText(QPointF(0, 0), font, text)
+        self._path_cache[key] = path
+        if len(self._path_cache) > PATH_CACHE_SIZE:
+            self._path_cache.popitem(last=False)
+        return path
+
+    def scratch_layer(self, width, height):
+        img = self._scratch
+        if img is None or img.width() < width or img.height() < height:
+            grow_w = max(width, img.width() if img else 0)
+            grow_h = max(height, img.height() if img else 0)
+            img = QImage(
+                grow_w, grow_h, QImage.Format.Format_ARGB32_Premultiplied
+            )
+            self._scratch = img
+        return img
 
     def draw_block(self, p, line, pl, mode, pos):
         font = self.main_font()
@@ -1476,13 +1496,16 @@ class Overlay(QWidget):
                     fill_x = lx + lw_ * lwf
                     left, top = x0 - 2 * m, base_y - ascent - 2 * m
                     lw_img, lh_img = fill_x - left + m, lh + 4 * m
-                    layer = QImage(
-                        int(lw_img) + 2,
-                        int(lh_img) + 2,
-                        QImage.Format.Format_ARGB32_Premultiplied,
-                    )
-                    layer.fill(Qt.GlobalColor.transparent)
+                    used = QRect(0, 0, int(lw_img) + 2, int(lh_img) + 2)
+                    layer = self.scratch_layer(used.width(), used.height())
                     lp = QPainter(layer)
+                    lp.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_Source
+                    )
+                    lp.fillRect(used, Qt.GlobalColor.transparent)
+                    lp.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_SourceOver
+                    )
                     lp.setRenderHint(QPainter.RenderHint.Antialiasing)
                     lp.translate(-left, -top)
                     for (
@@ -1520,7 +1543,7 @@ class Overlay(QWidget):
                         QRectF(left, top, lw_img + 2, lh_img + 2), QBrush(fade)
                     )
                     lp.end()
-                    p.drawImage(QPointF(left, top), layer)
+                    p.drawImage(QPointF(left, top), layer, QRectF(used))
                 lit = []
                 p.restore()
                 last_row_end = ((x0 + roww) * rs, row_top + ascent * rs)
@@ -1665,6 +1688,8 @@ class Overlay(QWidget):
 
     def card_fonts(self):
         s = self.cfg["scale"]
+        if self._card_fonts is not None and self._card_fonts[0] == s:
+            return self._card_fonts[1]
         title = QFont("Segoe UI Variable Display", 1)
         title.setPixelSize(int(16 * s))
         title.setWeight(QFont.Weight.Bold)
@@ -1673,6 +1698,7 @@ class Overlay(QWidget):
         badge = QFont("Segoe UI Variable Text", 1)
         badge.setPixelSize(max(8, int(10 * s)))
         badge.setWeight(QFont.Weight.Bold)
+        self._card_fonts = (s, (title, artist, badge))
         return title, artist, badge
 
     def card_badge(self):
@@ -1683,11 +1709,29 @@ class Overlay(QWidget):
         )
 
     def card_rect(self):
-        s = self.cfg["scale"]
-        tf, af, bf = self.card_fonts()
         t = self.track
         title = t.title if t else "FollowTheLyrics"
         artist = t.artist if t else ""
+        band = self.column_band() if self.column_mode() else None
+        key = (
+            self.cfg["scale"],
+            self.cfg.get("position"),
+            title,
+            artist,
+            self.card_badge(),
+            self.width(),
+            self._zones_key,
+            band.getRect() if band is not None else None,
+        )
+        if self._card_rect is not None and self._card_rect[0] == key:
+            return QRectF(self._card_rect[1])
+        rect = self._compute_card_rect(title, artist, band)
+        self._card_rect = (key, QRectF(rect))
+        return rect
+
+    def _compute_card_rect(self, title, artist, band):
+        s = self.cfg["scale"]
+        tf, af, bf = self.card_fonts()
         tw = min(QFontMetricsF(tf).horizontalAdvance(title), 260 * s)
         aw = min(QFontMetricsF(af).horizontalAdvance(artist), 260 * s)
         bw = QFontMetricsF(bf).horizontalAdvance(self.card_badge()) + 12 * s
@@ -1696,11 +1740,8 @@ class Overlay(QWidget):
         width = self.width()
         m = 18 * s
         spots = [(m, m), (width - m - w, m), ((width - w) / 2, m)]
-        band = None
-        if self.column_mode():
-            band = self.column_band()
-            if self.cfg.get("position") == "left":
-                spots = [(width - m - w, m), ((width - w) / 2, m), (m, m)]
+        if band is not None and self.cfg.get("position") == "left":
+            spots = [(width - m - w, m), ((width - w) / 2, m), (m, m)]
         for x, y in spots:
             r = QRectF(x, y, w, h)
             if any(r.intersects(z) for z in self.zones):
