@@ -1,5 +1,4 @@
 import dataclasses
-import importlib
 import logging
 import os
 import random
@@ -13,12 +12,11 @@ from PyQt6.QtGui import QImage
 from PyQt6.QtGui import QLinearGradient
 from PyQt6.QtGui import QPainter
 
+from followthelyrics import desktop
 from followthelyrics.config import games
 from followthelyrics.config import settings
 from followthelyrics.lyrics import demo_song
 from followthelyrics.overlay import window
-from followthelyrics.playback import audio
-from followthelyrics.system import bootstrap
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,11 @@ def snapshot(path, at, args):
     )
     profiles = games.DEFAULT_PROFILES
     o = window.Overlay(
-        cfg, profiles, clock=lambda: fake[0], rng=random.Random(args.seed)
+        cfg,
+        profiles,
+        desktop.current().windowing,
+        clock=lambda: fake[0],
+        rng=random.Random(args.seed),
     )
     o.timer.stop()
     o.top_timer.stop()
@@ -81,13 +83,8 @@ def snapshot(path, at, args):
 
 def selftest(app, out_dir, app_factory):
     report = [f"frozen={settings.FROZEN}", f"data_dir={settings.DATA_DIR}"]
-    report += [f"boot {n}: {r}" for n, r in bootstrap.LOG]
-    try:
-        importlib.import_module("followthelyrics.playback.media")
-        report.append("winrt=ok")
-    except (ImportError, OSError) as e:
-        report.append(f"winrt=ERREUR {e!r}")
-    report.append("audio=" + ("ok" if audio.pyaudio is not None else "ABSENT"))
+    report.append(f"systeme={desktop.current().name}")
+    report += desktop.current().checks()
 
     def finish(a):
         try:

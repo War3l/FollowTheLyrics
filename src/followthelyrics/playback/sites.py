@@ -1,10 +1,4 @@
-import ctypes
-import logging
 import re
-import time
-from ctypes import wintypes
-
-logger = logging.getLogger(__name__)
 
 OTHER = "other"
 
@@ -140,63 +134,12 @@ def site_of(tab_title):
     return None
 
 
-_exe_cache: dict[int, str] = {}
-_exe_cache_at = [0.0]
-
-
-def _exe_name(pid):
-    now = time.monotonic()
-    if now - _exe_cache_at[0] > 60:
-        _exe_cache.clear()
-        _exe_cache_at[0] = now
-    if pid in _exe_cache:
-        return _exe_cache[pid]
-    k = ctypes.windll.kernel32
-    k.OpenProcess.restype = wintypes.HANDLE
-    name = ""
-    h = k.OpenProcess(0x1000, False, pid)
-    if h:
-        buf = ctypes.create_unicode_buffer(520)
-        n = wintypes.DWORD(520)
-        if k.QueryFullProcessImageNameW(
-            wintypes.HANDLE(h), 0, buf, ctypes.byref(n)
-        ):
-            name = buf.value.replace("/", "\\").split("\\")[-1].lower()
-        k.CloseHandle(wintypes.HANDLE(h))
-    _exe_cache[pid] = name
-    return name
-
-
-def window_titles(exes):
-    out = []
-    try:
-        u = ctypes.windll.user32
-        exes = tuple(e.lower() for e in exes)
-
-        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-        def each(hwnd, _):
-            if not u.IsWindowVisible(hwnd):
-                return True
-            n = u.GetWindowTextLengthW(hwnd)
-            if n <= 0:
-                return True
-            pid = wintypes.DWORD()
-            u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if _exe_name(pid.value) in exes:
-                buf = ctypes.create_unicode_buffer(n + 1)
-                u.GetWindowTextW(hwnd, buf, n + 1)
-                if buf.value:
-                    out.append(buf.value)
-            return True
-
-        u.EnumWindows(each, 0)
-    except Exception:
-        logger.debug("window_titles failed", exc_info=True)
-    return out
+def no_windows(_exes):
+    return []
 
 
 class SiteGuard:
-    def __init__(self, off=(), other=False, titles=window_titles):
+    def __init__(self, off=(), other=False, titles=no_windows):
         self.off = set(off)
         self.other = bool(other)
         self.titles = titles

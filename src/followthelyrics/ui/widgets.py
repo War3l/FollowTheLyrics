@@ -1,7 +1,5 @@
-import ctypes
 import logging
 import math
-import sys
 import time
 from typing import TYPE_CHECKING
 
@@ -67,48 +65,6 @@ def alpha(c, a):
 def qss(c):
     c = QColor(c)
     return f"rgba({c.red()},{c.green()},{c.blue()},{c.alphaF():.3f})"
-
-
-def enable_backdrop(hwnd):
-    try:
-        if sys.getwindowsversion().build < 22621:
-            return False
-
-        class MARGINS(ctypes.Structure):
-            _fields_ = [
-                ("left", ctypes.c_int),
-                ("right", ctypes.c_int),
-                ("top", ctypes.c_int),
-                ("bottom", ctypes.c_int),
-            ]
-
-        dwm = ctypes.windll.dwmapi
-        hwnd = ctypes.c_void_p(int(hwnd))
-        margins = MARGINS(-1, -1, -1, -1)
-        dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-        kind = ctypes.c_int(3)
-        return (
-            dwm.DwmSetWindowAttribute(
-                hwnd, 38, ctypes.byref(kind), ctypes.sizeof(kind)
-            )
-            == 0
-        )
-    except Exception:
-        logger.debug("enable_backdrop failed", exc_info=True)
-        return False
-
-
-def dark_caption(hwnd):
-    try:
-        dwm = ctypes.windll.dwmapi
-        hwnd = ctypes.c_void_p(int(hwnd))
-        for attr, bgr in ((35, 0x00150E0D), (34, 0x00342C2B), (36, 0x00F4EEEC)):
-            val = ctypes.c_uint(bgr)
-            dwm.DwmSetWindowAttribute(
-                hwnd, attr, ctypes.byref(val), ctypes.sizeof(val)
-            )
-    except Exception:
-        logger.debug("dark_caption failed", exc_info=True)
 
 
 def ui_font(px, weight=QFont.Weight.Normal, family="Segoe UI Variable Text"):
@@ -1038,9 +994,10 @@ class HotkeyButton(Hover, QWidget):
     started = pyqtSignal()
     ended = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, manager, parent=None):
         super().__init__(parent)
         self.init_hover()
+        self.manager = manager
         self.combo = ""
         self.error = False
         self.listening = False
@@ -1108,7 +1065,10 @@ class HotkeyButton(Hover, QWidget):
             return super().keyPressEvent(e)
         if e.isAutoRepeat():
             return None
-        vk, mods = int(e.nativeVirtualKey()), self._mods(e)
+        vk = self.manager.keyboard.virtual_key(
+            int(e.nativeVirtualKey()), e.key()
+        )
+        mods = self._mods(e)
         if vk == 0x1B:
             return self.finish()
         if vk in (0x08, 0x2E) and not mods:
@@ -1171,7 +1131,9 @@ class HotkeyButton(Hover, QWidget):
                     self.note or "Appuie sur les touches…",
                 )
         elif self.combo:
-            draw_keycaps(p, hotkeys.key_names(self.combo), r.left() + 12, cy)
+            draw_keycaps(
+                p, self.manager.key_names(self.combo), r.left() + 12, cy
+            )
         else:
             p.setPen(QColor(DIM))
             p.setFont(ui_font(13))

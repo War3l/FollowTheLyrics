@@ -1,4 +1,3 @@
-import ctypes
 import logging
 
 from PyQt6.QtCore import QPointF
@@ -20,7 +19,6 @@ from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
 from followthelyrics.config import settings
-from followthelyrics.system import install
 from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
@@ -74,19 +72,30 @@ class Badge(QWidget):
 class Welcome(QWidget):
     finished = pyqtSignal(bool, bool, bool)
 
-    def __init__(self):
+    def __init__(self, desktop_startup, installation, desktop):
         super().__init__()
+        self.startup = desktop_startup
+        self.windowing = desktop.windowing
         self.setWindowTitle("Bienvenue dans FollowTheLyrics")
         self.setWindowIcon(widgets.make_icon())
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.can_install = settings.FROZEN and not install.running_installed()
+        self.can_install = (
+            settings.FROZEN
+            and installation is not None
+            and not installation.running_installed()
+        )
+        self.offers_shortcut = (
+            settings.FROZEN and desktop_startup.supports_shortcuts
+        )
+        self.offers_autostart = desktop_startup.supports_autostart
         self.setFixedSize(
             660,
-            640
-            + (60 if settings.FROZEN else 0)
+            592
+            + (48 if self.offers_autostart else 0)
+            + (60 if self.offers_shortcut else 0)
             + (72 if self.can_install else 0),
         )
         self._drag = None
@@ -132,11 +141,14 @@ class Welcome(QWidget):
 
         lay.addSpacing(16)
         self.autostart = widgets.Toggle()
-        self.autostart.setChecked(settings.autostart_enabled())
-        lay.addLayout(self._option("Lancer avec Windows", self.autostart))
+        self.autostart.setChecked(desktop_startup.enabled())
+        if self.offers_autostart:
+            lay.addLayout(
+                self._option(f"Lancer avec {desktop.name}", self.autostart)
+            )
         self.shortcut = widgets.Toggle()
-        self.shortcut.setChecked(settings.FROZEN)
-        if settings.FROZEN:
+        self.shortcut.setChecked(self.offers_shortcut)
+        if self.offers_shortcut:
             lay.addSpacing(28)
             lay.addLayout(
                 self._option("Créer un raccourci sur le bureau", self.shortcut)
@@ -253,13 +265,7 @@ class Welcome(QWidget):
             scr.center().x() - self.width() // 2,
             scr.center().y() - self.height() // 2,
         )
-        try:
-            val = ctypes.c_int(2)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                int(self.winId()), 33, ctypes.byref(val), ctypes.sizeof(val)
-            )
-        except Exception:
-            logger.debug("showEvent failed", exc_info=True)
+        self.windowing.round_corners(int(self.winId()))
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -286,7 +292,7 @@ class Welcome(QWidget):
         self._done = True
         self.finished.emit(
             self.autostart.isChecked(),
-            settings.FROZEN and self.shortcut.isChecked(),
+            self.offers_shortcut and self.shortcut.isChecked(),
             self.can_install and self.setup.isChecked(),
         )
         self.close()
@@ -294,5 +300,5 @@ class Welcome(QWidget):
     def closeEvent(self, e):
         if not self._done:
             self._done = True
-            self.finished.emit(settings.autostart_enabled(), False, False)
+            self.finished.emit(self.startup.enabled(), False, False)
         e.accept()

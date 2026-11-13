@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 import os
-import subprocess
 import sys
 import urllib.request
 
@@ -10,13 +9,13 @@ from PyQt6.QtCore import QThread
 from PyQt6.QtCore import pyqtSignal
 
 from followthelyrics import version
-from followthelyrics.system import bootstrap
+from followthelyrics.config import settings
+from followthelyrics.system import startup
 
 logger = logging.getLogger(__name__)
 
 API_URL = f"https://api.github.com/repos/{version.REPO}/releases/latest"
 RELEASES_URL = f"https://github.com/{version.REPO}/releases/latest"
-ASSET_NAME = "FollowTheLyrics.exe"
 DOWNLOAD_PREFIX = f"https://github.com/{version.REPO}/releases/download/"
 USER_AGENT = "FollowTheLyrics-updater"
 
@@ -35,7 +34,7 @@ def is_newer(candidate, current):
     return a + (0,) * (n - len(a)) > b + (0,) * (n - len(b))
 
 
-def fetch_latest(timeout=8):
+def fetch_latest(asset_name, timeout=8):
     api = os.environ.get("FTL_UPDATE_API") or API_URL
     if not api.startswith(f"https://api.github.com/repos/{version.REPO}/"):
         api = API_URL
@@ -50,7 +49,7 @@ def fetch_latest(timeout=8):
         data = json.loads(r.read().decode("utf-8"))
     for asset in data.get("assets", []):
         url = asset.get("browser_download_url", "")
-        if asset.get("name") == ASSET_NAME and url.startswith(DOWNLOAD_PREFIX):
+        if asset.get("name") == asset_name and url.startswith(DOWNLOAD_PREFIX):
             digest = asset.get("digest") or ""
             return {
                 "version": str(data.get("tag_name", "")).lstrip("vV"),
@@ -64,7 +63,7 @@ def fetch_latest(timeout=8):
     return None
 
 
-def download(info, dest, progress=None, timeout=20):
+def download(info, dest, release, progress=None, timeout=20):
     if not info["url"].startswith(DOWNLOAD_PREFIX):
         raise ValueError("adresse de telechargement inattendue")
     req = urllib.request.Request(
@@ -87,8 +86,8 @@ def download(info, dest, progress=None, timeout=20):
             if progress and total:
                 progress(min(1.0, done / total))
     with open(dest, "rb") as f:
-        head = f.read(2)
-    if head != b"MZ" or done < 5_000_000:
+        head = f.read(len(release.magic))
+    if head != release.magic or done < release.min_size:
         raise ValueError("le fichier telecharge n'est pas un programme valide")
     if info["size"] and done != info["size"]:
         raise ValueError("telechargement incomplet")
@@ -110,24 +109,16 @@ def swap(exe, new):
         raise
 
 
-def relaunch(exe, version):
-    env = dict(os.environ)
-    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    for key in list(env):
-        if key.startswith(("_MEIPASS", "_PYI_")):
-            env.pop(key, None)
-    env.pop("FTL_FAKE_VERSION", None)
-    subprocess.Popen(
-        [exe, "--updated", version],
-        env=env,
-        cwd=os.path.dirname(exe),
-        close_fds=True,
-        creationflags=0x00000008 | 0x00000200,
+def relaunch(session, exe, new_version):
+    session.spawn_detached(
+        [exe, "--updated", new_version],
+        os.path.dirname(exe),
+        startup.child_environment(drop=("FTL_FAKE_VERSION",)),
     )
 
 
 def cleanup_leftovers():
-    if not bootstrap.FROZEN:
+    if not settings.FROZEN:
         return True
     ok = True
     for suffix in (".old", ".new"):
@@ -144,9 +135,13 @@ class UpdateCheck(QThread):
     found = pyqtSignal(dict)
     nothing = pyqtSignal(bool)
 
+    def __init__(self, release):
+        super().__init__()
+        self.release = release
+
     def run(self):
         try:
-            info = fetch_latest()
+            info = fetch_latest(self.release.asset)
             if (
                 info
                 and info["version"]
@@ -165,21 +160,22 @@ class UpdateInstall(QThread):
     failed = pyqtSignal(str)
     installed = pyqtSignal(str)
 
-    def __init__(self, info):
+    def __init__(self, info, release):
         super().__init__()
         self.info = info
+        self.release = release
 
     def run(self):
         exe = sys.executable
         new = exe + ".new"
         try:
-            download(self.info, new, self.progress.emit)
+            download(self.info, new, self.release, self.progress.emit)
             swap(exe, new)
         except PermissionError:
             self._clean(new)
             self.failed.emit(
                 "Impossible d'écrire dans le dossier du programme. Déplace "
-                "FollowTheLyrics.exe "
+                f"{self.release.asset} "
                 "dans un dossier à toi (Bureau, Documents…) puis réessaie."
             )
             return

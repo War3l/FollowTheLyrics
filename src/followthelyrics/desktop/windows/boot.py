@@ -5,7 +5,9 @@ import os
 import sys
 from ctypes import wintypes
 
-from followthelyrics.system import win32
+from followthelyrics.desktop.windows import api
+
+assert sys.platform == "win32"
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +32,11 @@ LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
 
 
 def _loaded_path(name):
-    h = win32.kernel32().GetModuleHandleW(name)
+    h = api.kernel32().GetModuleHandleW(name)
     if not h:
         return None
     buf = ctypes.create_unicode_buffer(1024)
-    win32.kernel32().GetModuleFileNameW(h, buf, 1024)
+    api.kernel32().GetModuleFileNameW(h, buf, 1024)
     return buf.value
 
 
@@ -69,9 +71,7 @@ def _load(path):
     if not os.path.exists(path):
         LOG.append((name, "absent du paquet"))
         return
-    h = win32.kernel32().LoadLibraryExW(
-        path, None, LOAD_WITH_ALTERED_SEARCH_PATH
-    )
+    h = api.kernel32().LoadLibraryExW(path, None, LOAD_WITH_ALTERED_SEARCH_PATH)
     if h:
         LOG.append((name, f"ok v{_file_version(path)}"))
     else:

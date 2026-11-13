@@ -60,6 +60,7 @@ jobs:
               sys.exit(1)
           PY
       - run: python -m mypy
+      - run: python -m mypy --platform linux
       - run: python -m pytest
       - name: Ecrire la version
         run: printf '%s\n' "$VERSION" > src/followthelyrics/VERSION

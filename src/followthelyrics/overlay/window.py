@@ -5,7 +5,6 @@ import math
 import random
 import time
 from collections import OrderedDict
-from ctypes import wintypes
 from types import SimpleNamespace
 from typing import Any
 
@@ -37,7 +36,6 @@ from followthelyrics.overlay import animation
 from followthelyrics.overlay import colors
 from followthelyrics.overlay import easter
 from followthelyrics.overlay import effects
-from followthelyrics.system import win32
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +55,9 @@ UPPER = 0.5
 
 
 class Overlay(QWidget):
-    def __init__(self, cfg, profiles, clock=time.monotonic, rng=None):
+    def __init__(
+        self, cfg, profiles, windowing, clock=time.monotonic, rng=None
+    ):
         super().__init__(
             None,
             Qt.WindowType.FramelessWindowHint
@@ -107,6 +107,7 @@ class Overlay(QWidget):
         self._card_fonts = None
         self._card_rect = None
         self._scratch = None
+        self.windowing = windowing
         self._fg_hook = None
         self._zones_key: tuple[Any, ...] = ()
         self._hero_cache = {}
@@ -174,53 +175,23 @@ class Overlay(QWidget):
         self._zones_key = tuple(z.getRect() for z in self.zones)
 
     def keep_on_top(self):
-        if not self.isVisible():
-            return
-        try:
-            win32.user32().SetWindowPos(
-                int(self.winId()),
-                wintypes.HWND(-1),
-                0,
-                0,
-                0,
-                0,
-                0x0001 | 0x0002 | 0x0010 | 0x0200,
-            )
-        except Exception:
-            logger.debug("keep_on_top failed", exc_info=True)
+        if self.isVisible():
+            self.windowing.raise_overlay(int(self.winId()))
 
     def install_foreground_hook(self):
-        try:
+        def on_foreground():
+            for delay in (0, 300, 1000, 2500):
+                QTimer.singleShot(delay, self.keep_on_top)
 
-            def on_foreground(*_):
-                for delay in (0, 300, 1000, 2500):
-                    QTimer.singleShot(delay, self.keep_on_top)
-
-            self._fg_proc = win32.WinEventProc(on_foreground)
-            self._fg_hook = win32.user32().SetWinEventHook(
-                3, 3, None, self._fg_proc, 0, 0, 0
-            )
-        except Exception:
-            logger.debug("install_foreground_hook failed", exc_info=True)
-            self._fg_hook = None
+        self._fg_hook = self.windowing.on_foreground_change(on_foreground)
 
     def remove_foreground_hook(self):
-        if not self._fg_hook:
-            return
-        try:
-            win32.user32().UnhookWinEvent(self._fg_hook)
-        except OSError:
-            logger.debug("remove_foreground_hook failed", exc_info=True)
-        self._fg_hook = None
+        if self._fg_hook is not None:
+            self._fg_hook.close()
+            self._fg_hook = None
 
     def harden_window(self):
-        try:
-            hwnd = int(self.winId())
-            u = win32.user32()
-            ex = u.GetWindowLongPtrW(hwnd, -20)
-            u.SetWindowLongPtrW(hwnd, -20, ex | 0x20 | 0x80 | 0x08000000)
-        except Exception:
-            logger.debug("harden_window failed", exc_info=True)
+        self.windowing.prepare_overlay(int(self.winId()))
 
     def raw_position(self):
         return self.anchor_pos + (

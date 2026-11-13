@@ -1,4 +1,3 @@
-import ctypes
 import logging
 
 from PyQt6.QtCore import QPointF
@@ -488,10 +487,4 @@ class ZoneEditor(QWidget):
 
     def showEvent(self, e):
         super().showEvent(e)
-        try:
-            val = ctypes.c_int(1)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                int(self.winId()), 20, ctypes.byref(val), ctypes.sizeof(val)
-            )
-        except Exception:
-            logger.debug("showEvent failed", exc_info=True)
+        self.app.desktop.windowing.dark_title_bar(int(self.winId()))

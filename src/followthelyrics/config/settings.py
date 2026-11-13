@@ -6,12 +6,6 @@ import sys
 import tempfile
 from typing import Any
 
-from PyQt6.QtCore import QFile
-from PyQt6.QtCore import QStandardPaths
-
-if sys.platform == "win32":
-    import winreg
-
 logger = logging.getLogger(__name__)
 
 APP_NAME = "FollowTheLyrics"
@@ -21,10 +15,22 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(PACKAGE_DIR))
 FROZEN = bool(getattr(sys, "frozen", False))
 
 
+def _user_config_root():
+    if sys.platform == "win32":
+        return os.environ.get("APPDATA") or os.path.expanduser("~")
+    if sys.platform == "darwin":
+        return os.path.join(
+            os.path.expanduser("~"), "Library", "Application Support"
+        )
+    return os.environ.get("XDG_CONFIG_HOME") or os.path.join(
+        os.path.expanduser("~"), ".config"
+    )
+
+
 def _data_dir():
     if not FROZEN:
         return os.environ.get("FTL_DATA_DIR") or PROJECT_ROOT
-    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    base = _user_config_root()
     path = os.path.join(base, APP_NAME)
     old = os.path.join(base, "LyricsOverlay")
     try:
@@ -39,113 +45,6 @@ def _data_dir():
 
 DATA_DIR = _data_dir()
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
-
-_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_RUN_NAME = APP_NAME
-
-
-def launch_command(minimized=False, exe=None):
-    if exe or FROZEN:
-        cmd = f'"{exe or sys.executable}"'
-    else:
-        py = sys.executable
-        pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
-        cmd = f'"{pyw if os.path.exists(pyw) else py}" -m followthelyrics'
-    return cmd + (" --minimized" if minimized else "")
-
-
-def autostart_command():
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
-            value, _ = winreg.QueryValueEx(k, _RUN_NAME)
-        return str(value or "")
-    except OSError:
-        return ""
-
-
-def autostart_enabled():
-    return bool(autostart_command())
-
-
-def set_autostart(on, exe=None):
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE
-        ) as k:
-            if on:
-                winreg.SetValueEx(
-                    k,
-                    _RUN_NAME,
-                    0,
-                    winreg.REG_SZ,
-                    launch_command(minimized=True, exe=exe),
-                )
-            else:
-                with contextlib.suppress(FileNotFoundError):
-                    winreg.DeleteValue(k, _RUN_NAME)
-        return True
-    except OSError:
-        logger.debug("set_autostart failed", exc_info=True)
-        return False
-
-
-def refresh_autostart():
-    was_old = False
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            _RUN_KEY,
-            0,
-            winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE,
-        ) as k:
-            for old in OLD_NAMES:
-                try:
-                    winreg.QueryValueEx(k, old)
-                    winreg.DeleteValue(k, old)
-                    was_old = True
-                except FileNotFoundError:
-                    pass
-    except OSError:
-        logger.debug("refresh_autostart failed", exc_info=True)
-    if was_old or autostart_enabled():
-        set_autostart(True)
-    try:
-        desktop = QStandardPaths.writableLocation(
-            QStandardPaths.StandardLocation.DesktopLocation
-        )
-        old_link = os.path.join(desktop, "Lyrics Overlay.lnk")
-        if os.path.exists(old_link):
-            os.remove(old_link)
-            create_desktop_shortcut()
-    except Exception:
-        logger.debug("refresh_autostart failed", exc_info=True)
-
-
-def desktop_link():
-    try:
-        desktop = QStandardPaths.writableLocation(
-            QStandardPaths.StandardLocation.DesktopLocation
-        )
-        return os.path.join(desktop, APP_NAME + ".lnk") if desktop else ""
-    except Exception:
-        logger.debug("desktop_link failed", exc_info=True)
-        return ""
-
-
-def create_desktop_shortcut(exe=None):
-    if not (exe or FROZEN):
-        return False
-    try:
-        link = desktop_link()
-        if not link:
-            return False
-        if os.path.exists(link):
-            os.remove(link)
-        return bool(QFile.link(exe or sys.executable, link))
-    except Exception:
-        logger.debug("create_desktop_shortcut failed", exc_info=True)
-        return False
-
 
 MODES = {
     "classic": (

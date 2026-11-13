@@ -1,20 +1,21 @@
 import argparse
-import ctypes
 import logging
 import os
 import sys
 import time
-from ctypes import wintypes
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtNetwork import QLocalServer
 from PyQt6.QtNetwork import QLocalSocket
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtWidgets import QSystemTrayIcon
 
+from followthelyrics import desktop as platform_desktop
 from followthelyrics import diagnostics
 from followthelyrics import logs
 from followthelyrics import version
@@ -25,9 +26,9 @@ from followthelyrics.overlay import window
 from followthelyrics.playback import audio
 from followthelyrics.playback import sites
 from followthelyrics.playback import worker
-from followthelyrics.system import bootstrap
 from followthelyrics.system import hotkeys
 from followthelyrics.system import install
+from followthelyrics.system import startup
 from followthelyrics.system import updater
 from followthelyrics.ui import panel
 from followthelyrics.ui import welcome
@@ -38,14 +39,22 @@ logger = logging.getLogger(__name__)
 
 
 class App:
-    def __init__(self, app, demo=False, minimized=False, updated=""):
-
+    def __init__(
+        self, app, demo=False, minimized=False, updated="", desktop=None
+    ):
         self.app = app
+        self.desktop = desktop or platform_desktop.current()
+        self.startup = startup.Startup(
+            self.desktop.autostart, self.desktop.shortcuts
+        )
+        self.installation = installation_of(self.desktop, self.startup)
         self.quitting = False
         self.cfg = settings.load_config()
         self.profiles = games.load_profiles()
         self.profiles_mtime = games.profiles_mtime()
-        self.overlay = window.Overlay(self.cfg, self.profiles)
+        self.overlay = window.Overlay(
+            self.cfg, self.profiles, self.desktop.windowing
+        )
         self.overlay.show()
         self.overlay.harden_window()
         self.overlay.keep_on_top()
@@ -63,6 +72,8 @@ class App:
         self.sources = []
         self.browsers = {}
         self.worker = worker.MediaWorker(
+            self.desktop.media,
+            self.desktop.foreground.window_titles,
             self.cfg.get("sources_blocked", []),
             self.cfg.get("sites_off", []),
             self.cfg.get("sites_other", False),
@@ -77,13 +88,10 @@ class App:
 
         self.beat_bridge = worker.BeatBridge()
         self.beat_bridge.beat.connect(self.overlay.on_beat)
-        self.audio = None
-        try:
-            self.audio = audio.AudioBeats(self.beat_bridge.beat.emit)
-            self.audio.start()
-        except Exception:
-            logger.warning("__init__ failed", exc_info=True)
-            self.audio = None
+        self.audio = audio.AudioBeats(
+            self.desktop.audio, self.beat_bridge.beat.emit
+        )
+        self.audio.start()
 
         self.profile_timer = QTimer()
         self.profile_timer.timeout.connect(self.check_profile)
@@ -91,7 +99,9 @@ class App:
 
         self.cfg["hotkeys"] = hotkeys.normalize(self.cfg.get("hotkeys"))
         self.hotkeys_failed = []
-        self.hotkeys = hotkeys.Hotkeys(self.cfg["hotkeys"])
+        self.hotkeys = hotkeys.Hotkeys(
+            self.desktop.hotkeys, self.desktop.keyboard, self.cfg["hotkeys"]
+        )
         self.hotkeys.pressed.connect(self.on_hotkey)
         self.hotkeys.failed.connect(self.on_hotkeys_failed)
 
@@ -142,7 +152,9 @@ class App:
         self.cleanup_timer = QTimer()
         self.cleanup_timer.timeout.connect(self.cleanup_update)
         self.cleanup_timer.start(3000)
-        if bootstrap.FROZEN or os.environ.get("FTL_FAKE_VERSION"):
+        if self.desktop.release is not None and (
+            settings.FROZEN or os.environ.get("FTL_FAKE_VERSION")
+        ):
             QTimer.singleShot(5000, self.check_update)
             self.update_timer = QTimer()
             self.update_timer.timeout.connect(self.check_update)
@@ -160,7 +172,7 @@ class App:
             return
         if self.update_check and self.update_check.isRunning():
             return
-        self.update_check = updater.UpdateCheck()
+        self.update_check = updater.UpdateCheck(self.desktop.release)
         self.update_check.found.connect(self.on_update_found)
         if manual:
             self.update_check.nothing.connect(self.panel.update_none)
@@ -187,14 +199,16 @@ class App:
             self.update_job and self.update_job.isRunning()
         ):
             return
-        if not bootstrap.FROZEN:
-            os.startfile(updater.RELEASES_URL)
+        if not settings.FROZEN:
+            QDesktopServices.openUrl(QUrl(updater.RELEASES_URL))
             self.panel.update_failed(
                 "Version « code » : télécharge la nouvelle version sur la "
                 "page ouverte."
             )
             return
-        self.update_job = updater.UpdateInstall(self.update_info)
+        self.update_job = updater.UpdateInstall(
+            self.update_info, self.desktop.release
+        )
         self.update_job.progress.connect(self.panel.update_progress)
         self.update_job.failed.connect(self.panel.update_failed)
         self.update_job.installed.connect(self.on_update_installed)
@@ -202,7 +216,7 @@ class App:
 
     def on_update_installed(self, version):
         try:
-            updater.relaunch(sys.executable, version)
+            updater.relaunch(self.desktop.session, sys.executable, version)
         except Exception as e:
             logger.warning("on_update_installed failed", exc_info=True)
             self.panel.update_failed(
@@ -237,8 +251,9 @@ class App:
             w.activateWindow()
 
     def capture_game(self):
-        exe, _full = games.foreground_info()
-        key, _prof = games.current_profile(self.profiles)
+        foreground = self.desktop.foreground.current()
+        exe = foreground.exe
+        key, _prof = games.current_profile(self.profiles, foreground)
         if key not in self.profiles.get("jeux", {}):
             own = os.path.basename(sys.executable).lower()
             if not exe or exe.lower() in (
@@ -282,7 +297,9 @@ class App:
         QTimer.singleShot(150, grab)
 
     def show_welcome(self):
-        self.welcome = welcome.Welcome()
+        self.welcome = welcome.Welcome(
+            self.startup, self.installation, self.desktop
+        )
         self.welcome.finished.connect(self.on_welcome)
         self.welcome.show()
         self.welcome.raise_()
@@ -294,10 +311,10 @@ class App:
         self.welcome = None
         if setup and self.install_here(autostart, shortcut):
             return
-        if autostart != settings.autostart_enabled():
-            settings.set_autostart(autostart)
+        if autostart != self.startup.enabled():
+            self.startup.set(autostart)
         if shortcut:
-            settings.create_desktop_shortcut()
+            self.startup.create_desktop_shortcut()
         if not self.quitting:
             self.panel.sync_from_cfg()
             self.show_panel()
@@ -382,12 +399,14 @@ class App:
             self.profiles_mtime = mt
             self.profiles = games.load_profiles()
             self.overlay.profile_key = None
-        key, prof = games.current_profile(self.profiles)
+        key, prof = games.current_profile(
+            self.profiles, self.desktop.foreground.current()
+        )
         if key != self.overlay.profile_key:
             self.overlay.set_profile(key, prof)
             if key != "bureau":
                 self.overlay.toast(f"Profil : {prof.get('nom', key)}")
-        excl = games.exclusive_fullscreen()
+        excl = self.desktop.foreground.exclusive_fullscreen()
         if excl and not self.exclusive:
             tip = (
                 prof.get("conseil_plein_ecran")
@@ -439,13 +458,10 @@ class App:
         o.toast(f"Zones : {o.profile.get('nom', o.profile_key)}")
 
     def edit_profiles(self):
-        try:
-            os.startfile(games.PROFILES_PATH)
-        except OSError:
-            logger.debug("edit_profiles failed", exc_info=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(games.PROFILES_PATH))
 
     def hotkey_text(self, name):
-        return hotkeys.pretty(self.cfg["hotkeys"].get(name, ""))
+        return self.hotkeys.pretty(self.cfg["hotkeys"].get(name, ""))
 
     def set_hotkey(self, name, combo):
         keys = dict(self.cfg["hotkeys"])
@@ -514,28 +530,30 @@ class App:
         self.panel.activateWindow()
 
     def install_here(self, autostart=None, shortcut=False):
+        if self.installation is None:
+            return False
         try:
-            exe = install.install()
+            exe = self.installation.install()
         except Exception as e:
             logger.warning("install_here failed", exc_info=True)
-            install.message(
+            self.desktop.dialogs.warn(
                 f"L'installation n'a pas pu se faire ({e}).\n\n"
-                "L'appli continue de marcher depuis ce fichier.",
-                0x30,
+                "L'appli continue de marcher depuis ce fichier."
             )
             return False
         if autostart is None:
-            autostart = settings.autostart_enabled()
-        settings.set_autostart(bool(autostart), exe=exe)
-        link = settings.desktop_link()
+            autostart = self.startup.enabled()
+        self.startup.set(bool(autostart), exe=exe)
+        link = self.startup.desktop_link()
         if shortcut or (link and os.path.exists(link)):
-            settings.create_desktop_shortcut(exe=exe)
-        install.launch(exe, "--installed")
+            self.startup.create_desktop_shortcut(exe=exe)
+        self.installation.launch(exe, "--installed")
         self.quit()
         return True
 
     def uninstall(self):
-        if install.run_uninstall():
+        if self.installation and self.installation.confirm_uninstall():
+            self.installation.run_uninstall()
             self.quit()
 
     def quit(self):
@@ -557,37 +575,42 @@ class App:
         self.worker.stop()
 
 
-INSTANCE_NAME = "LyricsOverlay-instance" + os.environ.get(
-    "FTL_TEST_INSTANCE", ""
-)
-_instance_mutex = None
+INSTANCE_NAME = "LyricsOverlay-instance" + install.TEST_INSTANCE
+_instance_lock = None
 
 
-def take_over_instance():
-    global _instance_mutex
+def installation_of(desktop, desktop_startup):
+    if desktop.installer is None or desktop.release is None:
+        return None
+    return install.Installation(
+        desktop.installer,
+        desktop_startup,
+        desktop.dialogs,
+        desktop.session,
+        desktop.release.asset,
+    )
 
-    k = ctypes.WinDLL("kernel32", use_last_error=True)
-    k.CreateMutexW.restype = wintypes.HANDLE
-    k.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
-    k.CloseHandle.argtypes = [wintypes.HANDLE]
+
+def _ask_running_instance_to_quit():
+    sock = QLocalSocket()
+    sock.connectToServer(INSTANCE_NAME)
+    if sock.waitForConnected(500):
+        sock.write(b"quit")
+        sock.flush()
+        sock.waitForBytesWritten(300)
+    sock.close()
+
+
+def take_over_instance(session):
+    global _instance_lock
+
+    _instance_lock = session.instance_lock(INSTANCE_NAME)
     asked = False
     deadline = time.monotonic() + 6.0
-    while True:
-        h = k.CreateMutexW(None, False, "Local\\" + INSTANCE_NAME)
-        already = ctypes.get_last_error() == 183
-        if not already or time.monotonic() > deadline:
-            _instance_mutex = h
-            break
-        k.CloseHandle(h)
+    while not _instance_lock.acquire() and time.monotonic() <= deadline:
         if not asked:
             asked = True
-            sock = QLocalSocket()
-            sock.connectToServer(INSTANCE_NAME)
-            if sock.waitForConnected(500):
-                sock.write(b"quit")
-                sock.flush()
-                sock.waitForBytesWritten(300)
-            sock.close()
+            _ask_running_instance_to_quit()
         time.sleep(0.15)
     QLocalServer.removeServer(INSTANCE_NAME)
     server = QLocalServer()
@@ -621,12 +644,8 @@ def main():
     logs.setup()
     logger.info("FollowTheLyrics %s", version.current())
 
-    try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "FollowTheLyrics.App"
-        )
-    except Exception:
-        logger.debug("main failed", exc_info=True)
+    desktop = platform_desktop.current()
+    desktop.session.set_app_id("FollowTheLyrics.App")
     app = QApplication(sys.argv)
     app.setApplicationName("FollowTheLyrics")
     app.setQuitOnLastWindowClosed(False)
@@ -636,40 +655,37 @@ def main():
     if args.selftest:
         diagnostics.selftest(app, args.selftest, App)
         return
+    desktop_startup = startup.Startup(desktop.autostart, desktop.shortcuts)
+    installation = installation_of(desktop, desktop_startup)
     if args.uninstall:
-        if install.is_installed() and (
-            args.quiet
-            or install.message("Désinstaller FollowTheLyrics de ce PC ?", 0x24)
-            == 6
+        if (
+            installation is not None
+            and installation.is_installed()
+            and (args.quiet or installation.confirm_uninstall())
         ):
-            take_over_instance()
-            keep = not args.purge
-            if not args.quiet:
-                keep = (
-                    install.message(
-                        "Garder tes réglages et tes zones pour une prochaine "
-                        "installation ?",
-                        0x24,
-                    )
-                    == 6
-                )
-            folders = install.uninstall(keep_data=keep)
-            if not args.quiet:
-                install.message("FollowTheLyrics a été désinstallé.")
-            install.delete_later(folders)
+            take_over_instance(desktop.session)
+            installation.run_uninstall(
+                quiet=args.quiet, keep_data=not args.purge
+            )
         os._exit(0)
-    if install.hand_over():
+    if installation is not None and installation.hand_over():
         os._exit(0)
-    server = take_over_instance()
+    server = take_over_instance(desktop.session)
     if settings.FROZEN:
-        if install.running_installed():
+        if installation is not None and installation.running_installed():
             try:
-                install.register()
+                installation.register()
             except Exception:
                 logger.debug("main failed", exc_info=True)
-        if not os.environ.get("FTL_TEST_INSTANCE"):
-            settings.refresh_autostart()
-    a = App(app, demo=args.demo, minimized=args.minimized, updated=args.updated)
+        if not install.TEST_INSTANCE:
+            desktop_startup.refresh()
+    a = App(
+        app,
+        demo=args.demo,
+        minimized=args.minimized,
+        updated=args.updated,
+        desktop=desktop,
+    )
     if server is not None:
         server.newConnection.connect(a.quit)
     code = app.exec()

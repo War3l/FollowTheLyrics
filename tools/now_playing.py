@@ -1,12 +1,19 @@
-import asyncio
-
-from followthelyrics.playback import media
+from followthelyrics import desktop
 
 
 def main():
-    now_playing = asyncio.run(media.get_now_playing())
-    print(now_playing if now_playing else "Rien ne joue.")
-    image = asyncio.run(media.get_thumbnail())
+    system = desktop.current()
+    media = system.media
+    if media is None:
+        print(f"Morceau en cours indisponible sur {system.name}.")
+        return
+    session = media.open()
+    try:
+        now_playing = session.now_playing((), None)
+        print(now_playing if now_playing else "Rien ne joue.")
+        image = session.cover((), None)
+    finally:
+        session.close()
     if image:
         print(f"pochette : {len(image)} octets, debut {image[:4]!r}")
     else:

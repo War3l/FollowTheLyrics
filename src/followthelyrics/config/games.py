@@ -1,12 +1,9 @@
-import ctypes
 import json
 import logging
 import os
-from ctypes import wintypes
 from typing import Any
 
 from followthelyrics.config import settings
-from followthelyrics.system import win32
 
 logger = logging.getLogger(__name__)
 
@@ -333,71 +330,12 @@ def profiles_mtime():
         return 0
 
 
-def foreground_info():
-    try:
-        user32 = win32.user32()
-        kernel32 = win32.kernel32()
-        hwnd = user32.GetForegroundWindow()
-        if not hwnd:
-            return "", False
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        exe = ""
-        h = kernel32.OpenProcess(0x1000, False, pid.value)
-        if h:
-            buf = ctypes.create_unicode_buffer(520)
-            size = wintypes.DWORD(520)
-            if kernel32.QueryFullProcessImageNameW(
-                h, 0, buf, ctypes.byref(size)
-            ):
-                exe = os.path.basename(buf.value)
-            kernel32.CloseHandle(h)
-        cls = ctypes.create_unicode_buffer(256)
-        user32.GetClassNameW(hwnd, cls, 256)
-        if (
-            cls.value in ("Progman", "WorkerW", "Shell_TrayWnd")
-            or exe.lower() == "explorer.exe"
-        ):
-            return exe, False
-        r = wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(r))
-        mi = win32.MonitorInfo()
-        mi.cbSize = ctypes.sizeof(mi)
-        user32.GetMonitorInfoW(
-            user32.MonitorFromWindow(hwnd, 2), ctypes.byref(mi)
-        )
-        m = mi.rcMonitor
-        full = (
-            r.left <= m.left
-            and r.top <= m.top
-            and r.right >= m.right
-            and r.bottom >= m.bottom
-        )
-        return exe, full
-    except Exception:
-        logger.debug("foreground_info failed", exc_info=True)
-        return "", False
-
-
-def exclusive_fullscreen():
-    try:
-        state = ctypes.c_int(0)
-        if (
-            win32.shell32().SHQueryUserNotificationState(ctypes.byref(state))
-            == 0
-        ):
-            return state.value == 3
-    except Exception:
-        logger.debug("exclusive_fullscreen failed", exc_info=True)
-    return False
-
-
-def current_profile(profiles):
-    exe, full = foreground_info()
+def current_profile(profiles, foreground):
+    exe = foreground.exe
     for name, prof in profiles.get("jeux", {}).items():
         names = [name, *list(prof.get("autres_exe", []))]
         if exe and any(n.lower() == exe.lower() for n in names):
             return name, prof
-    if full:
+    if foreground.fullscreen:
         return "jeu_inconnu", profiles["jeu_inconnu"]
     return "bureau", profiles["bureau"]

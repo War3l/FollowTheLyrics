@@ -1,23 +1,43 @@
 # Architecture
 
-FollowTheLyrics est une appli de bureau Windows : un seul processus PyQt6,
-une fenêtre transparente par-dessus le jeu, un panneau de contrôle et quelques
-fils de travail. Le code est rangé **par responsabilité**, pas en couches
-hexagonales : il n'y a qu'un seul « adaptateur » par besoin (une source de
-musique, deux sources de paroles, une sortie écran), donc des ports abstraits
-n'apporteraient que de l'indirection.
+FollowTheLyrics est une appli de bureau : un seul processus PyQt6, une fenêtre
+transparente par-dessus le jeu, un panneau de contrôle et quelques fils de
+travail. Le code est rangé **par responsabilité**. Une seule frontière est
+abstraite : celle avec le système d'exploitation, parce qu'elle a plusieurs
+implémentations (Windows aujourd'hui, Linux et macOS en mode dégradé, des
+backends natifs demain). Le reste n'a qu'une implémentation par besoin et reste
+concret.
+
+## La couche `desktop/`
+
+`desktop/ports.py` décrit en `Protocol` tout ce que l'appli demande au système :
+morceau en cours, capture audio, raccourcis globaux, fenêtres, programme au
+premier plan, démarrage auto, raccourcis du bureau, boîtes de dialogue,
+installation, format des releases. `desktop.current()` choisit un backend une
+seule fois et renvoie un `Desktop` qui les regroupe.
+
+- `desktop/windows/` : SMTC, WASAPI, `RegisterHotKey`, DWM, registre. Chaque
+  module commence par `assert sys.platform == "win32"`, ce qui permet à mypy de
+  vérifier le reste du code pour Linux sans voir ces appels.
+- `desktop/generic/` : uniquement Qt. Les services sans équivalent portable
+  valent `None` et l'interface masque ce qui en dépend (démarrage auto,
+  installation, mises à jour) ou le signale (raccourcis globaux).
+
+Ajouter un système, c'est écrire `desktop/<systeme>/backend.py` avec une
+fonction `create()` qui remplit les ports qu'il sait servir. Aucun autre fichier
+ne change.
 
 ## Paquets
 
 ```
 src/followthelyrics/
-├── __main__.py      point d'entrée : démarrage blindé puis app.main()
+├── __main__.py      point d'entrée : démarrage du backend puis app.main()
 ├── app.py           assemble tout : overlay, panneau, tray, minuteries, signaux
 ├── diagnostics.py   rapport de diagnostic et captures hors écran (--snapshot)
 ├── logs.py          journal tournant dans le dossier de données
 ├── version.py       version installée et dépôt GitHub
 ├── config/
-│   ├── settings.py  dossier de données, config.json, valeurs par défaut, démarrage auto
+│   ├── settings.py  dossier de données, config.json, valeurs par défaut
 │   └── games.py     profils de jeux, zones interdites, captures
 ├── lyrics/
 │   ├── model.py     Line : une ligne de paroles avec ses temps
@@ -26,10 +46,14 @@ src/followthelyrics/
 │   ├── cache.py     cache disque des paroles trouvées ou introuvables
 │   ├── analysis.py  refrains, mots forts, statistiques par mot
 │   └── demo_song.py paroles de démonstration
+├── desktop/
+│   ├── ports.py     contrats avec le système d'exploitation
+│   ├── windows/     backend Windows : SMTC, WASAPI, Win32, DWM, registre
+│   └── generic/     backend Qt seul, pour Linux et macOS
 ├── playback/
-│   ├── media.py     morceau en cours via SMTC (Windows Runtime)
+│   ├── track.py     NowPlaying : le morceau en cours
 │   ├── sites.py     reconnaît le site du navigateur, ignore vidéos et streaming
-│   ├── audio.py     capture WASAPI et détection des beats
+│   ├── audio.py     choix de la sortie audio et détection des beats
 │   └── worker.py    fils Qt : MediaWorker (morceau, paroles, pochette), BeatBridge
 ├── overlay/
 │   ├── window.py    la fenêtre des paroles : placement, animation, rendu
@@ -43,11 +67,10 @@ src/followthelyrics/
 │   ├── welcome.py   écran de premier lancement
 │   └── zone_editor.py éditeur des zones interdites d'un jeu
 └── system/
-    ├── win32.py     appels Win32 via ctypes, sans dépendance interne
-    ├── bootstrap.py démarrage du .exe gelé, chargement des DLL
-    ├── install.py   menu Démarrer, « Applications installées », désinstallation
-    ├── updater.py   recherche, téléchargement et remplacement du .exe
-    └── hotkeys.py   raccourcis clavier globaux
+    ├── startup.py   démarrage auto, raccourci du bureau, commande de lancement
+    ├── install.py   installation, enregistrement, désinstallation
+    ├── updater.py   recherche, téléchargement et remplacement du programme
+    └── hotkeys.py   combinaisons de touches et gestionnaire de raccourcis
 ```
 
 ## Règles de dépendance
@@ -57,33 +80,37 @@ aucun cycle.
 
 | Paquet | Peut importer |
 |---|---|
-| `version`, `system.win32` | rien d'interne |
-| `config` | `system.win32` |
+| `version`, `config` | rien d'interne |
 | `lyrics` | `config.settings`, `version` |
-| `system` | `config.settings`, `version` |
 | `playback` | `lyrics` |
-| `overlay` | `lyrics`, `config.settings`, `system.win32` |
-| `ui` | `config`, `system`, `playback.sites`, `version`, jamais `overlay` |
-| `app`, `diagnostics`, `__main__` | tout |
+| `desktop.ports` | `playback.track` |
+| `desktop.windows`, `desktop.generic` | `desktop.ports`, `config.settings`, `playback.track` |
+| `system` | `desktop.ports`, `config.settings`, `version` |
+| `overlay` | `lyrics`, `config.settings` |
+| `ui` | `config`, `desktop.ports`, `system`, `playback.sites`, `version`, jamais `overlay` |
+| `app`, `diagnostics`, `__main__` | tout, dont `desktop` |
 
 Deux conséquences utiles :
 
 - `lyrics/` ne connaît ni Qt ni Windows. Tout le traitement des paroles se teste
   sur n'importe quelle machine.
+- Seul `desktop/windows/` parle à Windows. Le reste reçoit les ports par son
+  constructeur (`Overlay`, `MediaWorker`, `AudioBeats`, `Hotkeys`,
+  `Installation`), ce qui permet de le tester avec de faux backends.
 - Le panneau (`ui/`) ne touche jamais l'overlay directement : `app.py` lui passe
   l'objet et relaie les changements de réglages.
 
 ## Flux de données
 
 ```
-SMTC ──▶ playback.media ──▶ MediaWorker (QThread) ──signaux Qt──▶ App ──▶ Overlay
-                                 │                                 │
-                                 ├─ playback.sites (filtre)         └──▶ Panel
-                                 ├─ lyrics.cache
-                                 └─ lyrics.providers ──▶ lyrics.parsing
+MediaBackend ──▶ MediaWorker (QThread) ──signaux Qt──▶ App ──▶ Overlay
+                    │                                 │
+                    ├─ playback.sites (filtre)         └──▶ Panel
+                    ├─ lyrics.cache
+                    └─ lyrics.providers ──▶ lyrics.parsing
 
-WASAPI ──▶ playback.audio ──▶ BeatBridge (QThread) ──beat──▶ Overlay.on_beat
-Clavier ──▶ system.hotkeys (QThread) ──pressed──▶ App
+AudioBackend ──▶ playback.audio ──▶ BeatBridge ──beat──▶ Overlay.on_beat
+HotkeyBackend ──▶ system.hotkeys.Hotkeys ──pressed──▶ App
 ```
 
 - Les appels réseau, la lecture du morceau en cours et la capture audio vivent
@@ -97,8 +124,8 @@ Clavier ──▶ system.hotkeys (QThread) ──pressed──▶ App
 
 - Style Google : imports de modules seulement (`from followthelyrics.lyrics
   import parsing`, puis `parsing.parse_lrc(...)`), jamais d'import relatif.
-- `ruff` (lint et format, 80 colonnes), `mypy` en mode `win32` et `pytest`
-  passent sans erreur ; la CI les lance à chaque pull request.
+- `ruff` (lint et format, 80 colonnes), `mypy` pour `win32` et pour `linux`, et
+  `pytest` passent sans erreur ; la CI les lance à chaque pull request.
 - Les attributs ne masquent jamais une méthode Qt (`size`, `style`, `layout`,
   `pos`…) : un widget qui garde un curseur l'appelle `size_slider`.
 - Les données de l'utilisateur vont dans `settings.DATA_DIR` (surchargeable avec
