@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Nouvelle version, par exemple 1.2.0
+        required: true
+        type: string
+      notes:
+        description: Quoi de neuf, en une phrase
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -e .
+      - name: Verifier le numero de version
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]]; then
+            echo "::error::Version invalide : $VERSION (attendu : 1.2.0)"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null; then
+            echo "::error::Le tag v$VERSION existe deja"
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          import sys
+          from followthelyrics import version
+          from followthelyrics.system import updater
+          new, cur = os.environ["VERSION"], version.current()
+          if not updater.is_newer(new, cur):
+              print(f"::error::{new} n'est pas plus recente que {cur}")
+              sys.exit(1)
+          PY
+
+  build:
+    needs: check
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            binary: dist/FollowTheLyrics.exe
+            asset: FollowTheLyrics.exe
+          - os: ubuntu-22.04
+            binary: dist/FollowTheLyrics
+            asset: FollowTheLyrics-linux
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Bibliotheques systeme de Qt
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon0 libfontconfig1 \
+            libdbus-1-3 libpulse0
+      - run: python -m pip install -e ".[dev,build]"
+      - run: python -m mypy
+      - run: python -m mypy --platform linux
+      - run: python -m pytest
+      - name: Ecrire la version
+        run: printf '%s\n' "$VERSION" > src/followthelyrics/VERSION
+      - name: Construire le programme
+        run: |
+          python tools/build.py
+          test -f "${{ matrix.binary }}"
+          mkdir -p release
+          cp "${{ matrix.binary }}" "release/${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      NOTES: ${{ inputs.notes }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Publier le commit et le tag
+        run: |
+          printf '%s\n' "$VERSION" > src/followthelyrics/VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/followthelyrics/VERSION
+          git commit -m "Version $VERSION"
+          git tag "v$VERSION"
+          git push --atomic origin HEAD:main "v$VERSION"
+      - name: Creer la release
+        run: |
+          gh release create "v$VERSION" \
+            release/FollowTheLyrics.exe \
+            release/FollowTheLyrics-linux \
+            --verify-tag \
+            --title "FollowTheLyrics $VERSION" \
+            --notes "${NOTES:-Mise a jour $VERSION}"

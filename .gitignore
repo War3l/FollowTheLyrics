@@ -9,3 +9,8 @@ profiles.json
 apercu_couleurs.png
 captures/
 apercu/
+logs/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
