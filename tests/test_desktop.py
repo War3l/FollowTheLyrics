@@ -181,3 +181,29 @@ def test_child_environment_drops_frozen_and_requested_keys(monkeypatch):
     assert "_MEIPASS2" not in env
     assert "FTL_FAKE_VERSION" not in env
     assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("foreground", "key"),
+    [
+        (ports.ForegroundApp("VALORANT-Win64-Shipping.exe"), "Valorant"),
+        (ports.ForegroundApp("gta5_enhanced.exe"), "GTA V"),
+        (ports.ForegroundApp("RobloxPlayerBeta.exe"), "Roblox"),
+        (
+            ports.ForegroundApp("javaw.exe", title="Minecraft 1.21"),
+            "Minecraft",
+        ),
+        (ports.ForegroundApp("javaw.exe", title="Un autre logiciel"), "Bureau"),
+    ],
+)
+def test_new_games_are_recognised(foreground, key):
+    profile = games.current_profile(games.DEFAULT_PROFILES, foreground)[1]
+
+    assert profile["nom"] == key
+
+
+def test_every_zone_stays_inside_the_screen():
+    for profile in games.DEFAULT_PROFILES["jeux"].values():
+        for zone in profile["zones_interdites"]:
+            assert zone["x"] >= 0 and zone["x"] + zone["l"] <= 1.0001, zone
+            assert zone["y"] >= 0 and zone["y"] + zone["h"] <= 1.0001, zone

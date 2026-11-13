@@ -1163,4 +1163,44 @@ TEXTS: dict[str, tuple[str, str, str]] = {
         "{} (nuevo)",
         "{}（新）",
     ),
+    "Dans LoL : Echap > Video > Mode fenetre > « Sans bordure ».": (
+        "In LoL: Esc > Video > Window mode > “Borderless”.",
+        "En LoL: Esc > Vídeo > Modo de ventana > «Sin bordes».",
+        "在 LoL 中：Esc > 视频 > 窗口模式 > “无边框”。",
+    ),
+    "Dans Cyberpunk : Parametres > Graphismes (ou Video) > Mode fenetre > « Fenetre sans bordure ».": (
+        "In Cyberpunk: Settings > Graphics (or Video) > Window mode > “Windowed borderless”.",
+        "En Cyberpunk: Ajustes > Gráficos (o Vídeo) > Modo de ventana > «Ventana sin bordes».",
+        "在 Cyberpunk 中：设置 > 图形（或视频）> 窗口模式 > “无边框窗口”。",
+    ),
+    "Dans WoW : Echap > Options > Graphismes > Mode d'affichage > « Fenetre (plein ecran) ».": (
+        "In WoW: Esc > Options > Graphics > Display mode > “Windowed (Fullscreen)”.",
+        "En WoW: Esc > Opciones > Gráficos > Modo de pantalla > «Ventana (pantalla completa)».",
+        "在 WoW 中：Esc > 选项 > 图形 > 显示模式 > “窗口（全屏）”。",
+    ),
+    "Dans Valorant : Parametres > Video > Mode d'affichage > « Fenetre plein ecran ».": (
+        "In Valorant: Settings > Video > Display mode > “Windowed Fullscreen”.",
+        "En Valorant: Ajustes > Vídeo > Modo de pantalla > «Ventana a pantalla completa».",
+        "在 Valorant 中：设置 > 视频 > 显示模式 > “窗口全屏”。",
+    ),
+    "Dans Fortnite : Parametres > Video > Mode fenetre > « Plein ecran fenetre ».": (
+        "In Fortnite: Settings > Video > Window mode > “Windowed Fullscreen”.",
+        "En Fortnite: Ajustes > Vídeo > Modo de ventana > «Pantalla completa en ventana».",
+        "在 Fortnite 中：设置 > 视频 > 窗口模式 > “窗口化全屏”。",
+    ),
+    "Dans Minecraft : Options > Graphismes > Plein ecran : NON, puis agrandis la fenetre.": (
+        "In Minecraft: Options > Video Settings > Fullscreen: OFF, then maximise the window.",
+        "En Minecraft: Opciones > Gráficos > Pantalla completa: NO, y maximiza la ventana.",
+        "在 Minecraft 中：选项 > 视频设置 > 全屏：关，然后最大化窗口。",
+    ),
+    "Dans GTA V : Parametres > Graphismes > Type d'ecran > « Fenetre sans bordure ».": (
+        "In GTA V: Settings > Graphics > Screen type > “Windowed Borderless”.",
+        "En GTA V: Ajustes > Gráficos > Tipo de pantalla > «Ventana sin bordes».",
+        "在 GTA V 中：设置 > 图形 > 屏幕类型 > “无边框窗口”。",
+    ),
+    "LIGNE · RECHERCHE DU MOT À MOT...": (
+        "LINE · LOOKING FOR WORD BY WORD...",
+        "LÍNEA · BUSCANDO PALABRA A PALABRA...",
+        "逐行 · 正在查找逐字歌词...",
+    ),
 }

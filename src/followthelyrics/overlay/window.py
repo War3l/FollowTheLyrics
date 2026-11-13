@@ -94,6 +94,7 @@ class Overlay(QWidget):
         self.toast_text = ""
         self.toast_until = -99.0
         self.lyrics_gate = True
+        self.upgrading = False
         self.zones_until = -99.0
         self.beat_t, self.beat_k = -99.0, 0.0
         self.last_tick = clock()
@@ -217,6 +218,7 @@ class Overlay(QWidget):
             self.cur = self.prev = None
             self.exiting = []
             self.flash = None
+            self.upgrading = False
             self.cover_img = None
             self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
             self.anchor_pos, self.anchor_t = np.position, now
@@ -283,6 +285,11 @@ class Overlay(QWidget):
 
     def beat_pulse(self):
         return self.beat_k * math.exp(-(self.clock() - self.beat_t) * 7.0)
+
+    def on_upgrading(self, key, active):
+        if key == self.track_key and active != self.upgrading:
+            self.upgrading = active
+            self.poke()
 
     def toast(self, text):
         self.toast_text = text
@@ -1622,7 +1629,13 @@ class Overlay(QWidget):
 
     def card_badge(self):
         if self.state == "ok":
-            return i18n.tr("MOT À MOT") if self.word_sync else i18n.tr("LIGNE")
+            if self.word_sync:
+                return i18n.tr("MOT À MOT")
+            if self.upgrading:
+                return i18n.tr("LIGNE · RECHERCHE DU MOT À MOT...")
+            return i18n.tr("LIGNE")
+        if self.state == "missing" and self.upgrading:
+            return i18n.tr("RECHERCHE...")
         return {
             "loading": i18n.tr("RECHERCHE..."),
             "missing": i18n.tr("PAS DE PAROLES"),

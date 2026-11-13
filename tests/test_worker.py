@@ -3,6 +3,7 @@ import time
 import types
 
 import pytest
+from PyQt6.QtCore import Qt
 
 from followthelyrics.lyrics import cache
 from followthelyrics.lyrics import model
@@ -71,3 +72,44 @@ def test_fallback_is_skipped_once_the_track_has_changed(
     media_worker._upgrade(_track("un"), [model.Line(1.0, "Monte le son")])
 
     assert calls == []
+
+
+def test_the_search_for_word_timing_is_announced_then_closed(
+    media_worker, monkeypatch
+):
+    line = [model.Line(1.0, "Monte le son")]
+    monkeypatch.setattr(
+        providers, "fetch_lyrics_ex", lambda *a, **k: (line, True)
+    )
+    monkeypatch.setattr(providers, "fetch_liriqo", lambda *a, **k: (None, True))
+    events = []
+    done = threading.Event()
+
+    def record(key, active):
+        events.append(active)
+        if not active:
+            done.set()
+
+    media_worker.upgrading.connect(record, Qt.ConnectionType.DirectConnection)
+    np = _track("un")
+    media_worker._playing_key = np.key
+    media_worker._fetch(np)
+
+    assert done.wait(3)
+    assert events == [True, False]
+
+
+def test_nothing_is_announced_when_words_are_already_there(
+    media_worker, monkeypatch
+):
+    words = [model.Line(1.0, "Monte", chars=[(1.0, 1.2)] * 5)]
+    monkeypatch.setattr(
+        providers, "fetch_lyrics_ex", lambda *a, **k: (words, True)
+    )
+    events = []
+    media_worker.upgrading.connect(lambda key, active: events.append(active))
+    np = _track("un")
+    media_worker._playing_key = np.key
+    media_worker._fetch(np)
+
+    assert events == []
