@@ -77,7 +77,11 @@ class Win32Foreground:
             user32.GetClassNameW(hwnd, cls, 256)
             if cls.value in SHELL_CLASSES or exe.lower() == "explorer.exe":
                 return ports.ForegroundApp(exe, fullscreen=False)
-            return ports.ForegroundApp(exe, fullscreen=_covers_monitor(hwnd))
+            title = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, title, 256)
+            return ports.ForegroundApp(
+                exe, fullscreen=_covers_monitor(hwnd), title=title.value
+            )
         except Exception:
             logger.debug("current failed", exc_info=True)
             return ports.ForegroundApp()

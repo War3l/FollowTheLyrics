@@ -129,6 +129,7 @@ class Windowing(Protocol):
 class ForegroundApp:
     exe: str = ""
     fullscreen: bool = False
+    title: str = ""
 
 
 class Foreground(Protocol):
