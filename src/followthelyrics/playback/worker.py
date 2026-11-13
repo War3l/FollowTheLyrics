@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from PyQt6.QtCore import QThread
 from PyQt6.QtCore import pyqtSignal
 
+from followthelyrics import i18n
 from followthelyrics.lyrics import cache
 from followthelyrics.lyrics import providers
 from followthelyrics.playback import sites
@@ -160,7 +161,10 @@ class MediaWorker(QThread):
         translated_ok = True
         if lines:
             try:
-                translated_ok = providers.translate_lines(lines) is not None
+                translated_ok = (
+                    providers.translate_lines(lines, i18n.translate_target())
+                    is not None
+                )
             except Exception:
                 logger.warning("_fetch_inner failed", exc_info=True)
                 translated_ok = False
@@ -207,7 +211,7 @@ class MediaWorker(QThread):
         self._cache[np.key] = better
         self.lyrics.emit(np.key, better)
         try:
-            providers.translate_lines(better)
+            providers.translate_lines(better, i18n.translate_target())
         except Exception:
             logger.warning("_upgrade failed", exc_info=True)
         self.translated.emit(np.key)
@@ -217,6 +221,9 @@ class MediaWorker(QThread):
         until = time.monotonic() + seconds
         while not self._stop and time.monotonic() < until:
             time.sleep(0.2)
+
+    def retranslate(self):
+        self._cache.clear()
 
     def stop(self):
         self._stop = True

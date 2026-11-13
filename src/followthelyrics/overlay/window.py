@@ -28,6 +28,7 @@ from PyQt6.QtGui import QRegion
 from PyQt6.QtGui import QTransform
 from PyQt6.QtWidgets import QWidget
 
+from followthelyrics import i18n
 from followthelyrics.config import settings
 from followthelyrics.lyrics import analysis
 from followthelyrics.lyrics import model
@@ -92,6 +93,7 @@ class Overlay(QWidget):
         self.user_hidden = False
         self.toast_text = ""
         self.toast_until = -99.0
+        self.lyrics_gate = True
         self.zones_until = -99.0
         self.beat_t, self.beat_k = -99.0, 0.0
         self.last_tick = clock()
@@ -801,12 +803,14 @@ class Overlay(QWidget):
 
         toast_on = now < self.toast_until or now < self.zones_until
         since = now - self.track_changed_at
-        show = (
+        wanted = (
             not self.user_hidden
             and self.track is not None
             and self.playing
             and (self.state == "ok" or since < 4.0)
-        ) or toast_on
+        )
+        self.lyrics_gate = wanted or not toast_on
+        show = wanted or toast_on
         target = 1.0 if show else 0.0
         self.alpha += (target - self.alpha) * (
             1 - math.exp(-dt * (8 if show else 4))
@@ -892,7 +896,7 @@ class Overlay(QWidget):
         if now < self.zones_until:
             self.draw_zones(p)
 
-        if self.state == "ok" and self.lines:
+        if self.state == "ok" and self.lines and self.lyrics_gate:
             if self.column_mode():
                 self.draw_column(p, now, pos)
             else:
@@ -1618,10 +1622,11 @@ class Overlay(QWidget):
 
     def card_badge(self):
         if self.state == "ok":
-            return "MOT À MOT" if self.word_sync else "LIGNE"
-        return {"loading": "RECHERCHE...", "missing": "PAS DE PAROLES"}.get(
-            self.state, ""
-        )
+            return i18n.tr("MOT À MOT") if self.word_sync else i18n.tr("LIGNE")
+        return {
+            "loading": i18n.tr("RECHERCHE..."),
+            "missing": i18n.tr("PAS DE PAROLES"),
+        }.get(self.state, "")
 
     def card_rect(self):
         t = self.track

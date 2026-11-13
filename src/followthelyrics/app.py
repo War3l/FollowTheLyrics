@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import QSystemTrayIcon
 
 from followthelyrics import desktop as platform_desktop
 from followthelyrics import diagnostics
+from followthelyrics import i18n
 from followthelyrics import logs
 from followthelyrics import version
 from followthelyrics.config import games
@@ -50,6 +51,7 @@ class App:
         self.installation = installation_of(self.desktop, self.startup)
         self.quitting = False
         self.cfg = settings.load_config()
+        i18n.set_language(self.cfg.get("lang", i18n.DEFAULT))
         self.profiles = games.load_profiles()
         self.profiles_mtime = games.profiles_mtime()
         self.overlay = window.Overlay(
@@ -111,12 +113,14 @@ class App:
         self.tray = QSystemTrayIcon(widgets.make_icon())
         self.tray.setToolTip("FollowTheLyrics")
         menu = QMenu()
-        menu.addAction("Ouvrir le panneau", self.show_panel)
-        self.act_toggle = QAction("Masquer les paroles", menu)
+        self.act_open = menu.addAction(
+            i18n.tr("Ouvrir le panneau"), self.show_panel
+        )
+        self.act_toggle = QAction(i18n.tr("Masquer les paroles"), menu)
         self.act_toggle.triggered.connect(self.toggle)
         menu.addAction(self.act_toggle)
         menu.addSeparator()
-        menu.addAction("Quitter", self.quit)
+        self.act_quit = menu.addAction(i18n.tr("Quitter"), self.quit)
         self.tray_menu = menu
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self.on_tray)
@@ -144,7 +148,9 @@ class App:
             try:
                 self.tray.showMessage(
                     "FollowTheLyrics",
-                    f"Mise à jour installée : version {updated}.",
+                    i18n.tr("Mise à jour installée : version {}.").format(
+                        updated
+                    ),
                     self.tray.icon(),
                     5000,
                 )
@@ -176,7 +182,7 @@ class App:
         self.update_check = updater.UpdateCheck(self.desktop.release)
         self.update_check.found.connect(self.on_update_found)
         if manual:
-            self.update_check.nothing.connect(self.panel.update_none)
+            self.update_check.nothing.connect(self._update_none)
         self.update_check.start()
 
     def on_update_found(self, info):
@@ -185,8 +191,10 @@ class App:
         try:
             self.tray.showMessage(
                 "FollowTheLyrics",
-                f"La version {info['version']} est disponible. "
-                "Ouvre le panneau pour mettre à jour.",
+                i18n.tr(
+                    "La version {} est disponible. Ouvre le panneau pour "
+                    "mettre à jour."
+                ).format(info["version"]),
                 self.tray.icon(),
                 6000,
             )
@@ -203,15 +211,17 @@ class App:
         if not settings.FROZEN:
             QDesktopServices.openUrl(QUrl(updater.RELEASES_URL))
             self.panel.update_failed(
-                "Version « code » : télécharge la nouvelle version sur la "
-                "page ouverte."
+                i18n.tr(
+                    "Version « code » : télécharge la nouvelle version sur la "
+                    "page ouverte."
+                )
             )
             return
         self.update_job = updater.UpdateInstall(
             self.update_info, self.desktop.release
         )
-        self.update_job.progress.connect(self.panel.update_progress)
-        self.update_job.failed.connect(self.panel.update_failed)
+        self.update_job.progress.connect(self._update_progress)
+        self.update_job.failed.connect(self._update_failed)
         self.update_job.installed.connect(self.on_update_installed)
         self.update_job.start()
 
@@ -221,9 +231,10 @@ class App:
         except Exception as e:
             logger.warning("on_update_installed failed", exc_info=True)
             self.panel.update_failed(
-                f"La nouvelle version est installée mais n'a pas pu démarrer "
-                f"({e}). "
-                "Relance FollowTheLyrics."
+                i18n.tr(
+                    "La nouvelle version est installée mais n'a pas pu "
+                    "démarrer ({}). Relance FollowTheLyrics."
+                ).format(e)
             )
 
     def reload_profiles(self):
@@ -264,7 +275,8 @@ class App:
                 "pythonw.exe",
             ):
                 self.overlay.toast(
-                    "Mets-toi dans le jeu, puis " + self.hotkey_text("capture")
+                    i18n.tr("Mets-toi dans le jeu, puis ")
+                    + self.hotkey_text("capture")
                 )
                 return
             key = exe
@@ -286,12 +298,14 @@ class App:
                 ok = False
             o.setWindowOpacity(1.0)
             if not ok:
-                o.toast("Capture impossible")
+                o.toast(i18n.tr("Capture impossible"))
                 return
             self.last_game = key
             o.toast(
-                "Capture prise : reviens sur FollowTheLyrics pour dessiner "
-                "les zones"
+                i18n.tr(
+                    "Capture prise : reviens sur FollowTheLyrics pour dessiner "
+                    "les zones"
+                )
             )
             self.open_zone_editor(key, activate=False)
 
@@ -405,20 +419,20 @@ class App:
         )
         if key != self.overlay.profile_key:
             self.overlay.set_profile(key, prof)
-            if key != "bureau":
-                self.overlay.toast(f"Profil : {prof.get('nom', key)}")
         excl = self.desktop.foreground.exclusive_fullscreen()
         if excl and not self.exclusive:
-            tip = (
-                prof.get("conseil_plein_ecran")
-                or "Passe le jeu en « fenêtré sans bordure » dans ses options "
+            tip = i18n.tr(prof.get("conseil_plein_ecran") or "") or i18n.tr(
+                "Passe le jeu en « fenêtré sans bordure » dans ses options "
                 "vidéo."
             )
             self.exclusive_tip = tip
             try:
                 self.tray.showMessage(
-                    "FollowTheLyrics : jeu en plein écran exclusif",
-                    "Les paroles ne peuvent pas s'afficher par-dessus. " + tip,
+                    i18n.tr("FollowTheLyrics : jeu en plein écran exclusif"),
+                    i18n.tr(
+                        "Les paroles ne peuvent pas s'afficher par-dessus. "
+                    )
+                    + tip,
                     QSystemTrayIcon.MessageIcon.Warning,
                     8000,
                 )
@@ -440,25 +454,66 @@ class App:
             self.worker.upgrade = bool(value)
         o.poke()
 
+    def _update_none(self, error):
+        self.panel.update_none(error)
+
+    def _update_progress(self, frac):
+        self.panel.update_progress(frac)
+
+    def _update_failed(self, message):
+        self.panel.update_failed(message)
+
+    def set_language(self, code):
+        if code == i18n.language():
+            return
+        self.cfg["lang"] = code
+        settings.save_config(self.cfg)
+        i18n.set_language(code)
+        if self.act_open is not None:
+            self.act_open.setText(i18n.tr("Ouvrir le panneau"))
+        if self.act_quit is not None:
+            self.act_quit.setText(i18n.tr("Quitter"))
+        self.set_visible(not self.overlay.user_hidden)
+        old = self.panel
+        was_open = old.isVisible()
+        geometry = old.geometry()
+        self.panel = panel.Panel(self)
+        self.panel.setGeometry(geometry)
+        self.panel.go("general", animate=False)
+        if self.update_info:
+            self.panel.show_update(self.update_info)
+        if was_open:
+            self.panel.show()
+        old.timer.stop()
+        old.anim_timer.stop()
+        old.hide()
+        old.deleteLater()
+        self.worker.retranslate()
+        self.overlay.poke()
+
     def set_visible(self, visible):
         self.overlay.user_hidden = not visible
         self.act_toggle.setText(
-            "Masquer les paroles" if visible else "Afficher les paroles"
+            i18n.tr("Masquer les paroles")
+            if visible
+            else i18n.tr("Afficher les paroles")
         )
 
     def toggle(self):
         self.set_visible(self.overlay.user_hidden)
         self.overlay.toast(
-            "Paroles affichees"
+            i18n.tr("Paroles affichees")
             if not self.overlay.user_hidden
-            else "Paroles masquees"
+            else i18n.tr("Paroles masquees")
         )
         self.panel.sync_from_cfg()
 
     def show_zones(self):
         o = self.overlay
         o.zones_until = o.clock() + 5.0
-        o.toast(f"Zones : {o.profile.get('nom', o.profile_key)}")
+        o.toast(
+            i18n.tr("Zones : {}").format(o.profile.get("nom", o.profile_key))
+        )
 
     def edit_profiles(self):
         QDesktopServices.openUrl(QUrl.fromLocalFile(games.PROFILES_PATH))
@@ -506,13 +561,21 @@ class App:
             self.show_zones()
         elif name == "mode":
             cycle("mode", settings.MODES)
-            o.toast(f"Mode : {settings.MODES[self.cfg['mode']][0]}")
+            o.toast(
+                i18n.tr("Mode : {}").format(
+                    i18n.tr(settings.MODES[self.cfg["mode"]][0])
+                )
+            )
         elif name == "style":
             cycle("style", settings.STYLES)
-            o.toast(f"Animation : {settings.STYLES[self.cfg['style']]}")
+            o.toast(
+                i18n.tr("Animation : {}").format(
+                    i18n.tr(settings.STYLES[self.cfg["style"]])
+                )
+            )
         elif name == "color":
             cycle("color", settings.COLORS)
-            o.toast(settings.COLORS[self.cfg["color"]])
+            o.toast(i18n.tr(settings.COLORS[self.cfg["color"]]))
         elif name in ("earlier", "later"):
             self.set_cfg(
                 "offset",
@@ -520,7 +583,11 @@ class App:
                     self.cfg["offset"] + (0.2 if name == "earlier" else -0.2), 2
                 ),
             )
-            o.toast(f"Decalage : {self.cfg['offset']:+.1f} s")
+            o.toast(
+                i18n.tr("Decalage : {} s").format(
+                    format(self.cfg["offset"], "+.1f")
+                )
+            )
         self.panel.sync_from_cfg()
 
     def on_tray(self, reason):
@@ -540,8 +607,10 @@ class App:
         except Exception as e:
             logger.warning("install_here failed", exc_info=True)
             self.desktop.dialogs.warn(
-                f"L'installation n'a pas pu se faire ({e}).\n\n"
-                "L'appli continue de marcher depuis ce fichier."
+                i18n.tr(
+                    "L'installation n'a pas pu se faire ({}).\n\nL'appli "
+                    "continue de marcher depuis ce fichier."
+                ).format(e)
             )
             return False
         if autostart is None:

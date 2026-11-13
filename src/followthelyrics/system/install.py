@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 
+from followthelyrics import i18n
 from followthelyrics import version
 from followthelyrics.config import settings
 from followthelyrics.desktop import ports
@@ -131,14 +132,14 @@ class Installation:
         return folders
 
     def confirm_uninstall(self):
-        return self._dialogs.ask(UNINSTALL_PROMPT)
+        return self._dialogs.ask(i18n.tr(UNINSTALL_PROMPT))
 
     def run_uninstall(self, quiet=False, keep_data=True):
         if not quiet:
-            keep_data = self._dialogs.ask(KEEP_DATA_PROMPT)
+            keep_data = self._dialogs.ask(i18n.tr(KEEP_DATA_PROMPT))
         folders = self.uninstall(keep_data=keep_data)
         if not quiet:
-            self._dialogs.inform(UNINSTALLED)
+            self._dialogs.inform(i18n.tr(UNINSTALLED))
         self._installer.remove_after_exit(folders)
 
     def _points_here(self, link):
