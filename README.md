@@ -34,7 +34,6 @@ apparaît dans le panneau : un clic sur **Mettre à jour** télécharge la nouve
   être déplacé ou remplacé sans rien perdre.
 - Le `.exe` n'est pas signé : chez un ami, Windows peut afficher « Windows a protégé votre
   ordinateur ». Il suffit de cliquer **Informations complémentaires → Exécuter quand même**.
-- **Construire.bat** refabrique le `.exe` après une modification du code (2 à 4 minutes).
 
 ## Le panneau
 - **En cours** : pochette, titre, artiste, progression, badge **MOT À MOT** / **LIGNE**, ligne chantée et traduction.
@@ -97,7 +96,7 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 .venv\Scripts\python -m followthelyrics          (--demo pour des paroles de test)
 ```
-`Lancer.bat` et `Demo.bat` font la même chose sans terminal.
+`Lancer.bat` fait la même chose sans terminal (`Lancer.bat --demo` pour la démo).
 
 Vérifications, lancées aussi par la CI à chaque pull request :
 ```
@@ -106,10 +105,20 @@ ruff format --check src tests tools
 mypy
 pytest
 ```
-- **Construire.bat** fabrique `dist/FollowTheLyrics.exe` (2 à 4 minutes).
-- **Publier.bat** publie une mise à jour : il demande le numéro de version, construit le `.exe`,
-  envoie le code sur GitHub et crée la version téléchargeable. Le bouton « Télécharger » du site
-  pointe toujours vers la dernière version. Il faut [GitHub CLI](https://cli.github.com) connecté (`gh auth login`).
+
+### Construire le .exe
+- **Sur une pull request**, la CI construit `FollowTheLyrics.exe` et le joint au résultat
+  (onglet *Checks*, artefact `FollowTheLyrics-exe`) : de quoi tester la PR sans rien installer.
+- **En local** : `.venv\Scripts\python -m pip install -e ".[build]"` puis
+  `.venv\Scripts\python tools\build.py` produit `dist\FollowTheLyrics.exe` (2 à 4 minutes).
+
+### Publier une version
+Sur GitHub : **Actions → Release → Run workflow**, puis le numéro de version (par exemple `1.2.0`)
+et une phrase de nouveautés. Le workflow vérifie que la version est plus récente, lance mypy et les
+tests, construit le `.exe`, pousse le commit de version et son tag, puis crée la release avec le
+`.exe`. Si une étape échoue avant la fin de la construction, rien n'est publié.
+Le bouton « Télécharger » du site et la mise à jour automatique pointent toujours vers la dernière release.
+
 - Le site de présentation est dans `docs/` (GitHub Pages).
 
 ## Organisation du code
@@ -128,3 +137,4 @@ Le détail (rôle de chaque module, flux de données, règles de dépendance) es
 | `system/` | appels Windows, démarrage du `.exe`, installation, mises à jour, raccourcis clavier |
 | `tests/` | tests pytest, sans Windows ni réseau |
 | `tools/` | fabrication du `.exe`, vidéo et visuels du site, petits scripts de diagnostic |
+| `.github/workflows/` | `ci.yml` (lint, types, tests, `.exe` de test) et `release.yml` (publication) |
