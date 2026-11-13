@@ -7,6 +7,7 @@ import time
 from collections import OrderedDict
 from ctypes import wintypes
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 from PyQt6.QtCore import QPointF
@@ -40,24 +41,17 @@ from followthelyrics.system import win32
 
 logger = logging.getLogger(__name__)
 
-
 PREV_ALPHA = 0.42
-
 
 ACTIVE_INTERVAL_MS = 16
 
-
 IDLE_INTERVAL_MS = 200
-
 
 PATH_CACHE_SIZE = 512
 
-
 HIDE_AFTER = 3.0
 
-
 CARD_TIME = 4.5
-
 
 UPPER = 0.5
 
@@ -79,14 +73,15 @@ class Overlay(QWidget):
         self.cfg = cfg
         self.clock = clock
         self.rng = rng or random.Random()
-        self.profile_key, self.profile = "bureau", profiles["bureau"]
+        self.profile_key: str | None = "bureau"
+        self.profile = profiles["bureau"]
         self.zones: list[QRectF] = []
         self.track = None
         self.track_key = None
         self.track_changed_at = -99.0
         self.card_since = -99.0
         self.cover_img: QImage | None = None
-        self.lines: list[model.Line] | None = None
+        self.lines: list[model.Line] = []
         self.times: list[float] = []
         self.word_sync = False
         self.state = "idle"
@@ -100,8 +95,8 @@ class Overlay(QWidget):
         self.zones_until = -99.0
         self.beat_t, self.beat_k = -99.0, 0.0
         self.last_tick = clock()
-        self.cur = None
-        self.prev = None
+        self.cur: dict[str, Any] | None = None
+        self.prev: dict[str, Any] | None = None
         self.exiting = []
         self.particles = []
         self.last_region = QRegion()
@@ -113,7 +108,7 @@ class Overlay(QWidget):
         self._card_rect = None
         self._scratch = None
         self._fg_hook = None
-        self._zones_key = ()
+        self._zones_key: tuple[Any, ...] = ()
         self._hero_cache = {}
         self.word_lines = {}
         self.flash = None
@@ -131,7 +126,10 @@ class Overlay(QWidget):
         self.top_timer.start(500)
 
     def apply_geometry(self):
-        self.setGeometry(QGuiApplication.primaryScreen().geometry())
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        self.setGeometry(screen.geometry())
         self.update_zones()
         self.reset_layout()
 
@@ -241,7 +239,7 @@ class Overlay(QWidget):
         if np.key != self.track_key:
             self.track_key = np.key
             self.track_changed_at = self.card_since = now
-            self.lines, self.times = None, []
+            self.lines, self.times = [], []
             self.state = "loading"
             self.cur = self.prev = None
             self.exiting = []
@@ -399,13 +397,15 @@ class Overlay(QWidget):
     def show_translation(self, line):
         return self.cfg.get("translation", True) and bool(line.translation)
 
-    def layout(self, text, font, maxw):
+    def wrap_text(self, text, font, maxw):
         key = (text, font.family(), font.pixelSize(), int(maxw))
         if key in self._layout_cache:
             return self._layout_cache[key]
         fm = QFontMetricsF(font)
         space = fm.horizontalAdvance(" ")
-        rows, row, x, c = [], [], 0.0, 0
+        rows: list = []
+        row: list = []
+        x, c = 0.0, 0
         for word in text.split():
             w = fm.horizontalAdvance(word)
             if row and x + w > maxw:
@@ -422,7 +422,7 @@ class Overlay(QWidget):
 
     def block_size(self, line, maxw):
         font = self.main_font()
-        rows, lh, _ = self.layout(line.text, font, maxw)
+        rows, lh, _ = self.wrap_text(line.text, font, maxw)
         w = max(rw for _, rw in rows)
         h = lh * len(rows) + (self.label_height() if line.singer else 0)
         if self.show_translation(line):
@@ -464,6 +464,7 @@ class Overlay(QWidget):
         key = (line.time, line.text, len(rows))
         hero = self._hero_cache.get(key)
         if hero is None:
+            hero = 0
             best, index = -1.0, 0
             for r, (row, _w) in enumerate(rows):
                 for word, _x, _ww, cstart in row:
@@ -772,17 +773,18 @@ class Overlay(QWidget):
         for e in (self.cur, self.prev):
             if not e:
                 continue
+            is_current = e is self.cur
             if now - e["since"] < 0.8 or now - e.get("prev_since", -99) < 0.8:
                 return True
             line = self.lines[e["idx"]]
             if not line.text:
-                if e is self.cur:
+                if is_current:
                     return True
                 continue
             fade = self.done_fade(e["idx"], pos)
             if 0 < fade < 1:
                 return True
-            if e is self.cur and fade > 0:
+            if is_current and fade > 0:
                 if typewriter:
                     return True
                 if (
@@ -1160,11 +1162,8 @@ class Overlay(QWidget):
         path.addText(QPointF(pad, pad + fm.ascent()), f2, text)
         qp.fillPath(path, QColor(255, 255, 255))
         qp.end()
-        raw = np.frombuffer(
-            img.constBits().asstring(img.sizeInBytes()), dtype=np.uint8
-        )
         a = (
-            raw.reshape(height, img.bytesPerLine())[:, : width * 4]
+            effects.image_rows(img)[:, : width * 4]
             .reshape(height, width, 4)[:, :, 3]
             .astype(np.float32)
         )
@@ -1275,7 +1274,7 @@ class Overlay(QWidget):
 
     def draw_block(self, p, line, pl, mode, pos):
         font = self.main_font()
-        rows, lh, ascent = self.layout(line.text, font, pl.maxw)
+        rows, lh, ascent = self.wrap_text(line.text, font, pl.maxw)
         label_h = self.label_height() if line.singer else 0
         tf = self.small_font(0.5)
         trans_h = (
@@ -1495,7 +1494,7 @@ class Overlay(QWidget):
 
         if line.adlib and current:
             ad_t = line.adlib_time if line.adlib_time is not None else line.time
-            if self.cfg.get("mode") == "typewriter":
+            if self.cfg.get("mode") == "typewriter" and self.cur:
                 ad_t = max(ad_t, self.typed_times(line, self.cur["idx"])[-1])
             k = (
                 animation.clamp((pos - ad_t) / 0.3)
@@ -1535,7 +1534,8 @@ class Overlay(QWidget):
             )
 
     def draw_typed(self, p, line, rows, lh, ascent, font, align, pos, chorus):
-        times = self.typed_times(line, self.cur["idx"])
+        idx = self.cur["idx"] if self.cur else len(self.times)
+        times = self.typed_times(line, idx)
         fm = QFontMetricsF(font)
         glow = self.base_glow() + (0.25 if chorus else 0)
         cursor = None

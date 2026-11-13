@@ -43,7 +43,7 @@ def mark_chorus(lines):
     def key(t):
         return " ".join(re.sub(r"[^\w]+", " ", t.lower()).split())
 
-    counts = {}
+    counts: dict[str, int] = {}
     for line in lines:
         k = key(line.text)
         if len(k) >= 6:
@@ -136,7 +136,7 @@ def word_key(word):
 
 
 def count_word_lines(lines):
-    counts = {}
+    counts: dict[str, int] = {}
     for line in lines:
         for k in {word_key(w) for w in line.text.split()}:
             if k:

@@ -11,9 +11,7 @@ from followthelyrics.system import updater
 
 logger = logging.getLogger(__name__)
 
-
 API = "https://lrclib.net/api"
-
 
 HEADERS = {
     "User-Agent": (
@@ -22,12 +20,9 @@ HEADERS = {
     )
 }
 
-
 NE_API = "https://music.163.com/api"
 
-
 NE_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com/"}
-
 
 _VERSION = re.compile(
     r"\b(live|remix|instrumental|cover|karaoke|acoustic|sped up|slowed|"
@@ -111,7 +106,10 @@ def _lrclib(
     session: _Session, track: str, art: str, album: str, duration: float
 ) -> list[model.Line] | None:
     if art:
-        params = {"track_name": track, "artist_name": art}
+        params: dict[str, str | int] = {
+            "track_name": track,
+            "artist_name": art,
+        }
         if album:
             params["album_name"] = album
         if duration > 0:

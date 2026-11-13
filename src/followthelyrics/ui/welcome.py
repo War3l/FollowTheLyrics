@@ -245,7 +245,10 @@ class Welcome(QWidget):
 
     def showEvent(self, e):
         super().showEvent(e)
-        scr = self.screen().availableGeometry()
+        screen = self.screen()
+        if screen is None:
+            return
+        scr = screen.availableGeometry()
         self.move(
             scr.center().x() - self.width() // 2,
             scr.center().y() - self.height() // 2,

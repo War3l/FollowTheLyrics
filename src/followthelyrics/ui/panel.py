@@ -139,6 +139,13 @@ class FontPreview(QWidget):
         )
 
 
+class SettingRow(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.title_label: QLabel | None = None
+        self.hint_label: QLabel | None = None
+
+
 class Card(QFrame):
     def __init__(self, title=None, hint=None):
         super().__init__()
@@ -170,7 +177,7 @@ class Card(QFrame):
             sep.setProperty("role", "sep")
             self.lay.addWidget(sep)
         self.rows += 1
-        w = QWidget()
+        w = SettingRow()
         lay = QHBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(16)
@@ -179,7 +186,6 @@ class Card(QFrame):
         l1 = QLabel(label)
         l1.setProperty("role", "rowtitle")
         box.addWidget(l1)
-        w.hint_label = None
         if hint:
             l2 = QLabel(hint)
             l2.setProperty("role", "hint")
@@ -572,22 +578,23 @@ class Panel(QWidget):
             self.position,
             "En haut de l'écran : à gauche, au centre ou à droite.",
         )
-        self.size = QSlider(Qt.Orientation.Horizontal)
-        self.size.setRange(70, 160)
-        self.size.setSingleStep(5)
-        self.size.setFixedWidth(240)
+        self.size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.size_slider.setRange(70, 160)
+        self.size_slider.setSingleStep(5)
+        self.size_slider.setFixedWidth(240)
         self.size_lbl = QLabel()
         self.size_lbl.setProperty("role", "value")
         self.size_lbl.setFixedWidth(52)
         self.size_lbl.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.size.valueChanged.connect(self.on_size)
-        self.size.sliderReleased.connect(
-            lambda: self.set("scale", self.size.value() / 100)
+        self.size_slider.valueChanged.connect(self.on_size)
+        self.size_slider.sliderReleased.connect(
+            lambda: self.set("scale", self.size_slider.value() / 100)
         )
         place.add_row(
-            "Taille du texte", hbox(self.size, self.size_lbl, stretch=False)
+            "Taille du texte",
+            hbox(self.size_slider, self.size_lbl, stretch=False),
         )
 
         extra = Card("Moments forts")
@@ -637,10 +644,12 @@ class Panel(QWidget):
         colors.lay.addLayout(row)
 
         motion = Card("Animation")
-        self.style = widgets.Segmented(settings.STYLES)
-        self.style.changed.connect(lambda k: self.set("style", k))
+        self.style_picker = widgets.Segmented(settings.STYLES)
+        self.style_picker.changed.connect(lambda k: self.set("style", k))
         self.style_row = motion.add_row(
-            "Arrivée des mots", self.style, "Pour les modes Classique et Edit."
+            "Arrivée des mots",
+            self.style_picker,
+            "Pour les modes Classique et Edit.",
         )
         self.opt["beat"] = widgets.Toggle()
         motion.add_row(
@@ -819,7 +828,8 @@ class Panel(QWidget):
             return
         self._sources_shown = state
         while self.sources_box.count():
-            w = self.sources_box.takeAt(0).widget()
+            item = self.sources_box.takeAt(0)
+            w = item.widget() if item else None
             if w:
                 w.deleteLater()
         if not ids:
@@ -1112,6 +1122,8 @@ class Panel(QWidget):
         q = text.strip().lower()
         for i in range(self.font_list.count()):
             it = self.font_list.item(i)
+            if it is None:
+                continue
             if it.data(Qt.ItemDataRole.UserRole + 1) == "header":
                 it.setHidden(bool(q))
             else:
@@ -1126,7 +1138,7 @@ class Panel(QWidget):
 
     def on_size(self, v):
         self.size_lbl.setText(f"{v} %")
-        if not self.size.isSliderDown() and not self._building:
+        if not self.size_slider.isSliderDown() and not self._building:
             self.set("scale", v / 100)
 
     def set(self, key, value):
@@ -1149,12 +1161,12 @@ class Panel(QWidget):
             self.position.setEnabled(column)
             self.position_row.setEnabled(column)
             self.color_cards[cfg["color"]].setChecked(True)
-            self.style.set_value(cfg["style"])
+            self.style_picker.set_value(cfg["style"])
             self.title_drop.set_value(cfg.get("title_drop", "always"))
             self.style_row.setEnabled(cfg["mode"] != "typewriter")
-            self.style.setEnabled(cfg["mode"] != "typewriter")
-            self.size.setValue(round(cfg["scale"] * 100))
-            self.size_lbl.setText(f"{self.size.value()} %")
+            self.style_picker.setEnabled(cfg["mode"] != "typewriter")
+            self.size_slider.setValue(round(cfg["scale"] * 100))
+            self.size_lbl.setText(f"{self.size_slider.value()} %")
             for k, t in self.opt.items():
                 t.setChecked(bool(cfg.get(k, True)))
             self.demo.setChecked(self.app.demo)
@@ -1222,8 +1234,10 @@ class Panel(QWidget):
         if badge != self.badge.text() or kind != self.badge.property("kind"):
             self.badge.setText(badge)
             self.badge.setProperty("kind", kind)
-            self.badge.style().unpolish(self.badge)
-            self.badge.style().polish(self.badge)
+            badge_style = self.badge.style()
+            if badge_style is not None:
+                badge_style.unpolish(self.badge)
+                badge_style.polish(self.badge)
         self.badge.setVisible(bool(badge))
         txt = o.current_text()
         if o.state == "ok":

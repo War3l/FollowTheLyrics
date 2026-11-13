@@ -24,7 +24,7 @@ RUNTIME = (
 )
 QT = ("Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll")
 
-LOG = []
+LOG: list[tuple[str, str]] = []
 
 LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
 

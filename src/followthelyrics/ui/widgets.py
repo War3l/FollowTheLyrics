@@ -3,6 +3,7 @@ import logging
 import math
 import sys
 import time
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QEasingCurve
 from PyQt6.QtCore import QPointF
@@ -142,7 +143,13 @@ def ease_out_back(t):
     return 1.0 + 2.70158 * t**3 + 1.70158 * t**2
 
 
-class Hover:
+if TYPE_CHECKING:
+    _HoverBase = QWidget
+else:
+    _HoverBase = object
+
+
+class Hover(_HoverBase):
     def init_hover(self):
         self._hover = 0.0
         self._hover_anim = make_anim(self, self._set_hover, 150)
@@ -650,10 +657,10 @@ class ProgressView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(34)
-        self.pos, self.dur = 0.0, 0.0
+        self.elapsed, self.duration = 0.0, 0.0
 
     def set_values(self, pos, dur):
-        self.pos, self.dur = pos, dur
+        self.elapsed, self.duration = pos, dur
         self.update()
 
     def paintEvent(self, _):
@@ -663,8 +670,8 @@ class ProgressView(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor("#28ffffff"))
         p.drawRoundedRect(QRectF(0, 6, w, 5), 2.5, 2.5)
-        if self.dur > 0:
-            frac = max(0.0, min(1.0, self.pos / self.dur))
+        if self.duration > 0:
+            frac = max(0.0, min(1.0, self.elapsed / self.duration))
             p.setBrush(UI["accent"])
             p.drawRoundedRect(QRectF(0, 6, w * frac, 5), 2.5, 2.5)
             p.setBrush(QColor("white"))
@@ -674,12 +681,12 @@ class ProgressView(QWidget):
         p.drawText(
             QRectF(0, 16, w / 2, 18),
             Qt.AlignmentFlag.AlignLeft,
-            fmt_time(self.pos) if self.dur else "",
+            fmt_time(self.elapsed) if self.duration else "",
         )
         p.drawText(
             QRectF(w / 2, 16, w / 2, 18),
             Qt.AlignmentFlag.AlignRight,
-            fmt_time(self.dur) if self.dur else "",
+            fmt_time(self.duration) if self.duration else "",
         )
 
 
@@ -942,14 +949,14 @@ class ColorCard(Hover, QAbstractButton):
             p.setBrush(c)
             p.drawEllipse(QPointF(x + 7, br.center().y() + 2), 7, 7)
             x += 20
-        c = QPointF(r.right() - 22, r.top() + 24)
+        radio = QPointF(r.right() - 22, r.top() + 24)
         p.setPen(QPen(mix("#3b4052", acc, self._sel), 1.6))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(c, 8, 8)
+        p.drawEllipse(radio, 8, 8)
         if self._sel > 0.01:
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(acc)
-            p.drawEllipse(c, 4.6 * self._sel, 4.6 * self._sel)
+            p.drawEllipse(radio, 4.6 * self._sel, 4.6 * self._sel)
         p.setPen(QColor(TEXT))
         p.setFont(ui_font(14, QFont.Weight.Bold))
         p.drawText(
@@ -970,7 +977,7 @@ class NavTile(Hover, QAbstractButton):
     def __init__(self, icon, caption, parent=None):
         super().__init__(parent)
         self.init_hover()
-        self.icon, self.caption, self.value = icon, caption, ""
+        self.glyph, self.caption, self.value = icon, caption, ""
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(84)
         self.setSizePolicy(
@@ -999,7 +1006,7 @@ class NavTile(Hover, QAbstractButton):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(alpha(acc, 36 + 30 * h))
         p.drawRoundedRect(box, 12, 12)
-        draw_icon(p, self.icon, box.adjusted(11, 11, -11, -11), acc)
+        draw_icon(p, self.glyph, box.adjusted(11, 11, -11, -11), acc)
         tw = r.width() - 104
         p.setPen(QColor(DIM))
         p.setFont(ui_font(12, QFont.Weight.DemiBold))

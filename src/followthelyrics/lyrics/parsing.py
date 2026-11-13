@@ -5,9 +5,7 @@ from followthelyrics.lyrics import model
 
 _TS = re.compile(r"\[(\d+):(\d+(?:\.\d+)?)\]")
 
-
 _WORD_TS = re.compile(r"<\d+:\d+(?:\.\d+)?>")
-
 
 _JUNK = re.compile(
     r"\s*[\(\[][^\)\]]*(official|video|audio|lyric|clip|visuali[sz]er|remaster|"
@@ -15,24 +13,21 @@ _JUNK = re.compile(
     re.IGNORECASE,
 )
 
-
 _YRC_LINE = re.compile(r"^\[(\d+),(\d+)\](.*)$")
 
-
 _YRC_WORD = re.compile(r"\((\d+),(\d+),-?\d+\)")
-
 
 _CREDIT = re.compile(
     r"^\s*[一-鿿 ]{1,8}\s*[:：]"
     r"|纯音乐|作词|作曲|编曲|制作人|混音|母带|监制|出品"
 )
 
-
 _PUNCT = set(",.!?;:…")
 
 
-def _squash(line: model.Line, idxs):
-    text, times = [], []
+def _squash(line: model.Line, idxs: list[int]):
+    text: list[str] = []
+    times: list = []
     for i in idxs:
         ch = line.text[i]
         t = line.chars[i] if line.chars else None
@@ -58,7 +53,9 @@ def split_adlibs(lines: list[model.Line]) -> list[model.Line]:
         if "(" not in line.text:
             out.append(line)
             continue
-        main, ad, depth = [], [], 0
+        main: list[int] = []
+        ad: list[int] = []
+        depth = 0
         for i, ch in enumerate(line.text):
             if ch == "(":
                 depth += 1
@@ -165,21 +162,17 @@ _INTERJ = {
     "bam",
 }
 
-
 _SECTION = re.compile(
     r"^(all|both|tous|toutes|ensemble|together|everyone|group|chorus|pre-?chorus|refrain|"
     r"pr[eé]-?refrain|verse|couplet|bridge|pont|intro|outro|hook|interlude|instrumental)\b",
     re.IGNORECASE,
 )
 
-
 _LEAD_TAG = re.compile(
     r"^\s*[\(\[]\s*([^\)\]]{1,40}?)\s*:?\s*[\)\]]\s*:?\s*(.*)$"
 )
 
-
 _LEAD_COLON = re.compile(r"^\s*([^\s:()\[\]][^:()\[\]]{0,24}?)\s*:\s+(.+)$")
-
 
 _CONNECTOR = re.compile(
     r"\s*(?:&|,|\+|/|\band\b|\bet\b|\bx\b|\bwith\b)\s*", re.IGNORECASE

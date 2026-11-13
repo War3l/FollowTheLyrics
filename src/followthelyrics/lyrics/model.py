@@ -25,7 +25,8 @@ def norm_text(s: str) -> str:
 
 
 def build_line(segments) -> Line | None:
-    text, times = [], []
+    text: list[str] = []
+    times: list[tuple[float, float]] = []
     pending_space = False
     for start, dur, txt in segments:
         visible = [ch for ch in txt if not ch.isspace()]

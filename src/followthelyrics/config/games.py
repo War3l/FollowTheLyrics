@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from ctypes import wintypes
+from typing import Any
 
 from followthelyrics.config import settings
 from followthelyrics.system import win32
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 PROFILES_PATH = os.path.join(settings.DATA_DIR, "profiles.json")
 
-DEFAULT_PROFILES = {
+DEFAULT_PROFILES: dict[str, Any] = {
     "_aide": "Zones en fraction de l'ecran (0 a 1) : x,y = coin haut-gauche, "
     "l,h = largeur,hauteur. "
     "En jeu, le raccourci « Voir les zones » (Ctrl+Alt+Z au depart) les "
