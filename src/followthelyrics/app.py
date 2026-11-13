@@ -77,6 +77,7 @@ class App:
             self.cfg.get("sources_blocked", []),
             self.cfg.get("sites_off", []),
             self.cfg.get("sites_other", False),
+            self.cfg.get("liriqo", True),
         )
         self.worker.sources.connect(self.w_sources)
         self.worker.browsers.connect(self.w_browsers)
@@ -435,6 +436,8 @@ class App:
             o.reset_layout()
         elif key == "easter" and not value:
             o.egg = None
+        elif key == "liriqo":
+            self.worker.upgrade = bool(value)
         o.poke()
 
     def set_visible(self, visible):
