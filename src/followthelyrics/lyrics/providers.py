@@ -227,3 +227,109 @@ def fetch_lyrics_ex(
     session = _Session()
     lines = _fetch(session, title, artist, album, duration)
     return lines, not (lines is None and session.failed)
+
+
+LIRIQO_API = "https://api.liriqo-alfarrizi.my.id/v1/lyrics"
+
+LIRIQO_TIMEOUT = 25
+
+_WORD_LEVELS = ("syllable", "word", "character")
+
+
+def has_words(lines: list[model.Line] | None) -> bool:
+    return bool(lines) and any(line.chars for line in lines or [])
+
+
+def _liriqo_segments(text: str, words: list[dict]):
+    segments: list[tuple[float, float, str]] = []
+    pos = 0
+    for word in words:
+        piece = str(word.get("text") or "").strip()
+        start, end = word.get("start"), word.get("end")
+        if not piece or start is None or end is None:
+            continue
+        at = text.find(piece, pos)
+        aligned = at >= 0 and not text[pos:at].strip()
+        spaced = at > pos if aligned else True
+        if aligned:
+            pos = at + len(piece)
+        segments.append(
+            (
+                start / 1000,
+                max(0.0, (end - start) / 1000),
+                (" " if spaced and segments else "") + piece,
+            )
+        )
+    return segments
+
+
+def parse_liriqo(track: dict) -> list[model.Line]:
+    level = track.get("syncLevel")
+    fallback = track.get("words") or []
+    lines = []
+    for index, raw in enumerate(track.get("timed") or []):
+        text = model.norm_text(str(raw.get("text") or ""))
+        start = raw.get("start")
+        if not text or start is None or raw.get("isInstrumental"):
+            continue
+        words = raw.get("words")
+        if not words and index < len(fallback):
+            words = fallback[index]
+        line = None
+        if level in _WORD_LEVELS and isinstance(words, list) and words:
+            line = model.build_line(_liriqo_segments(text, words))
+        if line is None:
+            end = raw.get("end")
+            line = model.Line(
+                start / 1000, text, end=end / 1000 if end else None
+            )
+        lines.append(line)
+    lines.sort(key=lambda line: line.time)
+    return lines
+
+
+def _liriqo_matches(data: dict, title: str, duration: float) -> bool:
+    meta = data.get("metadata") or {}
+    want = parsing.simplify(parsing.clean_title(title))
+    got = parsing.simplify(parsing.clean_title(str(meta.get("title") or "")))
+    if want and got and not (want in got or got in want):
+        return False
+    try:
+        found = float(meta.get("duration") or 0)
+    except (TypeError, ValueError):
+        found = 0.0
+    return not (duration > 0 and found > 0 and abs(found - duration) > 6)
+
+
+def fetch_liriqo(
+    title: str, artist: str, duration: float = 0, want_words: bool = True
+) -> tuple[list[model.Line] | None, bool]:
+    params: dict[str, str | int] = {"title": title, "fast": 1}
+    if artist:
+        params["artist"] = artist
+    if duration > 0:
+        params["duration"] = round(duration)
+    url = f"{LIRIQO_API}?{urllib.parse.urlencode(params)}"
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(url, headers=HEADERS),
+            timeout=LIRIQO_TIMEOUT,
+        ) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        return None, not (e.code >= 500 or e.code == 429)
+    except (OSError, ValueError):
+        logger.warning("liriqo request failed", exc_info=True)
+        return None, False
+    if not isinstance(data, dict):
+        return None, True
+    track = data.get("primary")
+    if not isinstance(track, dict) or not _liriqo_matches(
+        data, title, duration
+    ):
+        return None, True
+    lines = parse_liriqo(track)
+    if len(lines) < 3 or (want_words and not has_words(lines)):
+        return None, True
+    lines = parsing.add_pauses(lines)
+    return parsing.split_adlibs(parsing.extract_singers(lines, artist)), True

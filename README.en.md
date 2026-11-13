@@ -103,7 +103,7 @@ All can be changed in the panel, **Raccourcis** page: click a shortcut then pres
 
 ## Good to know
 - The game must be in **borderless windowed** mode (exclusive fullscreen lets nothing show on top).
-- Lyrics: NetEase Cloud Music (timing of each word), otherwise LRCLIB (timing per line). Translation: Google Translate. These services are unofficial and may change.
+- Lyrics: NetEase Cloud Music (timing of each word), otherwise LRCLIB (timing per line). When word timing is missing, the app asks LiriQo as a fallback, a third-party service that gathers other sources (can be turned off in the Musique page). Translation: Google Translate. These services are unofficial and may change.
 
 ## Development
 ```

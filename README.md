@@ -102,7 +102,7 @@ Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci 
 
 ## À savoir
 - Le jeu doit être en **fenêtré sans bordure** (le plein écran exclusif ne laisse rien s'afficher par-dessus).
-- Paroles : NetEase Cloud Music (timing de chaque mot), sinon LRCLIB (timing par ligne). Traduction : Google Traduction. Ces deux services ne sont pas officiels et peuvent changer.
+- Paroles : NetEase Cloud Music (timing de chaque mot), sinon LRCLIB (timing par ligne). Quand il manque le mot à mot, l'appli demande en secours à LiriQo, un service tiers qui regroupe d'autres sources (désactivable dans la page Musique). Traduction : Google Traduction. Ces services ne sont pas officiels et peuvent changer.
 
 ## Développer
 ```
