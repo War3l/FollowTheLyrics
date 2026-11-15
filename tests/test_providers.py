@@ -1,3 +1,6 @@
+import pytest
+
+from followthelyrics.lyrics import model
 from followthelyrics.lyrics import parsing
 from followthelyrics.lyrics import providers
 
@@ -23,7 +26,11 @@ class FakeSession(providers._Session):
             sid = int(url.split("id=")[1].split("&")[0])
             self.asked.append(sid)
             return {"yrc": {"lyric": self.lyrics.get(sid, "")}}
+        if "lrclib.net" in url:
+            return self.lrclib_hit
         return None
+
+    lrclib_hit = None
 
 
 def song(sid, name, artist, seconds):
@@ -91,3 +98,58 @@ def test_header_lines_are_not_lyrics():
         "[00:05.00]Monte le son\n"
     )
     assert [line.text for line in lines] == ["Monte le son"]
+
+
+MASKED = "\n".join(
+    f"[{1000 * i},900](0,300,0)Monte (300,300,0)le (600,300,0)s*n"
+    for i in range(1, 5)
+)
+CLEAR = "\n".join(f"[00:0{i}.00]Monte le son" for i in range(1, 5))
+
+
+def test_masked_words_are_restored_from_the_other_source():
+    session = FakeSession([song(2, "Tourne", "Le Groupe", 195)], {2: MASKED})
+    session.lrclib_hit = {"syncedLyrics": CLEAR}
+
+    lines = providers._fetch(session, "Tourne", "Le Groupe", "", 195)
+
+    assert lines and all(
+        line.text == "Monte le son" for line in lines if line.text
+    )
+    first = lines[0]
+    assert first.chars and len(first.chars) == len(first.text)
+    assert first.chars[-1][1] == pytest.approx(0.9)
+
+
+def test_masked_words_stay_when_the_other_source_has_nothing():
+    session = FakeSession([song(2, "Tourne", "Le Groupe", 195)], {2: MASKED})
+
+    lines = providers._fetch(session, "Tourne", "Le Groupe", "", 195)
+
+    assert lines and lines[0].text == "Monte le s*n"
+
+
+def test_restore_keeps_case_punctuation_and_word_timing():
+    line = model.build_line(
+        [(1.0, 0.4, "MONTE "), (1.4, 0.4, "LE "), (1.8, 0.6, "****!")]
+    )
+    reference = [model.Line(1.2, "Monte le son")]
+
+    parsing.restore_masked([line], reference)
+
+    assert line.text == "MONTE LE SON!"
+    assert line.chars[9][0] == pytest.approx(1.8)
+    assert line.chars[-1][1] == pytest.approx(2.4)
+
+
+def test_restore_ignores_a_line_that_does_not_match():
+    line = model.build_line(
+        [(1.0, 0.4, "Monte "), (1.4, 0.4, "le "), (1.8, 0.6, "s*n")]
+    )
+    far = [model.Line(40.0, "Monte le son")]
+    other = [model.Line(1.0, "Autre chose ici")]
+
+    parsing.restore_masked([line], far)
+    parsing.restore_masked([line], other)
+
+    assert line.text == "Monte le s*n"

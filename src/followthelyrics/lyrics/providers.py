@@ -240,6 +240,12 @@ def _fetch(
         if lines:
             break
         lines = _lrclib_loose(session, track, art, duration)
+    if lines and parsing.has_masked(lines):
+        for track, art in wanted:
+            reference = _lrclib_strict(session, track, art, album, duration)
+            if reference:
+                parsing.restore_masked(lines, reference)
+                break
     return (
         parsing.split_adlibs(parsing.extract_singers(lines, artist))
         if lines

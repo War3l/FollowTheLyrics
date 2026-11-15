@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_DIR = os.path.join(settings.DATA_DIR, "cache")
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 MISSING_TTL = 7 * 86400
 

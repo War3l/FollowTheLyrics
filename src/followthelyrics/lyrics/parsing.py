@@ -1,3 +1,4 @@
+import difflib
 import re
 import unicodedata
 
@@ -324,6 +325,126 @@ def parse_yrc(yrc: str) -> list[model.Line]:
         if line and not _CREDIT.search(line.text):
             lines.append(line)
     lines.sort(key=lambda line: line.time)
+    return lines
+
+
+MASK = "*"
+
+MASK_WINDOW = 6.0
+
+_MASK_RUN = re.compile(r"\*+")
+
+_EDGES = re.compile(r"^([^\w*]*)(.*?)([^\w*]*)$", re.DOTALL)
+
+
+def has_masked(lines: list[model.Line]) -> bool:
+    return any(MASK in line.text for line in lines)
+
+
+def _core(word: str) -> str:
+    m = _EDGES.match(word)
+    return m.group(2) if m else word
+
+
+def _unmask_word(masked: str, ref: str, shout: bool) -> str | None:
+    m = _EDGES.match(masked)
+    if not m:
+        return None
+    lead, core, trail = m.groups()
+    found = _core(ref)
+    if not found or MASK in found:
+        return None
+    pattern = "".join(
+        r"[^\s*]+" if _MASK_RUN.fullmatch(part) else re.escape(part)
+        for part in re.split(r"(\*+)", core)
+        if part
+    )
+    if not re.fullmatch(pattern, found, re.IGNORECASE):
+        return None
+    letters = [ch for ch in core if ch.isalpha()]
+    if all(ch.isupper() for ch in letters) if letters else shout:
+        found = found.upper()
+    return lead + found + trail
+
+
+def _unmask_words(words: list[str], ref: list[str]) -> list[str] | None:
+    a = [simplify(_core(w)) for w in words]
+    b = [simplify(_core(w)) for w in ref]
+    out = list(words)
+    plain = [ch for w in words if MASK not in w for ch in w if ch.isalpha()]
+    shout = bool(plain) and all(ch.isupper() for ch in plain)
+    anchored = False
+    done = False
+    codes = difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes()
+    for tag, i1, i2, j1, j2 in codes:
+        if tag == "equal":
+            anchored = True
+        elif tag == "replace" and i2 - i1 == j2 - j1:
+            for i, j in zip(range(i1, i2), range(j1, j2), strict=True):
+                if MASK not in words[i]:
+                    continue
+                fixed = _unmask_word(words[i], ref[j], shout)
+                if fixed:
+                    out[i] = fixed
+                    done = True
+    if not done or not (anchored or len(words) == len(ref)):
+        return None
+    return out
+
+
+def _retime(line: model.Line, words: list[str]) -> None:
+    old = line.text.split(" ")
+    if line.chars is None or len(line.chars) != len(line.text):
+        line.text = " ".join(words)
+        return
+    chars: list[tuple[float, float]] = []
+    at = 0
+    for k, (before, after) in enumerate(zip(old, words, strict=True)):
+        if k:
+            chars.append(line.chars[at])
+            at += 1
+        span = line.chars[at : at + len(before)]
+        at += len(before)
+        if before == after or not span:
+            chars.extend(span)
+            continue
+        start, end = span[0][0], span[-1][1]
+        n = len(after)
+        chars.extend(
+            (start + (end - start) * i / n, start + (end - start) * (i + 1) / n)
+            for i in range(n)
+        )
+    line.text = " ".join(words)
+    line.chars = chars
+
+
+def restore_masked(
+    lines: list[model.Line], reference: list[model.Line]
+) -> list[model.Line]:
+    for line in lines:
+        if MASK not in line.text:
+            continue
+        words = line.text.split(" ")
+        near = sorted(
+            (
+                ref
+                for ref in reference
+                if ref.text and abs(ref.time - line.time) <= MASK_WINDOW
+            ),
+            key=lambda ref: abs(ref.time - line.time),
+        )
+        best = None
+        for ref in near:
+            fixed = _unmask_words(words, ref.text.split(" "))
+            if fixed is None:
+                continue
+            left = sum(MASK in w for w in fixed)
+            if best is None or left < best[0]:
+                best = (left, fixed)
+            if left == 0:
+                break
+        if best:
+            _retime(line, best[1])
     return lines
 
 
