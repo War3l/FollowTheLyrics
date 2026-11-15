@@ -53,6 +53,10 @@ CARD_TIME = 4.5
 
 UPPER = 0.5
 
+TRANSLATION_ROWS = 3
+
+TRANSLATION_CHARS = 34
+
 
 class Overlay(QWidget):
     def __init__(
@@ -389,6 +393,23 @@ class Overlay(QWidget):
     def show_translation(self, line):
         return self.cfg.get("translation", True) and bool(line.translation)
 
+    def translation_rows(self, line, maxw):
+        font = self.small_font(0.5)
+        fm = QFontMetricsF(font)
+        limit = max(maxw * 1.2, fm.averageCharWidth() * TRANSLATION_CHARS)
+        rows, _, _ = self.wrap_text(line.translation, font, limit)
+        texts = [" ".join(word for word, *_ in row) for row, _ in rows]
+        if len(texts) > TRANSLATION_ROWS:
+            texts = [
+                *texts[: TRANSLATION_ROWS - 1],
+                " ".join(texts[TRANSLATION_ROWS - 1 :]),
+            ]
+        texts = [
+            fm.elidedText(text, Qt.TextElideMode.ElideRight, limit)
+            for text in texts
+        ]
+        return font, fm, texts
+
     def wrap_text(self, text, font, maxw):
         key = (text, font.family(), font.pixelSize(), int(maxw))
         if key in self._layout_cache:
@@ -418,10 +439,9 @@ class Overlay(QWidget):
         w = max(rw for _, rw in rows)
         h = lh * len(rows) + (self.label_height() if line.singer else 0)
         if self.show_translation(line):
-            tf = self.small_font(0.5)
-            tw = QFontMetricsF(tf).horizontalAdvance(line.translation)
-            w = max(w, min(tw, maxw * 1.2))
-            h += QFontMetricsF(tf).height() * 1.1
+            _, tfm, texts = self.translation_rows(line, maxw)
+            w = max(w, *(tfm.horizontalAdvance(text) for text in texts))
+            h += tfm.height() * 1.1 * len(texts)
         if line.adlib:
             w += (
                 QFontMetricsF(self.small_font(0.6)).horizontalAdvance(
@@ -1258,12 +1278,10 @@ class Overlay(QWidget):
         font = self.main_font()
         rows, lh, ascent = self.wrap_text(line.text, font, pl.maxw)
         label_h = self.label_height() if line.singer else 0
-        tf = self.small_font(0.5)
-        trans_h = (
-            QFontMetricsF(tf).height() * 1.1
-            if self.show_translation(line)
-            else 0
-        )
+        trans_h = 0.0
+        if self.show_translation(line):
+            _, tfm, texts = self.translation_rows(line, pl.maxw)
+            trans_h = tfm.height() * 1.1 * len(texts)
         stack = self.stacked() and len(rows) > 1
         hero, scales = (
             self.row_scales(line, rows) if stack else (-1, [1.0] * len(rows))
@@ -1504,16 +1522,20 @@ class Overlay(QWidget):
                 p.restore()
 
         if current and self.show_translation(line):
-            fm = QFontMetricsF(tf)
-            text = fm.elidedText(
-                line.translation, Qt.TextElideMode.ElideRight, pl.maxw * 1.2
-            )
-            tw = fm.horizontalAdvance(text)
-            tx = {"left": 0, "right": -tw}.get(align, -tw / 2)
-            ty = rows_h + fm.ascent() + 2
-            self.draw_text_fx(
-                p, text, tf, tx, ty, QBrush(QColor(255, 255, 255, 205)), glow=0
-            )
+            tf, fm, texts = self.translation_rows(line, pl.maxw)
+            for i, text in enumerate(texts):
+                tw = fm.horizontalAdvance(text)
+                tx = {"left": 0, "right": -tw}.get(align, -tw / 2)
+                ty = rows_h + fm.ascent() + 2 + i * fm.height() * 1.1
+                self.draw_text_fx(
+                    p,
+                    text,
+                    tf,
+                    tx,
+                    ty,
+                    QBrush(QColor(255, 255, 255, 205)),
+                    glow=0,
+                )
 
     def draw_typed(self, p, line, rows, lh, ascent, font, align, pos, chorus):
         idx = self.cur["idx"] if self.cur else len(self.times)
