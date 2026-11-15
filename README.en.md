@@ -104,6 +104,14 @@ All can be changed in the panel, **Raccourcis** page: click a shortcut then pres
 - The game must be in **borderless windowed** mode (exclusive fullscreen lets nothing show on top).
 - Lyrics: NetEase Cloud Music (timing of each word), otherwise LRCLIB (timing per line). When word timing is missing, the app asks LiriQo as a fallback, a third-party service that gathers other sources (can be turned off in the Musique page). Translation: Google Translate. These services are unofficial and may change.
 
+## Uninstall
+- **Windows, installed app**: Windows Settings → Apps → FollowTheLyrics → Uninstall, or the **Uninstall** button in the panel's General page. Your settings are kept unless you choose to remove them.
+- **Windows, single file**: quit the app (right click on the icon near the clock → Quit) and delete `FollowTheLyrics.exe`. To erase the settings too, delete the `%APPDATA%\FollowTheLyrics` folder.
+- **Linux**: quit the app, delete the `FollowTheLyrics-linux` file, then `~/.config/FollowTheLyrics` and `~/.config/autostart/FollowTheLyrics.desktop` if they exist.
+
+## Privacy
+The app needs no account and sends nothing to its author. To find lyrics, it sends the track's title and artist to online lyrics services; it will not transfer any other information to other networked systems unless you request it (translation, update). Details, service by service: [PRIVACY.md](PRIVACY.md#english).
+
 ## Development
 ```
 python -m venv .venv
@@ -153,7 +161,7 @@ The details (role of each module, data flow, dependency rules) are in
 | `lyrics/` | line model, LRC and YRC parsing, lyrics sources, cache, analysis (choruses, strong words) |
 | `desktop/` | everything that touches the system: contracts (`ports.py`), Windows backend, Linux backend, Qt-only backend for macOS |
 | `playback/` | current track, browser site recognition, beat detection, worker thread |
-| `overlay/` | the lyrics window and its rendering: animations, colours, effects, easter eggs |
+| `overlay/` | the lyrics window and its rendering: animations, colours, effects |
 | `ui/` | control panel, animated widgets, welcome screen, zone editor |
 | `system/` | autostart, installation, updates, keyboard shortcuts, on top of the `desktop/` ports |
 | `tests/` | pytest tests, with no particular system or network |

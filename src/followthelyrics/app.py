@@ -452,8 +452,6 @@ class App:
             o.apply_geometry()
         elif key in ("mode", "position", "font", "translation", "stack"):
             o.reset_layout()
-        elif key == "easter" and not value:
-            o.egg = None
         elif key == "liriqo":
             self.worker.upgrade = bool(value)
         o.poke()

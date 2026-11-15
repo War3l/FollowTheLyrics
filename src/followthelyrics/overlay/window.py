@@ -35,7 +35,6 @@ from followthelyrics.lyrics import model
 from followthelyrics.lyrics import parsing
 from followthelyrics.overlay import animation
 from followthelyrics.overlay import colors
-from followthelyrics.overlay import easter
 from followthelyrics.overlay import effects
 
 logger = logging.getLogger(__name__)
@@ -117,7 +116,6 @@ class Overlay(QWidget):
         self._hero_cache = {}
         self.word_lines = {}
         self.flash = None
-        self.egg = None
         self.force_paint = True
         self.was_animating = False
         self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
@@ -241,9 +239,6 @@ class Overlay(QWidget):
             self.cover_img = None
             self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
             self.anchor_pos, self.anchor_t = np.position, now
-            self.egg = (
-                easter.pick(np, self) if self.cfg.get("easter", True) else None
-            )
             self.force_paint = True
             self.wake()
         elif (
@@ -274,8 +269,6 @@ class Overlay(QWidget):
             self.times = [line.time for line in lines]
             self.word_sync = any(line.chars for line in lines)
             self.state = "ok"
-            if self.egg:
-                self.egg.set_lines(lines)
         else:
             self.state = "missing"
         self.track_changed_at = self.clock()
@@ -655,7 +648,7 @@ class Overlay(QWidget):
     def maybe_flash(self, idx):
         line = self.lines[idx]
         mode = self.cfg.get("title_drop", "always")
-        if mode == "never" or self.egg or not line.title_drop:
+        if mode == "never" or not line.title_drop:
             return
         in_game = self.profile_key != "bureau"
         if in_game and mode == "desktop":
@@ -756,8 +749,6 @@ class Overlay(QWidget):
     def is_animating(self, now, pos):
         if self.exiting or self.particles or self.flash:
             return True
-        if self.egg and self.egg.busy(now, pos):
-            return True
         if (
             now < self.toast_until
             or now < self.zones_until
@@ -824,8 +815,6 @@ class Overlay(QWidget):
                 pt["vx"] *= 0.97
                 alive.append(pt)
         self.particles = alive
-        if self.egg:
-            self.egg.tick(now, dt, pos_now)
 
         toast_on = now < self.toast_until or now < self.zones_until
         since = now - self.track_changed_at
@@ -879,9 +868,7 @@ class Overlay(QWidget):
                         .adjusted(-g, -g, g, g)
                     )
                 )
-            if now < self.zones_until or (
-                self.egg and self.egg.busy(now, pos_now)
-            ):
+            if now < self.zones_until:
                 region = QRegion(self.rect())
         dirty = region.united(self.last_region)
         animating = abs(target - self.alpha) > 0.002 or self.is_animating(
@@ -956,8 +943,6 @@ class Overlay(QWidget):
 
         self.draw_particles(p)
         self.draw_card(p)
-        if self.egg:
-            self.egg.draw(p, now, pos)
         p.end()
 
     def sung_end(self, idx):
@@ -1065,10 +1050,6 @@ class Overlay(QWidget):
         if alpha <= 0.003:
             return
         line = self.lines[e["idx"]]
-        if self.egg:
-            alpha *= self.egg.line_alpha(e["idx"], pos, e["place"].rect)
-            if alpha <= 0.003:
-                return
         pl = e["place"]
         x, y = at if at else (pl.ax, pl.cy)
         p.save()

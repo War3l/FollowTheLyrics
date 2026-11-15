@@ -728,15 +728,6 @@ class Panel(QWidget):
                 "perspective."
             ),
         )
-        self.opt["easter"] = widgets.Toggle()
-        motion.add_row(
-            i18n.tr("Easter eggs"),
-            self.opt["easter"],
-            i18n.tr(
-                "Quelques morceaux cachent un spectacle spécial. À toi de les "
-                "trouver."
-            ),
-        )
 
         fonts = Card(i18n.tr("Police"))
         self.font_search = QLineEdit()

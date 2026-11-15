@@ -123,7 +123,6 @@ DEFAULTS: dict[str, Any] = {
     "beat": True,
     "card": True,
     "particles": True,
-    "easter": True,
     "tilt": True,
     "stack": True,
     "title_drop": "always",

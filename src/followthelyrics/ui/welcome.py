@@ -17,10 +17,13 @@ from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtWidgets import QWidget
 
 from followthelyrics import i18n
+from followthelyrics import version
 from followthelyrics.config import settings
 from followthelyrics.ui import widgets
 
 logger = logging.getLogger(__name__)
+
+PRIVACY_URL = f"https://github.com/{version.REPO}/blob/main/PRIVACY.md"
 
 STEPS = (
     (
@@ -162,6 +165,21 @@ class Welcome(QWidget):
                 )
             )
         lay.addStretch(1)
+
+        note = QLabel(
+            i18n.tr(
+                "Pour trouver les paroles, le titre et l'artiste du morceau "
+                "sont envoyés à des services en ligne."
+            )
+            + f' <a href="{PRIVACY_URL}" style="color:#ffffff">'
+            + i18n.tr("Confidentialité")
+            + "</a>"
+        )
+        note.setProperty("role", "text")
+        note.setWordWrap(True)
+        note.setOpenExternalLinks(True)
+        lay.addWidget(note)
+        lay.addSpacing(14)
 
         go = QPushButton(i18n.tr("C'est parti"))
         go.setProperty("role", "go")

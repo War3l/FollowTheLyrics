@@ -105,6 +105,14 @@ Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci 
 - Le jeu doit être en **fenêtré sans bordure** (le plein écran exclusif ne laisse rien s'afficher par-dessus).
 - Paroles : NetEase Cloud Music (timing de chaque mot), sinon LRCLIB (timing par ligne). Quand il manque le mot à mot, l'appli demande en secours à LiriQo, un service tiers qui regroupe d'autres sources (désactivable dans la page Musique). Traduction : Google Traduction. Ces services ne sont pas officiels et peuvent changer.
 
+## Désinstaller
+- **Windows, appli installée** : Paramètres de Windows → Applications → FollowTheLyrics → Désinstaller, ou bouton **Désinstaller** dans la page Général du panneau. Tes réglages sont gardés, sauf si tu choisis de les supprimer.
+- **Windows, simple fichier** : quitte l'appli (clic droit sur l'icône près de l'horloge → Quitter) et supprime `FollowTheLyrics.exe`. Pour effacer aussi les réglages, supprime le dossier `%APPDATA%\FollowTheLyrics`.
+- **Linux** : quitte l'appli, supprime le fichier `FollowTheLyrics-linux`, puis `~/.config/FollowTheLyrics` et `~/.config/autostart/FollowTheLyrics.desktop` s'ils existent.
+
+## Confidentialité
+L'appli ne demande aucun compte et n'envoie rien à son auteur. Pour trouver les paroles, elle transmet le titre et l'artiste du morceau à des services de paroles en ligne ; elle ne transmet aucune autre information à d'autres systèmes en réseau, sauf à ta demande (traduction, mise à jour). Le détail, service par service : [PRIVACY.md](PRIVACY.md).
+
 ## Développer
 ```
 python -m venv .venv
@@ -153,7 +161,7 @@ Le détail (rôle de chaque module, flux de données, règles de dépendance) es
 | `lyrics/` | modèle d'une ligne, lecture des formats LRC et YRC, sources de paroles, cache, analyse (refrains, mots forts) |
 | `desktop/` | tout ce qui touche au système : contrats (`ports.py`), backend Windows, backend Linux, backend Qt seul pour macOS |
 | `playback/` | morceau en cours, reconnaissance du site du navigateur, détection des beats, fil de travail |
-| `overlay/` | la fenêtre des paroles et son rendu : animations, couleurs, effets, easter eggs |
+| `overlay/` | la fenêtre des paroles et son rendu : animations, couleurs, effets |
 | `ui/` | panneau de contrôle, briques animées, écran de bienvenue, éditeur de zones |
 | `system/` | démarrage auto, installation, mises à jour, raccourcis clavier, au-dessus des ports de `desktop/` |
 | `tests/` | tests pytest, sans système particulier ni réseau |

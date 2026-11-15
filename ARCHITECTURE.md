@@ -66,8 +66,7 @@ src/followthelyrics/
 │   ├── window.py    la fenêtre des paroles : placement, animation, rendu
 │   ├── effects.py   flou, palettes tirées de la pochette, accès aux pixels
 │   ├── colors.py    couleurs LCH et regroupement des couleurs d'une image
-│   ├── animation.py courbes d'animation
-│   └── easter.py    spectacles déclenchés par certains morceaux
+│   └── animation.py courbes d'animation
 ├── ui/
 │   ├── panel.py     panneau de contrôle, une page par sujet
 │   ├── widgets.py   briques animées partagées (cartes, interrupteurs, tuiles)
