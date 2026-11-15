@@ -433,16 +433,6 @@ TEXTS: dict[str, tuple[str, str, str]] = {
         "En modo Edit, las líneas a izquierda y derecha se inclinan en perspectiva.",
         "Edit 模式下左右两侧的歌词带透视倾斜。",
     ),
-    "Easter eggs": (
-        "Easter eggs",
-        "Easter eggs",
-        "彩蛋",
-    ),
-    "Quelques morceaux cachent un spectacle spécial. À toi de les trouver.": (
-        "A few tracks hide a special show. Yours to find.",
-        "Algunos temas esconden un espectáculo especial. Te toca encontrarlos.",
-        "有些歌曲藏着特别的演出，等你发现。",
-    ),
     "Police": (
         "Font",
         "Fuente",
@@ -1037,6 +1027,16 @@ TEXTS: dict[str, tuple[str, str, str]] = {
         "NO LYRICS",
         "SIN LETRA",
         "无歌词",
+    ),
+    "Pour trouver les paroles, le titre et l'artiste du morceau sont envoyés à des services en ligne.": (
+        "To find lyrics, the track's title and artist are sent to online services.",
+        "Para encontrar la letra, el título y el artista de la canción se envían a servicios en línea.",
+        "为了查找歌词，歌曲名和歌手会发送给在线服务。",
+    ),
+    "Confidentialité": (
+        "Privacy",
+        "Privacidad",
+        "隐私",
     ),
     "Bienvenue dans FollowTheLyrics": (
         "Welcome to FollowTheLyrics",

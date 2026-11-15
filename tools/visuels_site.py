@@ -1,7 +1,6 @@
 import os
 import random
 import sys
-from types import SimpleNamespace
 
 from PyQt6.QtCore import QBuffer
 from PyQt6.QtCore import QPointF
@@ -139,33 +138,4 @@ for sd in seeds:
         mode="edit",
         scale=1.2,
     )
-    L = demo_song.demo_line
-    tr = SimpleNamespace(
-        title="Firework",
-        artist="Katy Perry",
-        album="",
-        duration=60,
-        position=0.0,
-        playing=True,
-        app="test",
-        key=("firework", "katy perry"),
-    )
-    ls = [
-        L(1.0, "la la la firework"),
-        L(3.0, "la la la firework"),
-        L(5.0, "firework la la"),
-        L(7.0, "la la firework"),
-        L(9.0, "mm firework"),
-        L(20.0, ""),
-    ]
-    for at in (12.9,):
-        make(
-            f"easter{tag}_{at}",
-            at,
-            ("#ffd36b", "#ff5fa2", "#8B7CFF"),
-            seed=sd,
-            track=tr,
-            lines=ls,
-            mode="edit",
-        )
 os._exit(0)
