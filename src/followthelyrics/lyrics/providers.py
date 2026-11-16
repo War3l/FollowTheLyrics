@@ -277,18 +277,32 @@ def has_words(lines: list[model.Line] | None) -> bool:
     return bool(lines) and any(line.chars for line in lines or [])
 
 
+_QUOTES = str.maketrans("\u2018\u2019\u02bc`\u201c\u201d", "''''\"\"")
+
+LIRIQO_RESYNC = 12
+
+
+def _fold(s: str) -> str:
+    return "".join(
+        ch.lower() if len(ch.lower()) == 1 else ch
+        for ch in s.translate(_QUOTES)
+    )
+
+
 def _liriqo_segments(text: str, words: list[dict]):
     segments: list[tuple[float, float, str]] = []
+    folded = _fold(text)
     pos = 0
     for word in words:
         piece = str(word.get("text") or "").strip()
         start, end = word.get("start"), word.get("end")
         if not piece or start is None or end is None:
             continue
-        at = text.find(piece, pos)
-        aligned = at >= 0 and not text[pos:at].strip()
-        spaced = at > pos if aligned else True
-        if aligned:
+        at = folded.find(_fold(piece), pos)
+        found = 0 <= at <= pos + LIRIQO_RESYNC
+        spaced = (at > 0 and text[at - 1].isspace()) if found else True
+        if found:
+            piece = text[at : at + len(piece)]
             pos = at + len(piece)
         segments.append(
             (
