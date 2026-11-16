@@ -105,6 +105,11 @@ Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci 
 - Le jeu doit être en **fenêtré sans bordure** (le plein écran exclusif ne laisse rien s'afficher par-dessus).
 - Paroles : NetEase Cloud Music (timing de chaque mot), sinon LRCLIB (timing par ligne). Quand il manque le mot à mot, l'appli demande en secours à LiriQo, un service tiers qui regroupe d'autres sources (désactivable dans la page Musique). Traduction : Google Traduction. Ces services ne sont pas officiels et peuvent changer.
 
+## Fait avec l'IA
+Oui, FollowTheLyrics est codé avec l'aide de l'IA, et je ne le cache pas. L'idée vient de moi, je ne me suis pas inspiré d'un logiciel existant, et c'est moi qui décide de chaque fonction et qui teste chaque version.
+
+Aujourd'hui, beaucoup de gens se servent de l'IA pour créer des logiciels et les vendre. Moi, je m'en sers pour faire des projets gratuits : pas de pub, pas de version payante, je n'en tire aucun profit, et tout le code est ici, en public.
+
 ## Désinstaller
 - **Windows, appli installée** : Paramètres de Windows → Applications → FollowTheLyrics → Désinstaller, ou bouton **Désinstaller** dans la page Général du panneau. Tes réglages sont gardés, sauf si tu choisis de les supprimer.
 - **Windows, simple fichier** : quitte l'appli (clic droit sur l'icône près de l'horloge → Quitter) et supprime `FollowTheLyrics.exe`. Pour effacer aussi les réglages, supprime le dossier `%APPDATA%\FollowTheLyrics`.
