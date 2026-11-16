@@ -104,6 +104,11 @@ All can be changed in the panel, **Raccourcis** page: click a shortcut then pres
 - The game must be in **borderless windowed** mode (exclusive fullscreen lets nothing show on top).
 - Lyrics: NetEase Cloud Music (timing of each word), otherwise LRCLIB (timing per line). When word timing is missing, the app asks LiriQo as a fallback, a third-party service that gathers other sources (can be turned off in the Musique page). Translation: Google Translate. These services are unofficial and may change.
 
+## Made with AI
+Yes, FollowTheLyrics is coded with the help of AI, and I'm not hiding it. The idea is mine, I didn't base it on an existing app, and I decide every feature and test every version myself.
+
+A lot of people now use AI to build software and sell it. I use it to make free projects: no ads, no paid version, I make no money from it, and all the code is right here, in public.
+
 ## Uninstall
 - **Windows, installed app**: Windows Settings → Apps → FollowTheLyrics → Uninstall, or the **Uninstall** button in the panel's General page. Your settings are kept unless you choose to remove them.
 - **Windows, single file**: quit the app (right click on the icon near the clock → Quit) and delete `FollowTheLyrics.exe`. To erase the settings too, delete the `%APPDATA%\FollowTheLyrics` folder.
