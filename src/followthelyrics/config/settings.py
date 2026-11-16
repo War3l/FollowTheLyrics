@@ -131,6 +131,7 @@ DEFAULTS: dict[str, Any] = {
     "sites_other": False,
     "welcomed": False,
     "glass": True,
+    "screen": "",
 }
 
 
@@ -165,6 +166,8 @@ def load_config():
         cfg["offset"] = float(cfg["offset"])
     except (TypeError, ValueError):
         cfg["scale"], cfg["offset"] = 1.0, 0.0
+    if not isinstance(cfg.get("screen"), str):
+        cfg["screen"] = ""
     for old in ("theme",):
         cfg.pop(old, None)
     return cfg

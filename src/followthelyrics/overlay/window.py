@@ -36,6 +36,7 @@ from followthelyrics.lyrics import parsing
 from followthelyrics.overlay import animation
 from followthelyrics.overlay import colors
 from followthelyrics.overlay import effects
+from followthelyrics.overlay import screens
 
 logger = logging.getLogger(__name__)
 
@@ -140,13 +141,21 @@ class Overlay(QWidget):
         self.update_zones()
         self.reset_layout()
 
+    def chosen_screen(self):
+        return screens.pick(
+            QGuiApplication.screens(),
+            QGuiApplication.primaryScreen(),
+            self.cfg.get("screen") or "",
+        )
+
     def target_screen(self):
         main = QGuiApplication.primaryScreen()
-        if self.elsewhere:
+        chosen = self.chosen_screen()
+        if self.elsewhere and chosen is main:
             others = [s for s in QGuiApplication.screens() if s is not main]
             if others:
                 return others[0]
-        return main
+        return chosen
 
     def set_elsewhere(self, wanted):
         wanted = bool(wanted) and len(QGuiApplication.screens()) > 1
