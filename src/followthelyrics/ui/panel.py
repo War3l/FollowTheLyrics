@@ -12,6 +12,7 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtGui import QFont
 from PyQt6.QtGui import QFontDatabase
 from PyQt6.QtGui import QFontMetricsF
+from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtGui import QPainter
 from PyQt6.QtGui import QPen
 from PyQt6.QtGui import QPixmap
@@ -37,6 +38,7 @@ from followthelyrics import i18n
 from followthelyrics import version
 from followthelyrics.config import settings
 from followthelyrics.desktop import ports
+from followthelyrics.overlay import screens
 from followthelyrics.playback import sites
 from followthelyrics.system import hotkeys
 from followthelyrics.ui import logos
@@ -639,6 +641,19 @@ class Panel(QWidget):
             i18n.tr("Taille du texte"),
             hbox(self.size_slider, self.size_lbl, stretch=False),
         )
+        self.screen_box = QWidget()
+        box = QHBoxLayout(self.screen_box)
+        box.setContentsMargins(0, 0, 0, 0)
+        self.screen_pick = None
+        before = place.lay.count()
+        self.screen_row = place.add_row(
+            i18n.tr("Écran"),
+            self.screen_box,
+            i18n.tr("L'écran sur lequel les paroles s'affichent."),
+        )
+        item = place.lay.itemAt(before)
+        self.screen_sep = item.widget() if item is not None else None
+        self.refresh_screens()
 
         extra = Card(i18n.tr("Moments forts"))
         self.opt = {}
@@ -1256,6 +1271,25 @@ class Panel(QWidget):
         if not self.size_slider.isSliderDown() and not self._building:
             self.set("scale", v / 100)
 
+    def refresh_screens(self):
+        found = QGuiApplication.screens()
+        options = screens.choices(found)
+        if self.screen_pick is not None:
+            self.screen_pick.setParent(None)
+            self.screen_pick.deleteLater()
+        self.screen_pick = widgets.Segmented(options)
+        self.screen_pick.set_value(
+            screens.key_of(found, self.app.overlay.chosen_screen())
+        )
+        self.screen_pick.changed.connect(lambda k: self.set("screen", k))
+        box = self.screen_box.layout()
+        if box is not None:
+            box.addWidget(self.screen_pick)
+        many = len(options) > 1
+        self.screen_row.setVisible(many)
+        if self.screen_sep is not None:
+            self.screen_sep.setVisible(many)
+
     def set(self, key, value):
         if self._building:
             return
@@ -1283,6 +1317,13 @@ class Panel(QWidget):
             self.style_picker.setEnabled(cfg["mode"] != "typewriter")
             self.size_slider.setValue(round(cfg["scale"] * 100))
             self.size_lbl.setText(f"{self.size_slider.value()} %")
+            if self.screen_pick is not None:
+                self.screen_pick.set_value(
+                    screens.key_of(
+                        QGuiApplication.screens(),
+                        self.app.overlay.chosen_screen(),
+                    )
+                )
             for k, t in self.opt.items():
                 t.setChecked(bool(cfg.get(k, True)))
             self.demo.setChecked(self.app.demo)

@@ -278,6 +278,16 @@ TEXTS: dict[str, tuple[str, str, str]] = {
         "Derecha",
         "右",
     ),
+    "Écran": (
+        "Screen",
+        "Pantalla",
+        "屏幕",
+    ),
+    "L'écran sur lequel les paroles s'affichent.": (
+        "The screen the lyrics show on.",
+        "La pantalla donde se muestra la letra.",
+        "显示歌词的屏幕。",
+    ),
     "Taille du texte": (
         "Text size",
         "Tamaño del texto",

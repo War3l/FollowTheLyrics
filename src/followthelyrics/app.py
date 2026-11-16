@@ -9,6 +9,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QAction
 from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtNetwork import QLocalServer
 from PyQt6.QtNetwork import QLocalSocket
 from PyQt6.QtWidgets import QApplication
@@ -111,6 +112,11 @@ class App:
         self.hotkeys.failed.connect(self.on_hotkeys_failed)
 
         self.panel = panel.Panel(self)
+        gui = QGuiApplication.instance()
+        if isinstance(gui, QGuiApplication):
+            gui.screenAdded.connect(self.screens_changed)
+            gui.screenRemoved.connect(self.screens_changed)
+            gui.primaryScreenChanged.connect(self.screens_changed)
         self.hotkeys.start()
         self.tray = QSystemTrayIcon(widgets.make_icon())
         self.tray.setToolTip("FollowTheLyrics")
@@ -445,11 +451,18 @@ class App:
                 logger.debug("check_profile failed", exc_info=True)
         self.exclusive = excl
 
+    def screens_changed(self, *_):
+        QTimer.singleShot(300, self._apply_screens)
+
+    def _apply_screens(self):
+        self.overlay.apply_geometry()
+        self.panel.refresh_screens()
+
     def set_cfg(self, key, value):
         self.cfg[key] = value
         settings.save_config(self.cfg)
         o = self.overlay
-        if key == "scale":
+        if key in ("scale", "screen"):
             o.apply_geometry()
         elif key in ("mode", "position", "font", "translation", "stack"):
             o.reset_layout()
