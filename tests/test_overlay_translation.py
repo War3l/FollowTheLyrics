@@ -19,7 +19,7 @@ LONG = (
 def overlay():
     app = QApplication.instance() or QApplication([])
     o = window.Overlay(
-        dict(settings.DEFAULTS, card=False),
+        dict(settings.DEFAULTS, card=False, translation=True),
         games.DEFAULT_PROFILES,
         desktop.current().windowing,
         clock=lambda: 0.0,

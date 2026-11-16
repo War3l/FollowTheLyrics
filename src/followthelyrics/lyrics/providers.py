@@ -240,11 +240,16 @@ def _fetch(
         if lines:
             break
         lines = _lrclib_loose(session, track, art, duration)
-    return (
-        parsing.split_adlibs(parsing.extract_singers(lines, artist))
-        if lines
-        else None
-    )
+    if lines and parsing.has_masked(lines):
+        for track, art in wanted:
+            reference = _lrclib_strict(session, track, art, album, duration)
+            if reference:
+                parsing.restore_masked(lines, reference)
+                break
+    if not lines:
+        return None
+    lines = parsing.strip_credits(lines, title, artist)
+    return parsing.split_adlibs(parsing.extract_singers(lines, artist))
 
 
 def fetch_lyrics(
@@ -272,18 +277,74 @@ def has_words(lines: list[model.Line] | None) -> bool:
     return bool(lines) and any(line.chars for line in lines or [])
 
 
-def _liriqo_segments(text: str, words: list[dict]):
+_QUOTES = str.maketrans("\u2018\u2019\u02bc`\u201c\u201d", "''''\"\"")
+
+LIRIQO_RESYNC = 12
+
+
+def _fold(s: str) -> str:
+    return "".join(
+        ch.lower() if len(ch.lower()) == 1 else ch
+        for ch in s.translate(_QUOTES)
+    )
+
+
+_TTML_LINE = re.compile(r"<p\b([^>]*)>(.*?)</p>", re.DOTALL)
+
+_TTML_KEY = re.compile(r'\bkey="([^"]*)"')
+
+_TTML_SPAN = re.compile(r"<span\b[^>]*\bbegin=[^>]*>([^<]*)</span>")
+
+
+def _ttml_glue(ttml) -> dict[str, list[bool]]:
+    out: dict[str, list[bool]] = {}
+    if not isinstance(ttml, str):
+        return out
+    for n, m in enumerate(_TTML_LINE.finditer(ttml)):
+        key = _TTML_KEY.search(m.group(1))
+        body = m.group(2)
+        flags: list[bool] = []
+        last = None
+        for span in _TTML_SPAN.finditer(body):
+            if not span.group(1).strip():
+                continue
+            flags.append(last is not None and body[last : span.start()] == "")
+            last = span.end()
+        out[key.group(1) if key else f"#{n}"] = flags
+    return out
+
+
+def _liriqo_segments(text: str, words: list[dict], glue=None):
     segments: list[tuple[float, float, str]] = []
+    valid = [
+        word
+        for word in words
+        if str(word.get("text") or "").strip()
+        and word.get("start") is not None
+        and word.get("end") is not None
+    ]
+    if glue and len(glue) == len(valid):
+        for word, glued in zip(valid, glue, strict=True):
+            start, end = word["start"], word["end"]
+            segments.append(
+                (
+                    start / 1000,
+                    max(0.0, (end - start) / 1000),
+                    ("" if glued or not segments else " ")
+                    + str(word["text"]).strip(),
+                )
+            )
+        return segments
+    folded = _fold(text)
     pos = 0
-    for word in words:
-        piece = str(word.get("text") or "").strip()
-        start, end = word.get("start"), word.get("end")
-        if not piece or start is None or end is None:
-            continue
-        at = text.find(piece, pos)
-        aligned = at >= 0 and not text[pos:at].strip()
-        spaced = at > pos if aligned else True
-        if aligned:
+    for word in valid:
+        piece = str(word["text"]).strip()
+        start, end = word["start"], word["end"]
+        at = folded.find(_fold(piece), pos)
+        found = 0 <= at <= pos + LIRIQO_RESYNC
+        spaced = (at > 0 and text[at - 1].isspace()) if found else True
+        if found:
+            piece = text[at : at + len(piece)]
             pos = at + len(piece)
         segments.append(
             (
@@ -298,6 +359,7 @@ def _liriqo_segments(text: str, words: list[dict]):
 def parse_liriqo(track: dict) -> list[model.Line]:
     level = track.get("syncLevel")
     fallback = track.get("words") or []
+    glue = _ttml_glue(track.get("ttml"))
     lines = []
     for index, raw in enumerate(track.get("timed") or []):
         text = model.norm_text(str(raw.get("text") or ""))
@@ -309,7 +371,8 @@ def parse_liriqo(track: dict) -> list[model.Line]:
             words = fallback[index]
         line = None
         if level in _WORD_LEVELS and isinstance(words, list) and words:
-            line = model.build_line(_liriqo_segments(text, words))
+            flags = glue.get(str(raw.get("key"))) or glue.get(f"#{index}")
+            line = model.build_line(_liriqo_segments(text, words, flags))
         if line is None:
             end = raw.get("end")
             line = model.Line(
@@ -363,5 +426,5 @@ def fetch_liriqo(
     lines = parse_liriqo(track)
     if len(lines) < 3 or (want_words and not has_words(lines)):
         return None, True
-    lines = parsing.add_pauses(lines)
+    lines = parsing.add_pauses(parsing.strip_credits(lines, title, artist))
     return parsing.split_adlibs(parsing.extract_singers(lines, artist)), True

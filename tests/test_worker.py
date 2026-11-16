@@ -113,3 +113,23 @@ def test_nothing_is_announced_when_words_are_already_there(
     media_worker._fetch(np)
 
     assert events == []
+
+
+def test_nothing_is_sent_for_translation_when_it_is_off(
+    media_worker, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(
+        providers,
+        "translate_lines",
+        lambda lines, t="fr": calls.append(1) or "fr",
+    )
+    lines = [model.Line(1.0, "Monte le son")]
+
+    media_worker.translate = False
+    assert media_worker._translate(lines) is True
+    assert calls == []
+
+    media_worker.translate = True
+    assert media_worker._translate(lines) is True
+    assert calls == [1]
