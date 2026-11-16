@@ -117,7 +117,7 @@ DEFAULTS: dict[str, Any] = {
     "style": "kinetic",
     "scale": 1.0,
     "offset": 0.0,
-    "translation": True,
+    "translation": False,
     "lang": "en",
     "liriqo": True,
     "beat": True,

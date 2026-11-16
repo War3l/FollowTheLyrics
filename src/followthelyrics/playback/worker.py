@@ -36,9 +36,13 @@ class MediaWorker(QThread):
         sites_off=(),
         sites_other=False,
         upgrade=False,
+        translate=True,
     ):
         super().__init__()
         self.upgrade = bool(upgrade)
+        self.translate = bool(translate)
+        self._reload = False
+        self._asked: set = set()
         self._upgrade_lock = threading.Lock()
         self._upgrades = ThreadPoolExecutor(max_workers=1)
         self._playing_key = None
@@ -86,7 +90,8 @@ class MediaWorker(QThread):
                 last_sources = src
                 self.sources.emit(src)
             now = time.monotonic()
-            if np and np.key != last_key:
+            if np and (np.key != last_key or self._reload):
+                self._reload = False
                 last_key = np.key
                 self._playing_key = np.key
                 changed_at, cover_step = now, 0
@@ -137,6 +142,13 @@ class MediaWorker(QThread):
         if found:
             self._cache[np.key] = lines
             self.lyrics.emit(np.key, lines)
+            if (
+                lines
+                and np.key not in self._asked
+                and not any(line.translation for line in lines)
+            ):
+                self._asked.add(np.key)
+                self._translate(lines)
             self.translated.emit(np.key)
             if not cache.cache_is_final(np.title, np.artist):
                 self._queue_upgrade(np, lines)
@@ -164,14 +176,8 @@ class MediaWorker(QThread):
         self.lyrics.emit(np.key, lines)
         translated_ok = True
         if lines:
-            try:
-                translated_ok = (
-                    providers.translate_lines(lines, i18n.translate_target())
-                    is not None
-                )
-            except Exception:
-                logger.warning("_fetch_inner failed", exc_info=True)
-                translated_ok = False
+            self._asked.add(np.key)
+            translated_ok = self._translate(lines)
             self.translated.emit(np.key)
         if translated_ok:
             cache.cache_save(
@@ -230,10 +236,7 @@ class MediaWorker(QThread):
             return
         self._cache[np.key] = better
         self.lyrics.emit(np.key, better)
-        try:
-            providers.translate_lines(better, i18n.translate_target())
-        except Exception:
-            logger.warning("_upgrade failed", exc_info=True)
+        self._translate(better)
         self.translated.emit(np.key)
         cache.cache_save(np.title, np.artist, np.duration, better, final=True)
 
@@ -242,8 +245,22 @@ class MediaWorker(QThread):
         while not self._stop and time.monotonic() < until:
             time.sleep(0.2)
 
+    def _translate(self, lines) -> bool:
+        if not self.translate or not lines:
+            return True
+        try:
+            return (
+                providers.translate_lines(lines, i18n.translate_target())
+                is not None
+            )
+        except Exception:
+            logger.warning("_translate failed", exc_info=True)
+            return False
+
     def retranslate(self):
         self._cache.clear()
+        self._asked.clear()
+        self._reload = True
 
     def stop(self):
         self._stop = True

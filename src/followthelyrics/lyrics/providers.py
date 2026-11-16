@@ -246,11 +246,10 @@ def _fetch(
             if reference:
                 parsing.restore_masked(lines, reference)
                 break
-    return (
-        parsing.split_adlibs(parsing.extract_singers(lines, artist))
-        if lines
-        else None
-    )
+    if not lines:
+        return None
+    lines = parsing.strip_credits(lines, title, artist)
+    return parsing.split_adlibs(parsing.extract_singers(lines, artist))
 
 
 def fetch_lyrics(
@@ -369,5 +368,5 @@ def fetch_liriqo(
     lines = parse_liriqo(track)
     if len(lines) < 3 or (want_words and not has_words(lines)):
         return None, True
-    lines = parsing.add_pauses(lines)
+    lines = parsing.add_pauses(parsing.strip_credits(lines, title, artist))
     return parsing.split_adlibs(parsing.extract_singers(lines, artist)), True

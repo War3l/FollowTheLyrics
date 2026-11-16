@@ -448,6 +448,53 @@ def restore_masked(
     return lines
 
 
+_EDGE_CREDIT = re.compile(
+    r"\b(lyrics?|subtitles?|captions?|synced|sync|synchroni[sz]ed|timed|"
+    r"transcribed|translated|translation|provided|written|composed|produced|"
+    r"arranged|mixed|mastered|uploaded|submitted|corrected)\s+by\b"
+    r"|\blyrics?\s+(provided|synced|from|source|powered|courtesy)\b"
+    r"|\b(www\.|https?://)|\b[\w-]+\.(com|net|org|cn|io|me)\b"
+    r"|©|\bcopyright\b|\ball rights reserved\b"
+    r"|著作权|版权|歌词|翻译|字幕|制作",
+    re.IGNORECASE,
+)
+
+EDGE_LINES = 6
+
+
+def _is_header(text: str, title: str, artist: str) -> bool:
+    got = simplify(text)
+    want_t, want_a = simplify(clean_title(title)), simplify(artist)
+    if not got or not want_t or not want_a:
+        return False
+    return got in (f"{want_t} {want_a}", f"{want_a} {want_t}")
+
+
+def strip_credits(
+    lines: list[model.Line], title: str = "", artist: str = ""
+) -> list[model.Line]:
+    def credit(line: model.Line, head: bool) -> bool:
+        if _CREDIT.search(line.text) or _EDGE_CREDIT.search(line.text):
+            return True
+        return head and _is_header(line.text, title, artist)
+
+    out = list(lines)
+    for head in (True, False):
+        seen = 0
+        order = range(len(out)) if head else range(len(out) - 1, -1, -1)
+        drop = []
+        for i in order:
+            if not out[i].text:
+                continue
+            if seen >= EDGE_LINES or not credit(out[i], head):
+                break
+            drop.append(i)
+            seen += 1
+        if len(drop) < sum(bool(line.text) for line in out):
+            out = [line for i, line in enumerate(out) if i not in drop]
+    return out
+
+
 def clean_title(title: str) -> str:
     title = _JUNK.sub("", title)
     title = re.sub(

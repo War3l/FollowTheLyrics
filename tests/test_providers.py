@@ -153,3 +153,42 @@ def test_restore_ignores_a_line_that_does_not_match():
     parsing.restore_masked([line], other)
 
     assert line.text == "Monte le s*n"
+
+
+def _texts(lines):
+    return [line.text for line in lines]
+
+
+def test_credits_at_both_ends_are_removed():
+    lines = [
+        model.Line(0.0, "Tourne - Le Groupe"),
+        model.Line(0.5, "Synced by quelquun"),
+        model.Line(1.0, "Lyrics provided by exemple.com"),
+        model.Line(5.0, "Monte le son"),
+        model.Line(8.0, "Encore une fois"),
+        model.Line(11.0, ""),
+        model.Line(12.0, "www.exemple.com"),
+    ]
+
+    kept = parsing.strip_credits(lines, "Tourne", "Le Groupe")
+
+    assert _texts(kept) == ["Monte le son", "Encore une fois", ""]
+
+
+def test_credit_words_inside_the_song_are_kept():
+    lines = [
+        model.Line(1.0, "Monte le son"),
+        model.Line(4.0, "Written by the stars above"),
+        model.Line(7.0, "Encore une fois"),
+    ]
+
+    assert parsing.strip_credits(lines, "Tourne", "Le Groupe") == lines
+
+
+def test_a_song_made_only_of_matching_lines_is_left_alone():
+    lines = [
+        model.Line(1.0, "Written by you"),
+        model.Line(3.0, "Produced by me"),
+    ]
+
+    assert parsing.strip_credits(lines, "Tourne", "Le Groupe") == lines

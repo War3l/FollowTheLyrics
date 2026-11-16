@@ -80,6 +80,7 @@ class App:
             self.cfg.get("sites_off", []),
             self.cfg.get("sites_other", False),
             self.cfg.get("liriqo", True),
+            self.cfg.get("translation", False),
         )
         self.worker.sources.connect(self.w_sources)
         self.worker.browsers.connect(self.w_browsers)
@@ -452,6 +453,10 @@ class App:
             o.apply_geometry()
         elif key in ("mode", "position", "font", "translation", "stack"):
             o.reset_layout()
+        if key == "translation":
+            self.worker.translate = bool(value)
+            if value:
+                self.worker.retranslate()
         elif key == "liriqo":
             self.worker.upgrade = bool(value)
         o.poke()
