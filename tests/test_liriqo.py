@@ -206,3 +206,30 @@ def test_one_unknown_piece_does_not_split_the_rest():
 
     assert text.startswith("Encore")
     assert text.endswith("plus fort")
+
+
+def test_markup_tells_which_syllables_belong_together():
+    track = _syllables("En core plus fo rt", ["En", "core", "plus", "fo", "rt"])
+    track["timed"][0]["key"] = "L1"
+    track["ttml"] = (
+        '<tt><body><div><p begin="0:01.000" end="0:03.000" lrc:key="L1">'
+        '<span begin="0:01.000" end="0:01.100">En</span>'
+        '<span begin="0:01.100" end="0:01.200">core</span> '
+        '<span begin="0:01.200" end="0:01.300">plus</span> '
+        '<span begin="0:01.300" end="0:01.400">fo</span>'
+        '<span begin="0:01.400" end="0:01.500">rt</span>'
+        "</p></div></body></tt>"
+    )
+
+    line = providers.parse_liriqo(track)[0]
+
+    assert line.text == "Encore plus fort"
+    assert line.chars is not None and len(line.chars) == len(line.text)
+
+
+def test_markup_that_does_not_match_is_ignored():
+    track = _syllables("Encore plus fort", ["En", "core", "plus", "fort"])
+    track["timed"][0]["key"] = "L1"
+    track["ttml"] = '<tt><p lrc:key="L1"><span begin="0">En</span></p></tt>'
+
+    assert providers.parse_liriqo(track)[0].text == "Encore plus fort"

@@ -289,15 +289,57 @@ def _fold(s: str) -> str:
     )
 
 
-def _liriqo_segments(text: str, words: list[dict]):
+_TTML_LINE = re.compile(r"<p\b([^>]*)>(.*?)</p>", re.DOTALL)
+
+_TTML_KEY = re.compile(r'\bkey="([^"]*)"')
+
+_TTML_SPAN = re.compile(r"<span\b[^>]*\bbegin=[^>]*>([^<]*)</span>")
+
+
+def _ttml_glue(ttml) -> dict[str, list[bool]]:
+    out: dict[str, list[bool]] = {}
+    if not isinstance(ttml, str):
+        return out
+    for n, m in enumerate(_TTML_LINE.finditer(ttml)):
+        key = _TTML_KEY.search(m.group(1))
+        body = m.group(2)
+        flags: list[bool] = []
+        last = None
+        for span in _TTML_SPAN.finditer(body):
+            if not span.group(1).strip():
+                continue
+            flags.append(last is not None and body[last : span.start()] == "")
+            last = span.end()
+        out[key.group(1) if key else f"#{n}"] = flags
+    return out
+
+
+def _liriqo_segments(text: str, words: list[dict], glue=None):
     segments: list[tuple[float, float, str]] = []
+    valid = [
+        word
+        for word in words
+        if str(word.get("text") or "").strip()
+        and word.get("start") is not None
+        and word.get("end") is not None
+    ]
+    if glue and len(glue) == len(valid):
+        for word, glued in zip(valid, glue, strict=True):
+            start, end = word["start"], word["end"]
+            segments.append(
+                (
+                    start / 1000,
+                    max(0.0, (end - start) / 1000),
+                    ("" if glued or not segments else " ")
+                    + str(word["text"]).strip(),
+                )
+            )
+        return segments
     folded = _fold(text)
     pos = 0
-    for word in words:
-        piece = str(word.get("text") or "").strip()
-        start, end = word.get("start"), word.get("end")
-        if not piece or start is None or end is None:
-            continue
+    for word in valid:
+        piece = str(word["text"]).strip()
+        start, end = word["start"], word["end"]
         at = folded.find(_fold(piece), pos)
         found = 0 <= at <= pos + LIRIQO_RESYNC
         spaced = (at > 0 and text[at - 1].isspace()) if found else True
@@ -317,6 +359,7 @@ def _liriqo_segments(text: str, words: list[dict]):
 def parse_liriqo(track: dict) -> list[model.Line]:
     level = track.get("syncLevel")
     fallback = track.get("words") or []
+    glue = _ttml_glue(track.get("ttml"))
     lines = []
     for index, raw in enumerate(track.get("timed") or []):
         text = model.norm_text(str(raw.get("text") or ""))
@@ -328,7 +371,8 @@ def parse_liriqo(track: dict) -> list[model.Line]:
             words = fallback[index]
         line = None
         if level in _WORD_LEVELS and isinstance(words, list) and words:
-            line = model.build_line(_liriqo_segments(text, words))
+            flags = glue.get(str(raw.get("key"))) or glue.get(f"#{index}")
+            line = model.build_line(_liriqo_segments(text, words, flags))
         if line is None:
             end = raw.get("end")
             line = model.Line(
