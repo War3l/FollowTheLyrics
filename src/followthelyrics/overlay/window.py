@@ -71,6 +71,7 @@ class Overlay(QWidget):
             | Qt.WindowType.WindowTransparentForInput
             | Qt.WindowType.NoDropShadowWindowHint,
         )
+        self.setWindowTitle(settings.OVERLAY_TITLE)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -138,6 +139,8 @@ class Overlay(QWidget):
         if screen is None:
             return
         self.setGeometry(screen.geometry())
+        if self.isVisible():
+            self.place_window()
         self.update_zones()
         self.reset_layout()
 
@@ -225,6 +228,13 @@ class Overlay(QWidget):
 
     def harden_window(self):
         self.windowing.prepare_overlay(int(self.winId()))
+        self.place_window()
+
+    def place_window(self):
+        area = self.geometry()
+        self.windowing.place_overlay(
+            int(self.winId()), area.x(), area.y(), area.width(), area.height()
+        )
 
     def raw_position(self):
         return self.anchor_pos + (

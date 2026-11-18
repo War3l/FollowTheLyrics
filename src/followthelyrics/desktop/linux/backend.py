@@ -6,6 +6,7 @@ from followthelyrics.config import settings
 from followthelyrics.desktop import ports
 from followthelyrics.desktop.generic import backend as generic
 from followthelyrics.desktop.generic import keyboard
+from followthelyrics.desktop.linux import hyprland
 from followthelyrics.desktop.linux import session
 
 logger = logging.getLogger(__name__)
@@ -61,12 +62,19 @@ def _foreground(x11):
         return generic.UnknownForeground()
 
 
+def _windowing():
+    if hyprland.running():
+        ipc = hyprland.HyprlandIpc(hyprland.socket_path())
+        return hyprland.HyprlandWindowing(ipc)
+    return generic.QtWindowing()
+
+
 def create():
     x11 = _x11()
     return ports.Desktop(
         name="Linux",
         keyboard=keyboard.QtKeyboard(),
-        windowing=generic.QtWindowing(),
+        windowing=_windowing(),
         foreground=_foreground(x11),
         dialogs=generic.QtDialogs(),
         session=generic.PosixSession(),

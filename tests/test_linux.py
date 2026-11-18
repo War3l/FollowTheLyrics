@@ -144,6 +144,22 @@ def test_config_home_follows_xdg():
             },
             None,
         ),
+        (
+            {
+                "WAYLAND_DISPLAY": "wayland-1",
+                "DISPLAY": ":1",
+                "QT_QPA_PLATFORM": "wayland;xcb",
+            },
+            "xcb",
+        ),
+        (
+            {
+                "WAYLAND_DISPLAY": "wayland-1",
+                "DISPLAY": ":1",
+                "QT_QPA_PLATFORM": "wayland;offscreen",
+            },
+            None,
+        ),
     ],
 )
 def test_platform_plugin_prefers_xwayland(environ, plugin):
