@@ -26,14 +26,18 @@ def point_openssl_at_system_store(
     env: MutableMapping[str, str],
     exists: Callable[[str], bool] = os.path.isfile,
 ) -> str | None:
-    if env.get("SSL_CERT_FILE"):
+    chosen = env.get("SSL_CERT_FILE")
+    if chosen and exists(chosen):
         return None
     bundle = find_bundle(exists)
     if bundle is None:
         logger.warning("no system certificate bundle found")
         return None
+    if chosen:
+        logger.warning(
+            "SSL_CERT_FILE %s does not exist, using %s", chosen, bundle
+        )
     env["SSL_CERT_FILE"] = bundle
-    env.setdefault("SSL_CERT_DIR", os.path.dirname(bundle))
     return bundle
 
 
@@ -46,5 +50,6 @@ def setup() -> None:
 
 
 def is_verification_error(error: BaseException) -> bool:
-    reason = getattr(error, "reason", error)
-    return isinstance(reason, ssl.SSLCertVerificationError)
+    return isinstance(error, ssl.SSLCertVerificationError) or isinstance(
+        getattr(error, "reason", None), ssl.SSLCertVerificationError
+    )
