@@ -76,6 +76,7 @@ src/followthelyrics/
     ├── startup.py   démarrage auto, raccourci du bureau, commande de lancement
     ├── install.py   installation, enregistrement, désinstallation
     ├── updater.py   recherche, téléchargement et remplacement du programme
+    ├── certificates.py certificats du système pour le binaire Linux
     └── hotkeys.py   combinaisons de touches et gestionnaire de raccourcis
 ```
 

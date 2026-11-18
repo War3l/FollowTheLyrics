@@ -28,6 +28,7 @@ from followthelyrics.overlay import window
 from followthelyrics.playback import audio
 from followthelyrics.playback import sites
 from followthelyrics.playback import worker
+from followthelyrics.system import certificates
 from followthelyrics.system import hotkeys
 from followthelyrics.system import install
 from followthelyrics.system import startup
@@ -735,6 +736,7 @@ def main():
     args, _unknown = ap.parse_known_args()
     logs.setup()
     logger.info("FollowTheLyrics %s", version.current())
+    certificates.setup()
 
     desktop = platform_desktop.current()
     desktop.session.set_app_id("FollowTheLyrics.App")

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -79,8 +80,13 @@ class _Session:
             if e.code >= 500 or e.code == 429:
                 self.failed = True
             return None
-        except (OSError, ValueError):
-            logger.warning("lyrics request failed: %s", url, exc_info=True)
+        except (OSError, ValueError) as e:
+            if isinstance(
+                getattr(e, "reason", e), ssl.SSLCertVerificationError
+            ):
+                logger.error("certificate verification failed: %s", url)
+            else:
+                logger.warning("lyrics request failed: %s", url, exc_info=True)
             self.failed = True
             return None
 
