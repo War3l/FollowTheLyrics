@@ -95,6 +95,9 @@ class DwmWindowing:
         except Exception:
             logger.debug("prepare_overlay failed", exc_info=True)
 
+    def place_overlay(self, window, x, y, width, height):
+        pass
+
     def raise_overlay(self, window):
         try:
             api.user32().SetWindowPos(

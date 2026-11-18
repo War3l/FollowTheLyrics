@@ -33,6 +33,9 @@ add a desktop shortcut.
    XWayland: shortcuts work when an XWayland window is in the foreground (which is the case for
    most Steam and Proton games), and a Proton game is recognised by the name of its `.exe`, so
    the Windows profiles apply as they are.
+   On **Hyprland**, the app stays native Wayland and places the overlay itself through Hyprland's
+   IPC (floating, pinned, borderless, clicks go through): nothing to add to your config.
+   Shortcuts and game detection still go through XWayland.
 4. Autostart uses `~/.config/autostart`, settings live in `~/.config/FollowTheLyrics`.
 
 Closing the panel does not quit the app: the lyrics keep going. The icon near the clock reopens

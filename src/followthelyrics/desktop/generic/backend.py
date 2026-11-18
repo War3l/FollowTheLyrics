@@ -25,6 +25,9 @@ class QtWindowing:
     def raise_overlay(self, window):
         pass
 
+    def place_overlay(self, window, x, y, width, height):
+        pass
+
     def on_foreground_change(self, callback):
         return NoSubscription()
 

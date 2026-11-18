@@ -23,7 +23,10 @@ seule fois et renvoie un `Desktop` qui les regroupe.
   PipeWire par `soundcard` pour la pulsation, X11 par `python-xlib` pour les
   raccourcis globaux et le programme au premier plan, XDG pour le démarrage
   auto et les raccourcis du bureau. Sous Wayland, `boot.prepare()` choisit
-  XWayland quand il est là, seul moyen de garder l'overlay au-dessus. Sans
+  XWayland quand il est là, seul moyen de garder l'overlay au-dessus. Sous
+  Hyprland, qui convertit mal les coordonnées XWayland et ne laisse pas passer
+  la souris à travers une fenêtre X, il garde Wayland natif et
+  `hyprland.HyprlandWindowing` place l'overlay par le socket IPC. Sans
   serveur X, raccourcis et détection du jeu valent `None` ou restent neutres.
 - `desktop/generic/` : uniquement Qt, pour macOS aujourd'hui. Les services
   sans équivalent portable valent `None` et l'interface masque ce qui en dépend (démarrage auto,
@@ -55,7 +58,7 @@ src/followthelyrics/
 ├── desktop/
 │   ├── ports.py     contrats avec le système d'exploitation
 │   ├── windows/     backend Windows : SMTC, WASAPI, Win32, DWM, registre
-│   ├── linux/       backend Linux : MPRIS, PulseAudio, X11, XDG
+│   ├── linux/       backend Linux : MPRIS, PulseAudio, X11, XDG, Hyprland
 │   └── generic/     backend Qt seul, pour macOS
 ├── playback/
 │   ├── track.py     NowPlaying : le morceau en cours

@@ -33,6 +33,9 @@ Windows et un raccourci sur le bureau.
    s'ouvre via XWayland : les raccourcis marchent quand une fenêtre XWayland est au premier plan
    (c'est le cas de la plupart des jeux Steam et Proton), et un jeu sous Proton est reconnu par
    le nom de son `.exe`, donc les profils Windows s'appliquent tels quels.
+   Sous **Hyprland**, l'appli reste en Wayland natif et place elle-même l'overlay par l'IPC de
+   Hyprland (flottant, épinglé, sans bordure, la souris passe au travers) : rien à ajouter à ta
+   config. Les raccourcis et la détection du jeu passent toujours par XWayland.
 4. Le démarrage auto passe par `~/.config/autostart`, les réglages sont dans
    `~/.config/FollowTheLyrics`.
 
