@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+MAX_SPEED = 16.0
 _ARTIST_SUFFIXES = (" - Topic", " - Sujet", "VEVO")
 
 
@@ -13,10 +14,20 @@ class NowPlaying:
     playing: bool
     app: str
     site: str = ""
+    read_at: float | None = None
+    speed: float = 1.0
 
     @property
     def key(self):
         return (self.title.lower(), self.artist.lower())
+
+
+def playback_speed(value) -> float:
+    try:
+        speed = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return speed if 0.0 < speed <= MAX_SPEED else 1.0
 
 
 def clean_artist(artist: str) -> str:

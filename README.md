@@ -1,134 +1,135 @@
 <p align="center"><img src="reseaux/banniere.png" alt="FollowTheLyrics"></p>
-<p align="center"><b>Les paroles de ta musique, par-dessus tes jeux.</b><br>
-Mot à mot, en rythme, aux couleurs de la pochette. Windows 10 et 11, et Linux.</p>
+<p align="center"><b>Your music's lyrics, right over your games.</b><br>
+Word by word, in time, in the colours of the album cover. Windows 10 and 11, and Linux.</p>
 <p align="center">
-<a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe"><b>⬇ Télécharger pour Windows</b></a>
- · <a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux"><b>⬇ Télécharger pour Linux</b></a>
- · <a href="https://war3l.github.io/FollowTheLyrics/">Site de présentation</a>
+<a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe"><b>⬇ Download for Windows</b></a>
+ · <a href="https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux"><b>⬇ Download for Linux</b></a>
+ · <a href="https://war3l.github.io/FollowTheLyrics/?lang=en">Website</a>
 </p>
-<p align="center"><b>Français</b> · <a href="README.en.md">English</a></p>
 
-![Le titre du morceau affiché en géant](docs/img/titre.png)
-![Le panneau de contrôle](docs/img/panel.png)
+![The track title shown huge](docs/img/titre.png)
+![The control panel](docs/img/panel-en.png)
 
-Marche avec Spotify, YouTube Music, Deezer, Apple Music… sans connexion à un compte.
+Works with Spotify, YouTube Music, Deezer, Apple Music… without signing in to any account.
 
-L'appli existe en anglais (par défaut), français, espagnol et chinois : le choix est dans la page Général.
+> The app is in English by default, and also available in French, Spanish and Chinese (General page).
 
-## Installer
-1. Télécharge **[FollowTheLyrics.exe](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe)** : un seul fichier, rien à installer.
-2. Double-clique dessus. Si Windows affiche « Windows a protégé votre ordinateur » (le fichier n'est pas signé) :
-   **Informations complémentaires → Exécuter quand même**.
-3. Lance ta musique, et joue en **fenêtré sans bordure**.
+## Install
+1. Download **[FollowTheLyrics.exe](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe)**: a single file.
+2. Double-click it. If Windows says "Windows protected your PC" (the file is not signed):
+   **More info → Run anyway**.
+3. Start your music, and play in **borderless windowed** mode.
 
-Au premier lancement, un écran de bienvenue explique l'essentiel et propose le démarrage avec
-Windows et un raccourci sur le bureau.
+On first launch, a welcome screen explains the basics and offers to start with Windows and to
+add a desktop shortcut.
 
-### Sur Linux
-1. Télécharge **[FollowTheLyrics-linux](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux)**,
-   rends-le exécutable (`chmod +x FollowTheLyrics-linux`) et lance-le.
-2. Le morceau en cours vient de **MPRIS** (Spotify, Firefox, Chrome, VLC, mpv avec `mpris`…),
-   la pulsation du son de **PulseAudio ou PipeWire**.
-3. Les raccourcis globaux et la détection du jeu passent par **X11**. Sous Wayland, l'appli
-   s'ouvre via XWayland : les raccourcis marchent quand une fenêtre XWayland est au premier plan
-   (c'est le cas de la plupart des jeux Steam et Proton), et un jeu sous Proton est reconnu par
-   le nom de son `.exe`, donc les profils Windows s'appliquent tels quels.
-4. Le démarrage auto passe par `~/.config/autostart`, les réglages sont dans
-   `~/.config/FollowTheLyrics`.
+### On Linux
+1. Download **[FollowTheLyrics-linux](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux)**,
+   make it executable (`chmod +x FollowTheLyrics-linux`) and run it.
+2. The current track comes from **MPRIS** (Spotify, Firefox, Chrome, VLC, mpv with `mpris`…),
+   the beat from **PulseAudio or PipeWire**.
+3. Global shortcuts and game detection go through **X11**. On Wayland, the app opens through
+   XWayland: shortcuts work when an XWayland window is in the foreground (which is the case for
+   most Steam and Proton games), and a Proton game is recognised by the name of its `.exe`, so
+   the Windows profiles apply as they are.
+   On **Hyprland**, the app stays native Wayland and places the overlay itself through Hyprland's
+   IPC (floating, pinned, borderless, clicks go through): nothing to add to your config.
+   Shortcuts and game detection still go through XWayland.
+4. Autostart uses `~/.config/autostart`, settings live in `~/.config/FollowTheLyrics`.
 
-Fermer le panneau ne quitte pas l'appli : les paroles continuent. L'icône près de l'heure rouvre
-le panneau (clic gauche) ; clic droit → **Quitter** pour arrêter.
+Closing the panel does not quit the app: the lyrics keep going. The icon near the clock reopens
+the panel (left click); right click → **Quit** to stop.
 
-### Mises à jour
-L'appli regarde de temps en temps s'il existe une version plus récente sur GitHub. Si oui, un bandeau
-apparaît dans le panneau : un clic sur **Mettre à jour** télécharge la nouvelle version, remplace le
-`.exe` sur place (même fichier, mêmes raccourcis, mêmes réglages) et relance l'appli.
+### Updates
+The app checks from time to time whether a newer version exists on GitHub. If so, a banner shows
+in the panel: one click on **Update** downloads the new version, replaces the program in
+place (same file, same shortcuts, same settings) and restarts the app.
 
-### Le .exe en pratique
-- Réglages, profils de jeux et cache sont rangés dans `%APPDATA%\FollowTheLyrics` : le `.exe` peut
-  être déplacé ou remplacé sans rien perdre.
-- Le `.exe` n'est pas signé : chez un ami, Windows peut afficher « Windows a protégé votre
-  ordinateur ». Il suffit de cliquer **Informations complémentaires → Exécuter quand même**.
+### The .exe in practice
+- Settings, game profiles and cache are stored in `%APPDATA%\FollowTheLyrics`: the `.exe` can be
+  moved or replaced without losing anything.
+- The `.exe` is not signed: Windows may say "Windows protected your PC". Just click
+  **More info → Run anyway**.
 
-## Le panneau
-- **En cours** : pochette, titre, artiste, progression, badge **MOT À MOT** / **LIGNE**, ligne chantée et traduction.
-- **Mode d'affichage** :
-  - **Classique** : les lignes défilent en haut à gauche, au centre ou à droite.
-  - **Edit** : chaque ligne surgit à un endroit différent de la moitié haute.
-  - **Machine à écrire** : les lettres s'écrivent au fil du chant, avec un curseur.
-- **Apparence** : couleurs de l'album ou blanc lumineux, animation (cinétique, karaoké, simple), taille, police (recherche + aperçu).
-- **Options** : traduction française, pulsation sur le beat, carte de la pochette, particules, mode démo, lancement avec Windows (discret, près de l'heure).
-- **Titre en géant** : quand le chanteur dit le titre du morceau, il s'affiche en très grand (au plus une fois toutes les 20 s). Hors jeu : presque tout l'écran. En jeu : dans un espace libre de la moitié haute. Réglable : Toujours / Hors jeu / Jamais.
-- **Sources de musique** : coche les applis à écouter (Spotify, navigateur…). Les médias de plus de 20 minutes sont ignorés.
-- **Synchro et jeux** : décalage des paroles, jeu détecté, zones interdites.
+## The panel
+- **Now playing**: cover, title, artist, progress, **WORD BY WORD** / **LINE** badge, sung line and translation.
+- **Display mode**:
+  - **Classic**: lines scroll at the top left, centre or right.
+  - **Edit**: each line pops up at a different spot in the upper half.
+  - **Typewriter**: letters are typed as they are sung, with a cursor.
+- **Look**: album colours or bright white, animation (kinetic, karaoke, simple), size, font (search + preview).
+- **Options**: French translation, pulse on the beat, cover card, particles, demo mode, start with Windows (quietly, near the clock).
+- **Huge title**: when the singer says the track's title, it shows very large (at most once every 20 s). Out of game: almost the whole screen. In game: in a free area of the upper half. Setting: Always / Out of game / Never.
+- **Music sources**: tick the apps to follow (Spotify, browser…). In a browser, only music sites are followed (YouTube Music, Spotify, SoundCloud…). Media longer than 20 minutes is ignored.
+- **Sync and games**: lyrics offset, detected game, forbidden zones.
 
-## Raccourcis (marchent en jeu)
-Tous modifiables dans le panneau, page **Raccourcis** : clique sur un raccourci puis appuie sur la nouvelle combinaison. Ceux d'origine :
+## Shortcuts (work in game)
+All can be changed in the panel, **Shortcuts** page: click a shortcut then press the new combination. Defaults:
 
-| Touches | Action |
+| Keys | Action |
 |---|---|
-| Ctrl+Alt+L | Afficher / masquer |
-| Ctrl+Alt+M | Changer de mode |
-| Ctrl+Alt+T | Couleurs album / blanc |
-| Ctrl+Alt+S | Changer d'animation |
-| Ctrl+Alt+Z | Voir les zones interdites du jeu (5 s) |
-| Ctrl+Alt+E | Capturer le jeu pour l'éditeur de zones |
-| Ctrl+Alt+↑ / ↓ | Paroles plus tôt / plus tard (0,2 s) |
+| Ctrl+Alt+L | Show / hide |
+| Ctrl+Alt+M | Change mode |
+| Ctrl+Alt+T | Album colours / white |
+| Ctrl+Alt+S | Change animation |
+| Ctrl+Alt+Z | Show the game's forbidden zones (5 s) |
+| Ctrl+Alt+E | Capture the game for the zone editor |
+| Ctrl+Alt+↑ / ↓ | Lyrics earlier / later (0.2 s) |
 
-## Ce qui se passe à l'écran
-- Chaque ligne disparaît 3 s après avoir été chantée ; seule la précédente reste, en transparence.
-- **Pulsation** : le texte grossit légèrement sur la grosse caisse (le logiciel écoute le son du PC, rien n'est enregistré). Avec plusieurs sorties audio (GoXLR, Voicemeeter…), il cherche tout seul celle où passe la musique.
-- **Refrain** : plus grand, plus brillant, entrée plus marquée.
-- **Chœurs** « (yeah) » à part, en petit et en italique ; **noms des chanteurs** en petit au-dessus de la ligne.
-- **Mots tenus** (MOT À MOT) : ils grossissent, brillent, tremblent, avec des particules.
-- **Carte pochette** 4-5 s au début de chaque morceau.
+## What happens on screen
+- Each line disappears 3 s after being sung; only the previous one stays, faded.
+- **Pulse**: the text swells slightly on the kick drum (the app listens to the PC's sound, nothing is recorded). With several audio outputs (GoXLR, Voicemeeter…), it finds the one carrying the music by itself.
+- **Chorus**: bigger, brighter, stronger entrance.
+- **Backing vocals** "(yeah)" set apart, small and italic; **singer names** in small above the line.
+- **Held words** (WORD BY WORD): they grow, glow and shake, with particles.
+- **Cover card** for 4-5 s at the start of each track.
 
-## Jeux et zones interdites
-- Le logiciel regarde quel programme est au premier plan, sans toucher au jeu (pas de souci d'anti-cheat).
-- **League of Legends** a son profil (centre, sorts, minimap, score, chat, annonces, bord droit). En mode Classique, la position **Gauche** est celle qui a le plus de place dans LoL.
-- **Cyberpunk 2077** a son profil (vie, appels, minimap, objectif, viseur, dialogues, sous-titres, armes, notifications). En mode Classique, la position **Centre** tombe dans l'espace libre en haut.
-- **World of Warcraft** (retail et Classic) a son profil (portraits, groupe, minimap et buffs, quêtes, messages, personnage, barres d'action, chat, sacs). En mode Classique, la position **Centre** tombe dans l'espace libre en haut.
-- L'overlay se remet devant le jeu dès que le jeu passe au premier plan, et vérifie toutes les 0,5 s.
-- Si le jeu est en **plein écran exclusif**, Windows n'affiche rien par-dessus : le logiciel le détecte, prévient (notification + panneau) et indique où changer le mode dans le jeu.
-- Autre jeu ou vidéo en plein écran : profil prudent. Bureau : tout l'écran est libre.
-- **Éditeur de zones** : en jeu, **Ctrl+Alt+E** prend une capture (sans les paroles). De retour sur
-  FollowTheLyrics, tu dessines à la souris les endroits à éviter, tu les nommes, tu enregistres.
-  Ça marche aussi pour un jeu sans profil : il est créé à l'enregistrement. Panneau → **Dessiner les zones**.
+## Games and forbidden zones
+- The app looks at which program is in the foreground, without touching the game (no anti-cheat trouble).
+- **League of Legends** has its profile (centre, abilities, minimap, score, chat, announcements, right edge). In Classic mode, the **Left** position has the most room in LoL.
+- **Cyberpunk 2077** has its profile (health, calls, minimap, objective, crosshair, dialogues, subtitles, weapons, notifications). In Classic mode, the **Centre** position falls in the free space at the top.
+- **World of Warcraft** (retail and Classic) has its profile (portraits, group, minimap and buffs, quests, messages, character, action bars, chat, bags). In Classic mode, the **Centre** position falls in the free space at the top.
+- The overlay goes back in front of the game as soon as the game takes the foreground, and checks every 0.5 s.
+- If the game is in **exclusive fullscreen**, Windows shows nothing on top: the app detects it, warns you (notification + panel) and says where to change the mode in the game.
+- Other fullscreen game or video: cautious profile. Desktop: the whole screen is free.
+- **Zone editor**: in game, **Ctrl+Alt+E** takes a capture (without the lyrics). Back in
+  FollowTheLyrics, you draw with the mouse the places to avoid, name them and save.
+  It also works for a game without a profile: it is created on save. Panel → **Draw the zones**.
 
-## Sous le capot
-- Relancer **run.bat** remplace automatiquement la version déjà ouverte.
-- Les paroles trouvées sont gardées dans le dossier `cache` : instantanées aux écoutes suivantes, même hors ligne.
-- Après une coupure réseau, la recherche est retentée toute seule (10 s, 30 s, 1 min…).
-- L'écran n'est redessiné que quand quelque chose bouge.
+## Under the hood
+- Running **run.bat** again automatically replaces the version already open.
+- Found lyrics are kept in the `cache` folder: instant on later listens, even offline.
+- After a network drop, the search is retried by itself (10 s, 30 s, 1 min…).
+- The screen is only redrawn when something moves.
 
-## À savoir
-- Le jeu doit être en **fenêtré sans bordure** (le plein écran exclusif ne laisse rien s'afficher par-dessus).
-- Paroles : NetEase Cloud Music (timing de chaque mot), sinon LRCLIB (timing par ligne). Quand il manque le mot à mot, l'appli demande en secours à LiriQo, un service tiers qui regroupe d'autres sources (désactivable dans la page Musique). Traduction : Google Traduction. Ces services ne sont pas officiels et peuvent changer.
+## Good to know
+- The game must be in **borderless windowed** mode (exclusive fullscreen lets nothing show on top).
+- Lyrics: NetEase Cloud Music (timing of each word), otherwise LRCLIB (timing per line). When word timing is missing, the app asks LiriQo as a fallback, a third-party service that gathers other sources (can be turned off in the **Music** page). Translation: Google Translate. These services are unofficial and may change.
 
-## Fait avec l'IA
-Oui, FollowTheLyrics est codé avec l'aide de l'IA, et je ne le cache pas. L'idée vient de moi, je ne me suis pas inspiré d'un logiciel existant, et c'est moi qui décide de chaque fonction et qui teste chaque version.
+## Made with AI
+Yes, FollowTheLyrics is coded with the help of AI, and I'm not hiding it. The idea is mine, I didn't base it on an existing app, and I decide every feature and test every version myself.
 
-Aujourd'hui, beaucoup de gens se servent de l'IA pour créer des logiciels et les vendre. Moi, je m'en sers pour faire des projets gratuits : pas de pub, pas de version payante, je n'en tire aucun profit, et tout le code est ici, en public.
+A lot of people now use AI to build software and sell it. I use it to make free projects: no ads, no paid version, I make no money from it, and all the code is right here, in public.
 
-## Désinstaller
-- **Windows, appli installée** : Paramètres de Windows → Applications → FollowTheLyrics → Désinstaller, ou bouton **Désinstaller** dans la page Général du panneau. Tes réglages sont gardés, sauf si tu choisis de les supprimer.
-- **Windows, simple fichier** : quitte l'appli (clic droit sur l'icône près de l'horloge → Quitter) et supprime `FollowTheLyrics.exe`. Pour effacer aussi les réglages, supprime le dossier `%APPDATA%\FollowTheLyrics`.
-- **Linux** : quitte l'appli, supprime le fichier `FollowTheLyrics-linux`, puis `~/.config/FollowTheLyrics` et `~/.config/autostart/FollowTheLyrics.desktop` s'ils existent.
+## Uninstall
+- **Windows, installed app**: Windows Settings → Apps → FollowTheLyrics → Uninstall, or the **Uninstall** button in the panel's General page. Your settings are kept unless you choose to remove them.
+- **Windows, single file**: quit the app (right click on the icon near the clock → Quit) and delete `FollowTheLyrics.exe`. To erase the settings too, delete the `%APPDATA%\FollowTheLyrics` folder.
+- **Linux**: quit the app, delete the `FollowTheLyrics-linux` file, then `~/.config/FollowTheLyrics` and `~/.config/autostart/FollowTheLyrics.desktop` if they exist.
 
-## Confidentialité
-L'appli ne demande aucun compte et n'envoie rien à son auteur. Pour trouver les paroles, elle transmet le titre et l'artiste du morceau à des services de paroles en ligne ; elle ne transmet aucune autre information à d'autres systèmes en réseau, sauf à ta demande (traduction, mise à jour). Le détail, service par service : [PRIVACY.md](PRIVACY.md).
+## Privacy
+The app needs no account and sends nothing to its author. To find lyrics, it sends the track's title and artist to online lyrics services; it will not transfer any other information to other networked systems unless you request it (translation, update). Details, service by service: [PRIVACY.md](PRIVACY.md).
 
-## Développer
+## Development
 ```
 python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
-.venv\Scripts\python -m followthelyrics          (--demo pour des paroles de test)
+.venv\Scripts\python -m followthelyrics          (--demo for test lyrics)
 ```
-`run.bat` fait la même chose sans terminal (`run.bat --demo` pour la démo).
+`run.bat` does the same without a terminal (`run.bat --demo` for the demo).
 
-Sous Linux : `.venv/bin/python -m pip install -e ".[dev]"` puis `.venv/bin/python -m followthelyrics`.
+On Linux: `.venv/bin/python -m pip install -e ".[dev]"` then `.venv/bin/python -m followthelyrics`.
 
-Vérifications, lancées aussi par la CI à chaque pull request, sous Windows et sous Linux :
+Checks, also run by CI on every pull request, on Windows and on Linux:
 ```
 ruff check src tests tools
 ruff format --check src tests tools
@@ -137,38 +138,39 @@ mypy --platform linux
 pytest
 ```
 
-### Construire le programme
-- **Sur une pull request**, la CI construit `FollowTheLyrics.exe` et le binaire Linux et les joint
-  au résultat (onglet *Checks*, artefacts `FollowTheLyrics-exe` et `FollowTheLyrics-linux`) : de
-  quoi tester la PR sans rien installer.
-- **En local** : `pip install -e ".[build]"` puis `python tools/build.py` produit
-  `dist\FollowTheLyrics.exe` sous Windows et `dist/FollowTheLyrics` sous Linux (2 à 4 minutes).
-  Le binaire Linux est construit sur Ubuntu 22.04 pour tourner sur les distributions plus récentes.
+### Building the program
+- **On a pull request**, CI builds `FollowTheLyrics.exe` and the Linux binary and attaches them
+  to the result (*Checks* tab, artifacts `FollowTheLyrics-exe` and `FollowTheLyrics-linux`):
+  enough to test the PR without installing anything.
+- **Locally**: `pip install -e ".[build]"` then `python tools/build.py` produces
+  `dist\FollowTheLyrics.exe` on Windows and `dist/FollowTheLyrics` on Linux (2 to 4 minutes).
+  The Linux binary is built on Ubuntu 22.04 so it runs on newer distributions.
 
-### Publier une version
-Sur GitHub : **Actions → Release → Run workflow**, puis le numéro de version (par exemple `1.2.0`)
-et une phrase de nouveautés. Le workflow vérifie que la version est plus récente, lance mypy et les
-tests sous Windows et sous Linux, construit les deux programmes, pousse le commit de version et
-son tag, puis crée la release avec `FollowTheLyrics.exe` et `FollowTheLyrics-linux`. Si une étape échoue avant la fin de la construction, rien n'est publié.
-Le bouton « Télécharger » du site et la mise à jour automatique pointent toujours vers la dernière release.
+### Publishing a version
+On GitHub: **Actions → Release → Run workflow**, then the version number (for example `1.2.0`)
+and a sentence of release notes. The workflow checks that the version is newer, runs mypy and the
+tests on Windows and Linux, builds both programs, pushes the version commit and its tag, then
+creates the release with `FollowTheLyrics.exe` and `FollowTheLyrics-linux`. If a step fails before
+the build ends, nothing is published.
+The website's download buttons and the automatic update always point to the latest release.
 
-- Le site de présentation est dans `docs/` (GitHub Pages).
+- The website lives in `docs/` (GitHub Pages).
 
-## Organisation du code
-Le code vit dans `src/followthelyrics/`, rangé par responsabilité.
-Le détail (rôle de chaque module, flux de données, règles de dépendance) est dans
+## Code layout
+The code lives in `src/followthelyrics/`, organised by responsibility.
+The details (role of each module, data flow, dependency rules) are in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-| Dossier | Rôle |
+| Folder | Role |
 |---|---|
-| `app.py` | assemble l'appli : overlay, panneau, icône de la barre des tâches, minuteries |
-| `config/` | réglages (`config.json`) et profils de jeux avec leurs zones interdites |
-| `lyrics/` | modèle d'une ligne, lecture des formats LRC et YRC, sources de paroles, cache, analyse (refrains, mots forts) |
-| `desktop/` | tout ce qui touche au système : contrats (`ports.py`), backend Windows, backend Linux, backend Qt seul pour macOS |
-| `playback/` | morceau en cours, reconnaissance du site du navigateur, détection des beats, fil de travail |
-| `overlay/` | la fenêtre des paroles et son rendu : animations, couleurs, effets |
-| `ui/` | panneau de contrôle, briques animées, écran de bienvenue, éditeur de zones |
-| `system/` | démarrage auto, installation, mises à jour, raccourcis clavier, au-dessus des ports de `desktop/` |
-| `tests/` | tests pytest, sans système particulier ni réseau |
-| `tools/` | fabrication du `.exe`, vidéo et visuels du site, petits scripts de diagnostic |
-| `.github/workflows/` | `ci.yml` (lint, types, tests, `.exe` de test) et `release.yml` (publication) |
+| `app.py` | assembles the app: overlay, panel, tray icon, timers |
+| `config/` | settings (`config.json`) and game profiles with their forbidden zones |
+| `lyrics/` | line model, LRC and YRC parsing, lyrics sources, cache, analysis (choruses, strong words) |
+| `desktop/` | everything that touches the system: contracts (`ports.py`), Windows backend, Linux backend, Qt-only backend for macOS |
+| `playback/` | current track, browser site recognition, beat detection, worker thread |
+| `overlay/` | the lyrics window and its rendering: animations, colours, effects |
+| `ui/` | control panel, animated widgets, welcome screen, zone editor |
+| `system/` | autostart, installation, updates, keyboard shortcuts, on top of the `desktop/` ports |
+| `tests/` | pytest tests, with no particular system or network |
+| `tools/` | building the program, website video and visuals, small diagnostic scripts |
+| `.github/workflows/` | `ci.yml` (lint, types, tests, test builds) and `release.yml` (publishing) |

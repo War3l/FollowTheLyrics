@@ -28,6 +28,7 @@ from followthelyrics.overlay import window
 from followthelyrics.playback import audio
 from followthelyrics.playback import sites
 from followthelyrics.playback import worker
+from followthelyrics.system import certificates
 from followthelyrics.system import hotkeys
 from followthelyrics.system import install
 from followthelyrics.system import startup
@@ -464,7 +465,14 @@ class App:
         o = self.overlay
         if key in ("scale", "screen"):
             o.apply_geometry()
-        elif key in ("mode", "position", "font", "translation", "stack"):
+        elif key in (
+            "mode",
+            "position",
+            "font",
+            "translation",
+            "stack",
+            "card",
+        ):
             o.reset_layout()
         if key == "translation":
             self.worker.translate = bool(value)
@@ -735,6 +743,7 @@ def main():
     args, _unknown = ap.parse_known_args()
     logs.setup()
     logger.info("FollowTheLyrics %s", version.current())
+    certificates.setup()
 
     desktop = platform_desktop.current()
     desktop.session.set_app_id("FollowTheLyrics.App")
