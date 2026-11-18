@@ -1,4 +1,5 @@
 import itertools
+import random
 
 import pytest
 
@@ -68,7 +69,9 @@ def test_a_seek_is_applied_at_once():
     c.sync(42.0, True, 2.0, 2.0)
     assert c.position(2.0) == pytest.approx(42.0)
     c.sync(5.0, True, 3.0, 3.0)
-    assert c.position(3.0) == pytest.approx(5.0)
+    assert c.position(3.0) == pytest.approx(43.0)
+    c.sync(5.4, True, 3.4, 3.4)
+    assert c.position(3.4) == pytest.approx(5.4)
 
 
 def test_reading_time_counts_instead_of_receipt_time():
@@ -94,7 +97,7 @@ def test_a_pause_while_ahead_does_not_step_back():
     c.sync(10.9, True, 3.0, 3.0)
     samples = [c.position(3.0 + step / 10) for step in range(50)]
     assert samples[0] == pytest.approx(shown)
-    assert all(b >= a for a, b in itertools.pairwise(samples))
+    assert all(b > a for a, b in itertools.pairwise(samples))
 
 
 def test_a_seek_while_paused_is_followed():
@@ -111,14 +114,14 @@ def test_a_stalled_player_holds_the_lyrics_instead_of_stepping_back():
         return 10.0 if t <= 1.5 else 10.0 + t - 1.5
 
     previous = c.position(0.0)
-    for poll in range(1, 6):
+    for poll in range(1, 8):
         now = 0.4 * poll
         c.sync(truth(now), True, now, now)
         for step in range(4):
             current = c.position(now + step * 0.1)
             assert current >= previous - 1e-9
             previous = current
-    assert c.position(2.2) == pytest.approx(truth(2.2), abs=clock.DEADBAND)
+    assert c.position(3.0) == pytest.approx(truth(3.0), abs=clock.DEADBAND)
 
 
 def follow(c, truth, polls, speed=1.0):
@@ -151,7 +154,7 @@ def test_a_discontinuity_of_exactly_one_second_is_a_seek():
     assert c.position(1.0) == pytest.approx(12.0)
 
 
-@pytest.mark.parametrize("shift", [-0.7, -0.4])
+@pytest.mark.parametrize("shift", [-0.7, -0.6, -0.5, -0.4])
 def test_a_short_backward_seek_is_settled_by_holding(shift):
     c = playing_clock(position=0.0)
 
@@ -159,7 +162,7 @@ def test_a_short_backward_seek_is_settled_by_holding(shift):
         return t if t < 4.0 else t + shift
 
     follow(c, truth, 20)
-    assert c.position(7.6) == pytest.approx(truth(7.6), abs=clock.DEADBAND)
+    assert c.position(7.6) == pytest.approx(truth(7.6), abs=0.01)
 
 
 @pytest.mark.parametrize("shift", [0.4, 0.7])
@@ -197,7 +200,8 @@ def fast_clock():
 def test_a_seek_is_measured_at_the_player_speed():
     c = fast_clock()
     c.sync(12.8, True, 2.0, 2.0, 2.0)
-    assert c.position(2.0) == pytest.approx(12.8)
+    c.sync(13.6, True, 2.4, 2.4, 2.0)
+    assert c.position(2.4) == pytest.approx(13.6)
 
 
 def test_the_reading_age_counts_at_the_player_speed():
@@ -246,15 +250,12 @@ def test_a_speed_reported_one_reading_late_does_not_jump():
         previous = current
 
 
-def test_a_pause_forgets_a_pending_shift():
+def test_a_resume_catches_up_at_once():
     c = playing_clock(position=0.0)
-    c.sync(0.8, True, 0.4, 0.4)
-    c.sync(1.2, False, 0.8, 0.8)
-    c.sync(1.2, True, 1.0, 1.0)
-    for poll in range(1, 6):
-        now = 1.0 + 0.4 * poll
-        c.sync(1.2 + now - 1.0, True, now, now)
-    assert c.position(3.8) < 4.0 - clock.DEADBAND
+    c.sync(1.2, True, 0.4, 0.4)
+    c.sync(1.6, False, 0.8, 0.8)
+    c.sync(1.6, True, 1.0, 1.0)
+    assert c.position(1.0) == pytest.approx(1.6)
 
 
 def test_two_steps_forward_are_settled_from_the_first_one():
@@ -326,3 +327,79 @@ def test_a_player_off_its_reported_speed_stays_within_a_second(real_speed):
     c = playing_clock(position=0.0)
     follow(c, lambda t: real_speed * t, 80)
     assert c.position(31.6) == pytest.approx(real_speed * 31.6, abs=clock.JUMP)
+
+
+def test_one_reading_more_than_a_second_late_is_ignored():
+    c = playing_clock(position=0.0)
+    assert_slewed_after(
+        c, lambda t: t - 1.2 if round(t / 0.4) == 15 else t, 30, 0.0
+    )
+
+
+def test_a_backward_seek_is_applied_once_confirmed():
+    c = playing_clock(position=0.0)
+    seek_at = 0.4 * 15
+    follow(c, lambda t: t, 15)
+    c.sync(seek_at - 3.0, True, seek_at, seek_at)
+    c.sync(seek_at - 2.6, True, seek_at + 0.4, seek_at + 0.4)
+    assert c.position(seek_at + 0.4) == pytest.approx(seek_at - 2.6)
+
+
+def test_a_position_rounded_to_the_second_is_not_a_stall():
+    c = playing_clock(position=0.0)
+    previous = c.position(0.3)
+    for poll in range(1, 60):
+        now = 0.4 * poll
+        c.sync(float(int(now)), True, now, now)
+        for step in range(4):
+            current = c.position(now + step * 0.1)
+            assert current - previous >= 0.095 - 1e-9
+            previous = current
+
+
+def test_random_jitter_is_absorbed_without_steps():
+    rng = random.Random(1)
+    c = playing_clock(position=0.0)
+    assert_slewed_after(c, lambda t: t - rng.uniform(0.0, 0.5), 400, 0.0)
+
+
+def test_a_hold_is_shortened_when_the_player_speeds_up():
+    c = playing_clock(position=0.0)
+
+    def truth(t):
+        if t < 4.0:
+            return t
+        if t < 6.4:
+            return t - 0.7
+        return 5.7 + 2.0 * (t - 6.4)
+
+    previous = c.position(0.3)
+    for poll in range(1, 19):
+        now = 0.4 * poll
+        c.sync(truth(now), True, now, now, 2.0 if now >= 6.4 else 1.0)
+        assert c.position(now) >= previous - 1e-9
+        previous = c.position(now)
+    assert c.position(7.2) == pytest.approx(truth(7.2), abs=clock.DEADBAND)
+
+
+def test_a_new_track_starts_its_own_stall_watch():
+    c = playing_clock(position=0.0)
+    c.reset(50.0, True, 3.0)
+    c.sync(50.0, True, 3.4, 3.4)
+    assert c.position(3.8) > c.position(3.4)
+
+
+def test_a_new_track_forgets_a_doubted_reading():
+    c = playing_clock(position=0.0)
+    c.sync(0.4, True, 0.4, 0.4)
+    c.sync(-1.0, True, 0.8, 0.8)
+    c.reset(50.0, True, 1.0)
+    c.sync(48.0, True, 1.4, 1.4)
+    assert c.position(1.4) > 50.0
+
+
+def test_readings_getting_later_are_not_held_at_once():
+    c = playing_clock(position=0.0)
+    c.sync(0.4 - 0.45, True, 0.4, 0.4)
+    c.sync(0.8 - 1.05, True, 0.8, 0.8)
+    assert c.position(1.2) > c.position(0.8)

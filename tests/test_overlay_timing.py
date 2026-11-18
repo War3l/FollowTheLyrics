@@ -89,6 +89,8 @@ def test_a_line_keeps_its_place_when_shown_again(overlay, manual_clock):
     manual_clock.now = 6.2
     overlay.tick()
     overlay.on_track(now_playing(4.2))
+    manual_clock.now = 6.6
+    overlay.on_track(now_playing(4.6))
     overlay.tick()
     assert overlay.cur["idx"] == 2
     assert overlay.cur["place"] is first
@@ -167,6 +169,7 @@ def test_a_kept_place_never_covers_the_previous_line(
     overlay.tick()
     overlay.on_track(now_playing(6.5))
     overlay.tick()
+    overlay.on_track(now_playing(4.5))
     overlay.on_track(now_playing(4.5))
     overlay.tick()
     manual_clock.now = 2.5
