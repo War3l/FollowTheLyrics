@@ -65,6 +65,7 @@ src/followthelyrics/
 │   └── worker.py    Qt threads: MediaWorker (track, lyrics, cover), BeatBridge
 ├── overlay/
 │   ├── window.py    the lyrics window: placement, animation, rendering
+│   ├── clock.py     playback position estimated between two player readings
 │   ├── effects.py   blur, palettes taken from the cover, pixel access
 │   ├── colors.py    LCH colours and clustering of an image's colours
 │   └── animation.py animation curves
