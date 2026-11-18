@@ -20,6 +20,14 @@ MONITORS = [
     SMALL | {"activeWorkspace": {"id": 2}},
     LARGE | {"activeWorkspace": {"id": 4}},
 ]
+OVERLAY_PROPS = [
+    (("border_size", "0"), ("bordersize", "0")),
+    (("rounding", "0"), ("rounding", "0")),
+    (("decorate", "false"), ("decorate", "0")),
+    (("no_shadow", "true"), ("noshadow", "1")),
+    (("no_anim", "true"), ("noanim", "1")),
+    (("no_focus", "true"), ("nofocus", "1")),
+]
 linux_only = pytest.mark.skipif(
     sys.platform == "win32", reason="Hyprland paths and AF_UNIX"
 )
@@ -153,24 +161,16 @@ def test_find_overlay_ignores_the_panel_and_other_processes():
     assert hyprland.find_overlay([panel, stranger], PID) is None
 
 
-def test_lua_property_names_are_the_ones_hyprland_accepts():
-    assert dict(hyprland.LUA_OVERLAY_PROPS) == {
-        "border_size": "0",
-        "rounding": "0",
-        "decorate": "false",
-        "no_shadow": "true",
-        "no_anim": "true",
-        "no_focus": "true",
-    }
+@pytest.mark.parametrize(("lua", "classic"), OVERLAY_PROPS)
+def test_both_syntaxes_set_the_properties_hyprland_accepts(lua, classic):
+    index = [p for p, _ in hyprland.LUA_OVERLAY_PROPS].index(lua[0])
+    assert hyprland.LUA_OVERLAY_PROPS[index] == lua
+    assert hyprland.CLASSIC_OVERLAY_PROPS[index] == classic
 
 
-def test_both_syntaxes_set_the_same_properties():
-    lua = [(p.replace("_", ""), v) for p, v in hyprland.LUA_OVERLAY_PROPS]
-    classic = hyprland.CLASSIC_OVERLAY_PROPS
-    assert [p for p, _ in lua] == [p for p, _ in classic]
-    as_bool = {"0": "false", "1": "true"}
-    for (_, lua_value), (_, classic_value) in zip(lua, classic, strict=True):
-        assert lua_value in (classic_value, as_bool.get(classic_value))
+def test_no_other_property_is_set():
+    assert len(hyprland.LUA_OVERLAY_PROPS) == len(OVERLAY_PROPS)
+    assert len(hyprland.CLASSIC_OVERLAY_PROPS) == len(OVERLAY_PROPS)
 
 
 def test_commands_do_not_toggle_float_or_pin_twice():

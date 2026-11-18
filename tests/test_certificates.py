@@ -14,7 +14,6 @@ from followthelyrics.system import updater
 
 DEBIAN = "/etc/ssl/certs/ca-certificates.crt"
 FEDORA = "/etc/pki/tls/certs/ca-bundle.crt"
-INITIAL_CERT_FILE = os.environ.get("SSL_CERT_FILE")
 
 
 def only(*present):
@@ -68,6 +67,13 @@ def test_nothing_changes_without_a_bundle():
     assert env == {}
 
 
+@pytest.fixture
+def restored_cert_file():
+    initial = os.environ.get("SSL_CERT_FILE")
+    yield
+    assert os.environ.get("SSL_CERT_FILE") == initial
+
+
 @pytest.mark.parametrize(
     ("frozen", "platform", "applied"),
     [
@@ -77,7 +83,7 @@ def test_nothing_changes_without_a_bundle():
     ],
 )
 def test_setup_only_touches_the_packaged_linux_app(
-    monkeypatch, frozen, platform, applied
+    restored_cert_file, monkeypatch, frozen, platform, applied
 ):
     monkeypatch.setenv("SSL_CERT_FILE", "")
     monkeypatch.delenv("SSL_CERT_FILE")
@@ -97,13 +103,11 @@ def test_setup_only_touches_the_packaged_linux_app(
 )
 def test_verification_error_is_recognised(error):
     assert certificates.is_verification_error(error)
-    assert providers._is_certificate_error(error)
 
 
 def test_network_error_is_not_a_verification_error():
     error = urllib.error.URLError(OSError("network down"))
     assert not certificates.is_verification_error(error)
-    assert not providers._is_certificate_error(error)
 
 
 def test_lyrics_certificate_failure_has_its_own_log_line(monkeypatch, caplog):
@@ -126,7 +130,3 @@ def test_update_certificate_failure_has_its_own_log_line(monkeypatch, caplog):
         check.run()
     assert outcomes == [True]
     assert [r.levelno for r in caplog.records] == [logging.ERROR]
-
-
-def test_setup_leaves_the_environment_as_it_found_it():
-    assert certificates.os.environ.get("SSL_CERT_FILE") == INITIAL_CERT_FILE

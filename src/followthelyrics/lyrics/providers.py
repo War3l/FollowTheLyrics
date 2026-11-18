@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -9,6 +8,7 @@ import urllib.request
 from followthelyrics import version
 from followthelyrics.lyrics import model
 from followthelyrics.lyrics import parsing
+from followthelyrics.system import certificates
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +32,8 @@ _VERSION = re.compile(
 )
 
 
-def _is_certificate_error(error: BaseException) -> bool:
-    return isinstance(error, ssl.SSLCertVerificationError) or isinstance(
-        getattr(error, "reason", None), ssl.SSLCertVerificationError
-    )
-
-
 def _log_request_failure(error: BaseException, message: str, url: str):
-    if _is_certificate_error(error):
+    if certificates.is_verification_error(error):
         logger.error("certificate verification failed: %s", url)
     else:
         logger.warning(message, url, exc_info=error)

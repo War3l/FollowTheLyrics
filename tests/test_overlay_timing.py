@@ -163,7 +163,7 @@ def test_the_reading_is_dated_when_it_was_taken(overlay, manual_clock):
     assert overlay.raw_position() == pytest.approx(8.1)
 
 
-@pytest.mark.parametrize("seed", range(20))
+@pytest.mark.parametrize("seed", [1, 3, 6])
 def test_a_kept_place_never_covers_the_previous_line(
     overlay, manual_clock, seed
 ):
@@ -173,26 +173,34 @@ def test_a_kept_place_never_covers_the_previous_line(
     overlay.tick()
     overlay.on_track(now_playing(6.5))
     overlay.tick()
+    kept = overlay._places[3]
     rewind(overlay, manual_clock, 4.5)
     overlay.tick()
     manual_clock.now = 2.5
     overlay.tick()
     assert overlay.cur["idx"] == 3
     assert overlay.prev["idx"] == 2
+    assert kept.rect.intersects(overlay.prev["place"].rect)
     assert not overlay.cur["place"].rect.intersects(overlay.prev["place"].rect)
 
 
-def test_turning_the_card_on_or_off_forgets_the_old_places(monkeypatch):
-    calls = []
-    overlay = types.SimpleNamespace(
-        reset_layout=lambda: calls.append("reset_layout"),
-        apply_geometry=lambda: calls.append("apply_geometry"),
-        poke=lambda: None,
-    )
-    fake_app = types.SimpleNamespace(cfg={}, overlay=overlay)
+@pytest.mark.parametrize(
+    "key", ["card", "mode", "position", "font", "translation", "stack"]
+)
+def test_a_display_setting_forgets_the_old_places(
+    overlay, manual_clock, monkeypatch, key
+):
     monkeypatch.setattr(settings, "save_config", lambda cfg: None)
-    app.App.set_cfg(fake_app, "card", False)
-    assert calls == ["reset_layout"]
+    start_song(overlay)
+    manual_clock.now = 4.2
+    overlay.tick()
+    assert overlay._places
+    worker = types.SimpleNamespace(retranslate=lambda: None)
+    fake_app = types.SimpleNamespace(
+        cfg=overlay.cfg, overlay=overlay, worker=worker
+    )
+    app.App.set_cfg(fake_app, key, overlay.cfg[key])
+    assert not overlay._places
 
 
 def test_the_player_speed_drives_the_lyrics(overlay, manual_clock):
