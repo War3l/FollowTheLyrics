@@ -195,7 +195,7 @@ class HyprlandWindowing(generic.QtWindowing):
                 self._apply(client)
                 return
             failure = "Hyprland never listed the overlay window"
-        except (OSError, ValueError) as error:
+        except (OSError, ValueError, KeyError, TypeError) as error:
             failure = f"Hyprland IPC unavailable: {error}"
         if retry < len(RETRY_DELAYS_MS):
             QTimer.singleShot(

@@ -152,6 +152,17 @@ def test_find_overlay_ignores_the_panel_and_other_processes():
     assert hyprland.find_overlay([panel, stranger], PID) is None
 
 
+def test_lua_property_names_are_the_ones_hyprland_accepts():
+    assert dict(hyprland.LUA_OVERLAY_PROPS) == {
+        "border_size": "0",
+        "rounding": "0",
+        "decorate": "false",
+        "no_shadow": "true",
+        "no_anim": "true",
+        "no_focus": "true",
+    }
+
+
 def test_both_syntaxes_set_the_same_properties():
     lua = [(p.replace("_", ""), v) for p, v in hyprland.LUA_OVERLAY_PROPS]
     classic = hyprland.CLASSIC_OVERLAY_PROPS
@@ -214,6 +225,18 @@ def test_transient_ipc_error_is_retried(timers):
     ipc.listed = [overlay_client()]
     timers.fire_next()
     assert ipc.sent == hyprland.lua_commands(overlay_client(), AREA)
+
+
+def test_malformed_monitor_list_is_retried_not_raised(timers, caplog):
+    ipc = FakeIpc([overlay_client(monitor=1)])
+    ipc.monitors = lambda: [LARGE]
+    windowing = hyprland.HyprlandWindowing(ipc, pid=PID)
+    with caplog.at_level(logging.WARNING):
+        windowing.place_overlay(0, *vars(AREA).values())
+        for _ in hyprland.RETRY_DELAYS_MS:
+            timers.fire_next()
+    assert ipc.sent == []
+    assert "activeWorkspace" in caplog.text
 
 
 def test_retries_stop_after_the_last_delay(timers, caplog):
