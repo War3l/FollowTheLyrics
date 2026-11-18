@@ -294,6 +294,7 @@ class Overlay(QWidget):
 
     def on_translated(self, key):
         self._layout_cache.clear()
+        self._places.clear()
         self.force_paint = True
 
     def on_cover(self, key, data):
@@ -681,9 +682,9 @@ class Overlay(QWidget):
         if idx < 0 or idx >= len(self.lines):
             self.cur = None
             return
+        avoid = [self.prev["place"].rect] if self.prev else []
         place = self._places.get(idx)
-        if place is None:
-            avoid = [self.prev["place"].rect] if self.prev else []
+        if place is None or self.overlaps(place, avoid):
             place = self._places[idx] = self.place_line(self.lines[idx], avoid)
         self.cur = {
             "idx": idx,
@@ -691,6 +692,11 @@ class Overlay(QWidget):
             "since": now,
         }
         self.maybe_flash(idx)
+
+    def overlaps(self, place, avoid):
+        return not self.column_mode() and any(
+            place.rect.intersects(rect) for rect in avoid
+        )
 
     def maybe_flash(self, idx):
         line = self.lines[idx]

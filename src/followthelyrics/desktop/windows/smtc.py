@@ -126,6 +126,7 @@ class SmtcSession:
             playing=playing,
             app=session.source_app_user_model_id or "",
             site=site,
+            read_at=time.monotonic(),
         )
 
     async def _cover(self, blocked, guard):

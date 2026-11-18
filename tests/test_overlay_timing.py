@@ -1,8 +1,10 @@
 import random
+import types
 
 import pytest
 from PyQt6.QtWidgets import QApplication
 
+from followthelyrics import app
 from followthelyrics import desktop
 from followthelyrics.config import games
 from followthelyrics.config import settings
@@ -109,3 +111,78 @@ def test_new_lyrics_forget_the_old_places(overlay, manual_clock):
     assert overlay._places
     start_song(overlay)
     assert not overlay._places
+
+
+def test_a_small_offset_change_keeps_the_current_line(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 4.2
+    overlay.tick()
+    overlay.cfg["offset"] = -0.3
+    overlay.tick()
+    assert overlay.cur["idx"] == 2
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda o: o.reset_layout(),
+        lambda o: o.update_zones(),
+        lambda o: o.set_profile("bureau", o.profile),
+        lambda o: o.on_translated(o.track_key),
+    ],
+)
+def test_layout_changes_forget_the_old_places(overlay, manual_clock, change):
+    start_song(overlay)
+    manual_clock.now = 4.2
+    overlay.tick()
+    assert overlay._places
+    change(overlay)
+    assert not overlay._places
+
+
+def test_a_lost_player_freezes_the_lyrics_where_they_are(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 4.2
+    overlay.on_track(None)
+    manual_clock.now = 6.2
+    assert overlay.raw_position() == pytest.approx(4.2)
+
+
+def test_the_reading_is_dated_when_it_was_taken(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 6.1
+    overlay.on_track(now_playing(5.7, read_at=5.7))
+    manual_clock.now = 8.1
+    assert overlay.raw_position() == pytest.approx(8.1)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_a_kept_place_never_covers_the_previous_line(
+    overlay, manual_clock, seed
+):
+    overlay.rng = random.Random(seed)
+    start_song(overlay)
+    manual_clock.now = 0.5
+    overlay.tick()
+    overlay.on_track(now_playing(6.5))
+    overlay.tick()
+    overlay.on_track(now_playing(4.5))
+    overlay.tick()
+    manual_clock.now = 2.5
+    overlay.tick()
+    assert overlay.cur["idx"] == 3
+    assert overlay.prev["idx"] == 2
+    assert not overlay.cur["place"].rect.intersects(overlay.prev["place"].rect)
+
+
+def test_turning_the_card_on_or_off_forgets_the_old_places(monkeypatch):
+    calls = []
+    overlay = types.SimpleNamespace(
+        reset_layout=lambda: calls.append("reset_layout"),
+        apply_geometry=lambda: calls.append("apply_geometry"),
+        poke=lambda: None,
+    )
+    fake_app = types.SimpleNamespace(cfg={}, overlay=overlay)
+    monkeypatch.setattr(settings, "save_config", lambda cfg: None)
+    app.App.set_cfg(fake_app, "card", False)
+    assert calls == ["reset_layout"]

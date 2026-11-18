@@ -161,3 +161,21 @@ def test_x11_key_mapping():
     assert x11.keysym_name(0xFE) is None
     mask = x11.modifier_mask(ports.MOD_CTRL | ports.MOD_ALT)
     assert mask == x11.X.ControlMask | x11.X.Mod1Mask
+
+
+def test_each_player_is_dated_right_after_its_own_reading(monkeypatch):
+    now = [0.0]
+
+    def slow_properties(service):
+        now[0] += 1.0
+        return {"spotify": SPOTIFY, "vlc": {}}[service]
+
+    monkeypatch.setattr(mpris.time, "monotonic", lambda: now[0])
+    reader = mpris.MprisSession.__new__(mpris.MprisSession)
+    monkeypatch.setattr(
+        reader, "_services", lambda: {"spotify": "spotify", "vlc": "vlc"}
+    )
+    monkeypatch.setattr(reader, "_properties", slow_properties)
+    np = reader.now_playing(frozenset(), None)
+    assert np.title == "Choral Chambers"
+    assert np.read_at == 1.0
