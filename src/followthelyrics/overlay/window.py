@@ -262,7 +262,14 @@ class Overlay(QWidget):
             self.force_paint = True
             self.wake()
         else:
-            self.playback.sync(np.position, np.playing, read_at, now, speed)
+            self.playback.sync(
+                np.position,
+                np.playing,
+                read_at,
+                now,
+                speed,
+                getattr(np, "duration", None),
+            )
         self.playing = np.playing
         self.track = np
 

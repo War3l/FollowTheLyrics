@@ -202,3 +202,11 @@ def test_the_player_speed_drives_the_lyrics(overlay, manual_clock):
     overlay.on_track(now_playing(12.0, speed=2.0))
     manual_clock.now = 2.0
     assert overlay.raw_position() == pytest.approx(14.0)
+
+
+def test_a_track_played_again_starts_over_at_once(overlay, manual_clock):
+    start_song(overlay)
+    overlay.on_track(now_playing(198.8))
+    manual_clock.now = 0.4
+    overlay.on_track(now_playing(0.2))
+    assert overlay.raw_position() == pytest.approx(0.2)

@@ -1,4 +1,5 @@
 import itertools
+import math
 import random
 
 import pytest
@@ -89,7 +90,7 @@ def test_pause_and_resume_are_applied_at_once():
     assert c.position(4.0) == pytest.approx(12.0)
 
 
-def test_a_pause_while_ahead_does_not_step_back():
+def test_a_pause_while_ahead_waits_for_the_player_without_stepping_back():
     c = playing_clock()
     c.sync(10.5, True, 1.0, 1.0)
     shown = c.position(1.4)
@@ -98,7 +99,68 @@ def test_a_pause_while_ahead_does_not_step_back():
     c.sync(10.9, True, 3.0, 3.0)
     samples = [c.position(3.0 + step / 10) for step in range(50)]
     assert samples[0] == pytest.approx(shown)
-    assert all(b > a for a, b in itertools.pairwise(samples))
+    assert all(b >= a for a, b in itertools.pairwise(samples))
+    assert c.position(4.0) == pytest.approx(11.9)
+
+
+def test_a_track_played_again_restarts_at_once():
+    c = playing_clock(position=198.4)
+    c.sync(198.8, True, 0.4, 0.4, duration=200.0)
+    c.sync(0.2, True, 0.8, 0.8, duration=200.0)
+    assert c.position(0.8) == pytest.approx(0.2)
+
+
+def test_a_late_reading_near_the_start_is_not_a_restart():
+    c = playing_clock(position=2.0)
+    c.sync(2.4, True, 0.4, 0.4, duration=200.0)
+    c.sync(0.6, True, 0.8, 0.8, duration=200.0)
+    assert c.position(0.8) > 2.5
+
+
+def precise_player_at_eleven():
+    c = playing_clock(position=10.2)
+    c.sync(10.6, True, 0.4, 0.4)
+    c.sync(11.0, True, 0.8, 0.8)
+    return c
+
+
+def test_a_precise_player_is_held_sooner_when_it_stalls():
+    c = precise_player_at_eleven()
+    c.sync(11.0, True, 1.2, 1.2)
+    c.sync(11.0, True, 1.6, 1.6)
+    assert c.position(2.0) == pytest.approx(c.position(1.6))
+
+
+def test_a_precise_player_slow_to_update_is_not_a_stall():
+    c = precise_player_at_eleven()
+    c.sync(11.0, True, 1.2, 1.2)
+    assert c.position(1.4) > c.position(1.2)
+
+
+def test_a_new_track_forgets_that_the_player_was_precise():
+    c = playing_clock(position=10.25)
+    c.sync(10.65, True, 0.4, 0.4)
+    c.reset(0.0, True, 1.0)
+    shown = [c.position(1.0)]
+    for poll in range(1, 8):
+        now = 1.0 + 0.4 * poll
+        c.sync(float(math.floor(now - 1.0)), True, now, now)
+        shown.append(c.position(now))
+    assert all(b > a for a, b in itertools.pairwise(shown))
+
+
+def test_a_rewind_near_the_end_is_not_a_restart():
+    c = playing_clock(position=198.4)
+    c.sync(198.8, True, 0.4, 0.4, duration=200.0)
+    c.sync(150.0, True, 0.8, 0.8, duration=200.0)
+    assert c.position(0.8) > 198.0
+
+
+def test_a_resume_close_to_the_lyrics_does_not_jump():
+    c = playing_clock()
+    c.sync(10.4, False, 0.4, 0.4)
+    c.sync(10.5, True, 2.0, 2.0)
+    assert c.position(2.0) == pytest.approx(10.4)
 
 
 def test_a_seek_while_paused_is_followed():

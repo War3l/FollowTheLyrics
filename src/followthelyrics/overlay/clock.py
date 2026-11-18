@@ -5,6 +5,8 @@ DEADBAND = 0.15
 SETTLE = 0.3
 SETTLE_SECONDS = 2.0
 STALL_SECONDS = 1.0
+PRECISE_STALL_SECONDS = 0.5
+LOOP_MARGIN = 2.0
 CONFIRM_SECONDS = 1.0
 STILL = 0.001
 JUMP = 1.0
@@ -30,6 +32,7 @@ class PlaybackClock:
         self._shift: tuple[float, float] | None = None
         self._doubt: tuple[float, float] | None = None
         self._still_since = now
+        self._precise = False
 
     def position(self, now: float) -> float:
         if not self.playing:
@@ -52,6 +55,7 @@ class PlaybackClock:
         self._shift = None
         self._doubt = None
         self._still_since = at
+        self._precise = False
 
     def sync(
         self,
@@ -60,11 +64,15 @@ class PlaybackClock:
         at: float,
         now: float,
         speed: float = 1.0,
+        duration: float | None = None,
     ):
         last_position, last_at = self._reading
         elapsed = (at - last_at) * self.speed if self.playing else 0.0
         jump = position - (last_position + elapsed)
         reported_now = position + ((now - at) * speed if playing else 0.0)
+        if self._looped(last_position, position, duration):
+            self.reset(reported_now, playing, now, speed)
+            return
         rewind = self._doubts(jump, position, at, speed if playing else None)
         if rewind is Rewind.DOUBTED:
             return
@@ -83,15 +91,27 @@ class PlaybackClock:
             return
         if not self.playing or abs(position - last_position) >= STILL:
             self._still_since = at
-        stalled = at - self._still_since >= STALL_SECONDS
+        self._precise = self._precise or abs(position - round(position)) > STILL
+        patience = PRECISE_STALL_SECONDS if self._precise else STALL_SECONDS
+        stalled = at - self._still_since >= patience
         self._track_shift(jump, speed, at)
         resumed = not self.playing
         self.playing = True
         self.speed = speed
         error = reported_now - shown
         settled = self._settled(error, at, abs(jump) <= SETTLE)
-        resumed_behind = resumed and error > DEADBAND
-        self._steer(shown, error, now, stalled, settled or resumed_behind)
+        resumed_off = resumed and abs(error) > DEADBAND
+        self._steer(shown, error, now, stalled, settled or resumed_off)
+
+    @staticmethod
+    def _looped(
+        last_position: float, position: float, duration: float | None
+    ) -> bool:
+        return bool(
+            duration
+            and last_position >= duration - LOOP_MARGIN
+            and position < LOOP_MARGIN
+        )
 
     def _doubts(
         self, jump: float, position: float, at: float, speed: float | None
