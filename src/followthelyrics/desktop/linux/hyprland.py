@@ -189,21 +189,24 @@ class HyprlandWindowing(generic.QtWindowing):
     def _attempt(self, generation, retry):
         if generation != self.pending:
             return
+        error: Exception | None = None
         try:
             client = find_overlay(self.ipc.clients(), self.pid)
             if client is not None:
                 self._apply(client)
                 return
             failure = "Hyprland never listed the overlay window"
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            failure = f"Hyprland IPC unavailable: {error}"
+        except OSError as raised:
+            failure, error = "Hyprland IPC unavailable", raised
+        except (ValueError, KeyError, TypeError) as raised:
+            failure, error = "Unexpected reply from Hyprland", raised
         if retry < len(RETRY_DELAYS_MS):
             QTimer.singleShot(
                 RETRY_DELAYS_MS[retry],
                 lambda: self._attempt(generation, retry + 1),
             )
         else:
-            logger.warning(failure)
+            logger.warning(failure, exc_info=error)
 
     def _apply(self, client):
         workspace = workspace_to_join(client, self.ipc.monitors(), self.area)
