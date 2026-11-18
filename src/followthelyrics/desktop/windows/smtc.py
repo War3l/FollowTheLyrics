@@ -126,6 +126,10 @@ class SmtcSession:
             playing=playing,
             app=session.source_app_user_model_id or "",
             site=site,
+            read_at=time.monotonic(),
+            speed=track.playback_speed(
+                getattr(info, "playback_rate", None) or 1.0
+            ),
         )
 
     async def _cover(self, blocked, guard):

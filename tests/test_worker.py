@@ -133,3 +133,76 @@ def test_nothing_is_sent_for_translation_when_it_is_off(
     media_worker.translate = True
     assert media_worker._translate(lines) is True
     assert calls == [1]
+
+
+class OnePollSession:
+    def __init__(self, media_worker, np):
+        self.media_worker = media_worker
+        self.np = np
+
+    def now_playing(self, blocked, guard):
+        self.media_worker._stop = True
+        return self.np
+
+    def sources(self):
+        return []
+
+    def cover(self, blocked, guard):
+        return None
+
+
+def test_each_reading_carries_the_time_it_was_taken(media_worker, monkeypatch):
+    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
+    np = types.SimpleNamespace(key=("titre", "groupe"), read_at=None)
+    monkeypatch.setattr(media_worker, "_fetch", lambda np: None)
+    sent = []
+    media_worker.track.connect(sent.append, Qt.ConnectionType.DirectConnection)
+    before = time.monotonic()
+    media_worker._poll(OnePollSession(media_worker, np))
+    assert sent == [np]
+    assert before <= np.read_at <= time.monotonic()
+
+
+class ScriptedSession(OnePollSession):
+    def __init__(self, media_worker, readings):
+        super().__init__(media_worker, None)
+        self.readings = list(readings)
+
+    def now_playing(self, blocked, guard):
+        reading = self.readings.pop(0)
+        if not self.readings:
+            self.media_worker._stop = True
+        if isinstance(reading, Exception):
+            raise reading
+        return reading
+
+
+def poll_readings(media_worker, monkeypatch, readings):
+    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
+    monkeypatch.setattr(media_worker, "_fetch", lambda np: None)
+    sent = []
+    media_worker.track.connect(sent.append, Qt.ConnectionType.DirectConnection)
+    media_worker._poll(ScriptedSession(media_worker, readings))
+    return sent
+
+
+def test_a_reading_dated_by_the_player_keeps_its_date(
+    media_worker, monkeypatch
+):
+    np = types.SimpleNamespace(key=("titre", "groupe"), read_at=12.5)
+    assert poll_readings(media_worker, monkeypatch, [np]) == [np]
+    assert np.read_at == 12.5
+
+
+def test_one_failed_reading_keeps_the_last_one(media_worker, monkeypatch):
+    np = types.SimpleNamespace(key=("titre", "groupe"), read_at=None)
+    sent = poll_readings(media_worker, monkeypatch, [np, OSError("bus")])
+    assert sent == [np, np]
+
+
+def test_an_old_reading_is_not_kept_after_a_failure(media_worker, monkeypatch):
+    np = types.SimpleNamespace(
+        key=("titre", "groupe"), read_at=time.monotonic() - 5
+    )
+    sent = poll_readings(media_worker, monkeypatch, [np, OSError("bus")])
+    assert sent == [np, None]

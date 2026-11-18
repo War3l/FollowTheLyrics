@@ -24,6 +24,7 @@ class MediaWorker(QThread):
     upgrading = pyqtSignal(object, bool)
     COVER_READS = (0.8, 3.5)
     MAX_DURATION = 20 * 60
+    READ_GRACE = 1.0
     RETRY_DELAYS = (10, 30, 60, 120, 300)
     UPGRADE_TRIES = 2
     UPGRADE_WAIT = 12.0
@@ -73,13 +74,17 @@ class MediaWorker(QThread):
         last_sources = None
         last_seen = None
         changed_at, cover_step, last_cover = 0.0, 0, None
+        last_np = None
         while not self._stop:
             blocked = frozenset(self.blocked)
             try:
                 np = session.now_playing(blocked, self.guard)
+                if np is not None and np.read_at is None:
+                    np.read_at = time.monotonic()
+                last_np = np
             except Exception:
                 logger.debug("run failed", exc_info=True)
-                np = None
+                np = self._still_fresh(last_np)
             self.track.emit(np)
             seen = dict(self.guard.seen)
             if seen != last_seen:
@@ -126,6 +131,13 @@ class MediaWorker(QThread):
                     self.cover.emit(np.key, data)
             time.sleep(0.4)
         pool.shutdown(wait=False)
+
+    def _still_fresh(self, np):
+        if np is None or np.read_at is None:
+            return None
+        if time.monotonic() - np.read_at > self.READ_GRACE:
+            return None
+        return np
 
     def _fetch(self, np):
         try:

@@ -465,7 +465,14 @@ class App:
         o = self.overlay
         if key in ("scale", "screen"):
             o.apply_geometry()
-        elif key in ("mode", "position", "font", "translation", "stack"):
+        elif key in (
+            "mode",
+            "position",
+            "font",
+            "translation",
+            "stack",
+            "card",
+        ):
             o.reset_layout()
         if key == "translation":
             self.worker.translate = bool(value)
