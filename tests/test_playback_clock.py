@@ -68,10 +68,11 @@ def test_a_seek_is_applied_at_once():
     assert c.position(1.0) == pytest.approx(12.1)
     c.sync(42.0, True, 2.0, 2.0)
     assert c.position(2.0) == pytest.approx(42.0)
-    c.sync(5.0, True, 3.0, 3.0)
-    assert c.position(3.0) == pytest.approx(43.0)
-    c.sync(5.4, True, 3.4, 3.4)
-    assert c.position(3.4) == pytest.approx(5.4)
+    for poll in range(3):
+        c.sync(5.0 + 0.4 * poll, True, 3.0 + 0.4 * poll, 3.0 + 0.4 * poll)
+        assert c.position(3.0 + 0.4 * poll) > 42.0
+    c.sync(6.2, True, 4.2, 4.2)
+    assert c.position(4.2) == pytest.approx(6.2)
 
 
 def test_reading_time_counts_instead_of_receipt_time():
@@ -199,9 +200,10 @@ def fast_clock():
 
 def test_a_seek_is_measured_at_the_player_speed():
     c = fast_clock()
-    c.sync(12.8, True, 2.0, 2.0, 2.0)
-    c.sync(13.6, True, 2.4, 2.4, 2.0)
-    assert c.position(2.4) == pytest.approx(13.6)
+    for poll in range(4):
+        at = 2.0 + 0.4 * poll
+        c.sync(12.8 + 0.8 * poll, True, at, at, 2.0)
+    assert c.position(3.2) == pytest.approx(15.2)
 
 
 def test_the_reading_age_counts_at_the_player_speed():
@@ -340,9 +342,10 @@ def test_a_backward_seek_is_applied_once_confirmed():
     c = playing_clock(position=0.0)
     seek_at = 0.4 * 15
     follow(c, lambda t: t, 15)
-    c.sync(seek_at - 3.0, True, seek_at, seek_at)
-    c.sync(seek_at - 2.6, True, seek_at + 0.4, seek_at + 0.4)
-    assert c.position(seek_at + 0.4) == pytest.approx(seek_at - 2.6)
+    for poll in range(4):
+        at = seek_at + 0.4 * poll
+        c.sync(at - 3.0, True, at, at)
+    assert c.position(seek_at + 1.2) == pytest.approx(seek_at - 1.8)
 
 
 def test_a_position_rounded_to_the_second_is_not_a_stall():
@@ -403,3 +406,54 @@ def test_readings_getting_later_are_not_held_at_once():
     c.sync(0.4 - 0.45, True, 0.4, 0.4)
     c.sync(0.8 - 1.05, True, 0.8, 0.8)
     assert c.position(1.2) > c.position(0.8)
+
+
+@pytest.mark.parametrize("late", [1.05, 1.2, 1.5])
+def test_late_readings_in_a_row_are_ignored(late):
+    c = playing_clock(position=0.0)
+
+    def truth(t):
+        return t - late if round(t / 0.4) % 10 in (5, 6, 7) else t
+
+    assert_slewed_after(c, truth, 60, 0.0)
+
+
+def test_late_readings_that_disagree_restart_the_doubt():
+    c = playing_clock(position=0.0)
+    c.sync(0.4, True, 0.4, 0.4)
+    c.sync(-2.0, True, 0.8, 0.8)
+    c.sync(-1.0, True, 1.2, 1.2)
+    c.sync(-0.6, True, 1.6, 1.6)
+    c.sync(-0.2, True, 2.0, 2.0)
+    assert c.position(2.0) > 1.5
+    c.sync(0.2, True, 2.4, 2.4)
+    assert c.position(2.4) == pytest.approx(0.2)
+
+
+def test_a_frozen_player_ahead_of_the_lyrics_is_joined():
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 0.1)
+    for poll in range(1, 7):
+        now = 0.4 * poll
+        c.sync(0.29, True, now, now, 0.1)
+        assert c.position(now) < 0.29
+    assert c.position(2.8) > c.position(2.4)
+
+
+def test_a_rewind_while_paused_is_applied_once_confirmed():
+    c = playing_clock(position=50.0)
+    c.sync(50.4, False, 0.4, 0.4)
+    for poll in range(2, 5):
+        now = 0.4 * poll
+        c.sync(10.0, False, now, now)
+        assert c.position(now) == pytest.approx(50.4)
+    c.sync(10.0, False, 2.0, 2.0)
+    assert c.position(2.0) == pytest.approx(10.0)
+
+
+def test_a_new_track_does_not_confirm_an_old_doubt():
+    c = playing_clock(position=50.0)
+    c.sync(10.0, True, 1.0, 1.0)
+    c.reset(100.0, True, 1.4)
+    c.sync(11.2, True, 2.2, 2.2)
+    assert c.position(2.2) > 99.0

@@ -58,6 +58,12 @@ def now_playing(position, read_at=None, speed=1.0):
     )
 
 
+def rewind(overlay, manual_clock, position):
+    for step in (0.0, 0.5, 1.0):
+        manual_clock.now += 0.5 if step else 0.0
+        overlay.on_track(now_playing(position + step))
+
+
 def start_song(overlay):
     overlay.on_track(now_playing(0.0))
     overlay.on_lyrics(
@@ -88,9 +94,7 @@ def test_a_line_keeps_its_place_when_shown_again(overlay, manual_clock):
     first = overlay.cur["place"]
     manual_clock.now = 6.2
     overlay.tick()
-    overlay.on_track(now_playing(4.2))
-    manual_clock.now = 6.6
-    overlay.on_track(now_playing(4.6))
+    rewind(overlay, manual_clock, 4.2)
     overlay.tick()
     assert overlay.cur["idx"] == 2
     assert overlay.cur["place"] is first
@@ -169,8 +173,7 @@ def test_a_kept_place_never_covers_the_previous_line(
     overlay.tick()
     overlay.on_track(now_playing(6.5))
     overlay.tick()
-    overlay.on_track(now_playing(4.5))
-    overlay.on_track(now_playing(4.5))
+    rewind(overlay, manual_clock, 4.5)
     overlay.tick()
     manual_clock.now = 2.5
     overlay.tick()

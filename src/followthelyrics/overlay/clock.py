@@ -4,6 +4,7 @@ DEADBAND = 0.15
 SETTLE = 0.3
 SETTLE_SECONDS = 2.0
 STALL_SECONDS = 1.0
+CONFIRM_SECONDS = 1.0
 STILL = 0.001
 JUMP = 1.0
 MAX_SKEW = 0.05
@@ -20,7 +21,7 @@ class PlaybackClock:
         self._slew_until = now
         self._reading = (0.0, now)
         self._shift: tuple[float, float] | None = None
-        self._doubted = False
+        self._doubt: tuple[float, float] | None = None
         self._still_since = now
 
     def position(self, now: float) -> float:
@@ -42,7 +43,7 @@ class PlaybackClock:
         self._anchor(position, at, speed, at)
         self._reading = (position, at)
         self._shift = None
-        self._doubted = False
+        self._doubt = None
         self._still_since = at
 
     def sync(
@@ -57,7 +58,7 @@ class PlaybackClock:
         elapsed = (at - last_at) * self.speed if self.playing else 0.0
         jump = position - (last_position + elapsed)
         reported_now = position + ((now - at) * speed if playing else 0.0)
-        if self._doubts(jump):
+        if self._doubts(jump, position, at, speed if playing else 0.0):
             return
         if abs(jump) >= JUMP:
             self.reset(reported_now, playing, now, speed)
@@ -84,10 +85,21 @@ class PlaybackClock:
         resumed_behind = resumed and error > DEADBAND
         self._steer(shown, error, now, stalled, settled or resumed_behind)
 
-    def _doubts(self, jump: float) -> bool:
-        doubted = jump <= -JUMP and not self._doubted
-        self._doubted = doubted
-        return doubted
+    def _doubts(
+        self, jump: float, position: float, at: float, speed: float
+    ) -> bool:
+        if jump > -JUMP:
+            self._doubt = None
+            return False
+        if self._doubt is None:
+            self._doubt = (position, at)
+            return True
+        first_position, first_at = self._doubt
+        drift = position - (first_position + (at - first_at) * speed)
+        if abs(drift) > SETTLE:
+            self._doubt = (position, at)
+            return True
+        return at - first_at < CONFIRM_SECONDS
 
     def _track_shift(self, jump: float, speed: float, at: float):
         if speed != self.speed:
@@ -115,7 +127,7 @@ class PlaybackClock:
         settled: bool,
     ):
         holding = self._rate == 0.0 and now < self._slew_until
-        if stalled:
+        if stalled and error < 0.0:
             self._anchor(shown, now, 0.0, math.inf)
         elif (holding or settled) and error < 0.0:
             self._anchor(shown, now, 0.0, now - error / self.speed)
