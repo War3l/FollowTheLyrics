@@ -77,6 +77,8 @@ class MediaWorker(QThread):
             blocked = frozenset(self.blocked)
             try:
                 np = session.now_playing(blocked, self.guard)
+                if np is not None:
+                    np.read_at = time.monotonic()
             except Exception:
                 logger.debug("run failed", exc_info=True)
                 np = None

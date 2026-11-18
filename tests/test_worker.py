@@ -133,3 +133,31 @@ def test_nothing_is_sent_for_translation_when_it_is_off(
     media_worker.translate = True
     assert media_worker._translate(lines) is True
     assert calls == [1]
+
+
+class OnePollSession:
+    def __init__(self, media_worker, np):
+        self.media_worker = media_worker
+        self.np = np
+
+    def now_playing(self, blocked, guard):
+        self.media_worker._stop = True
+        return self.np
+
+    def sources(self):
+        return []
+
+    def cover(self, blocked, guard):
+        return None
+
+
+def test_each_reading_carries_the_time_it_was_taken(media_worker, monkeypatch):
+    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
+    np = types.SimpleNamespace(key=("titre", "groupe"), read_at=None)
+    monkeypatch.setattr(media_worker, "_fetch", lambda np: None)
+    sent = []
+    media_worker.track.connect(sent.append, Qt.ConnectionType.DirectConnection)
+    before = time.monotonic()
+    media_worker._poll(OnePollSession(media_worker, np))
+    assert sent == [np]
+    assert before <= np.read_at <= time.monotonic()

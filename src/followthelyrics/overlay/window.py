@@ -34,6 +34,7 @@ from followthelyrics.lyrics import analysis
 from followthelyrics.lyrics import model
 from followthelyrics.lyrics import parsing
 from followthelyrics.overlay import animation
+from followthelyrics.overlay import clock as playback_clock
 from followthelyrics.overlay import colors
 from followthelyrics.overlay import effects
 from followthelyrics.overlay import screens
@@ -55,6 +56,8 @@ CARD_TIME = 4.5
 UPPER = 0.5
 
 TRANSLATION_ROWS = 3
+
+REWIND_TOLERANCE = 0.5
 
 TRANSLATION_CHARS = 34
 
@@ -91,8 +94,7 @@ class Overlay(QWidget):
         self.times: list[float] = []
         self.word_sync = False
         self.state = "idle"
-        self.anchor_pos = 0.0
-        self.anchor_t = clock()
+        self.playback = playback_clock.PlaybackClock(clock())
         self.playing = False
         self.alpha = 0.0
         self.user_hidden = False
@@ -109,6 +111,7 @@ class Overlay(QWidget):
         self.particles = []
         self.last_region = QRegion()
         self._layout_cache = {}
+        self._places: dict[int, Any] = {}
         self._band = None
         self._halo_cache = OrderedDict()
         self._path_cache = OrderedDict()
@@ -166,6 +169,7 @@ class Overlay(QWidget):
 
     def reset_layout(self):
         self._layout_cache.clear()
+        self._places.clear()
         self._band = None
         self.cur = self.prev = None
         self.exiting = []
@@ -206,6 +210,7 @@ class Overlay(QWidget):
                     )
                 )
         self._zones_key = tuple(z.getRect() for z in self.zones)
+        self._places.clear()
 
     def keep_on_top(self):
         if self.isVisible():
@@ -227,9 +232,7 @@ class Overlay(QWidget):
         self.windowing.prepare_overlay(int(self.winId()))
 
     def raw_position(self):
-        return self.anchor_pos + (
-            (self.clock() - self.anchor_t) if self.playing else 0.0
-        )
+        return self.playback.position(self.clock())
 
     def position(self):
         return self.raw_position() + self.cfg["offset"]
@@ -237,9 +240,11 @@ class Overlay(QWidget):
     def on_track(self, np):
         now = self.clock()
         if np is None:
+            self.playback.reset(self.playback.position(now), False, now)
             self.playing = False
             self.track = None
             return
+        read_at = min(getattr(np, "read_at", None) or now, now)
         if np.key != self.track_key:
             self.track_key = np.key
             self.track_changed_at = self.card_since = now
@@ -251,14 +256,12 @@ class Overlay(QWidget):
             self.upgrading = False
             self.cover_img = None
             self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
-            self.anchor_pos, self.anchor_t = np.position, now
+            self._places.clear()
+            self.playback.reset(np.position, np.playing, read_at)
             self.force_paint = True
             self.wake()
-        elif (
-            np.playing != self.playing
-            or abs(np.position - self.raw_position()) > 0.35
-        ):
-            self.anchor_pos, self.anchor_t = np.position, now
+        else:
+            self.playback.sync(np.position, np.playing, read_at, now)
         self.playing = np.playing
         self.track = np
 
@@ -275,6 +278,7 @@ class Overlay(QWidget):
                     lines, self.track.title, self.track.artist
                 )
             self._hero_cache = {}
+            self._places.clear()
             self.word_lines = analysis.count_word_lines(lines)
             self.cur = self.prev = None
             self.exiting = []
@@ -323,6 +327,17 @@ class Overlay(QWidget):
 
     def current_index(self, pos):
         return bisect.bisect_right(self.times, pos) - 1
+
+    def line_to_show(self, pos):
+        idx = self.current_index(pos)
+        shown = self.cur["idx"] if self.cur else None
+        if (
+            shown is not None
+            and idx < shown < len(self.times)
+            and pos > self.times[shown] - REWIND_TOLERANCE
+        ):
+            return shown
+        return idx
 
     def current_text(self):
         if self.state == "ok" and self.cur and self.lines:
@@ -666,10 +681,13 @@ class Overlay(QWidget):
         if idx < 0 or idx >= len(self.lines):
             self.cur = None
             return
-        avoid = [self.prev["place"].rect] if self.prev else []
+        place = self._places.get(idx)
+        if place is None:
+            avoid = [self.prev["place"].rect] if self.prev else []
+            place = self._places[idx] = self.place_line(self.lines[idx], avoid)
         self.cur = {
             "idx": idx,
-            "place": self.place_line(self.lines[idx], avoid),
+            "place": place,
             "since": now,
         }
         self.maybe_flash(idx)
@@ -824,7 +842,7 @@ class Overlay(QWidget):
         self.last_tick = now
 
         if self.state == "ok" and self.lines:
-            idx = self.current_index(self.position())
+            idx = self.line_to_show(self.position())
             if self.cur is None or idx != self.cur["idx"]:
                 self.advance(idx, now)
         self.exiting = [(e, t) for e, t in self.exiting if now - t < 0.45]

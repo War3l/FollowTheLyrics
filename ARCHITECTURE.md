@@ -64,6 +64,7 @@ src/followthelyrics/
 │   └── worker.py    fils Qt : MediaWorker (morceau, paroles, pochette), BeatBridge
 ├── overlay/
 │   ├── window.py    la fenêtre des paroles : placement, animation, rendu
+│   ├── clock.py     position de lecture estimée entre deux relevés du lecteur
 │   ├── effects.py   flou, palettes tirées de la pochette, accès aux pixels
 │   ├── colors.py    couleurs LCH et regroupement des couleurs d'une image
 │   └── animation.py courbes d'animation

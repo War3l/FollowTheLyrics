@@ -13,6 +13,7 @@ class NowPlaying:
     playing: bool
     app: str
     site: str = ""
+    read_at: float | None = None
 
     @property
     def key(self):
