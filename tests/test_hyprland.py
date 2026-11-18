@@ -3,6 +3,7 @@ import logging
 import socket
 import sys
 import threading
+import traceback
 
 import pytest
 
@@ -43,8 +44,8 @@ class FakeIpc:
         self.sent = []
 
     def clients(self):
-        if isinstance(self.listed, Exception):
-            raise self.listed
+        if isinstance(self.listed, type):
+            raise self.listed("busy")
         return self.listed
 
     def monitors(self):
@@ -219,7 +220,7 @@ def test_overlay_not_listed_yet_is_placed_on_a_retry(timers):
 
 
 def test_transient_ipc_error_is_retried(timers):
-    ipc = FakeIpc(ConnectionRefusedError("busy"))
+    ipc = FakeIpc(ConnectionRefusedError)
     windowing = hyprland.HyprlandWindowing(ipc, pid=PID)
     windowing.place_overlay(0, *vars(AREA).values())
     ipc.listed = [overlay_client()]
@@ -229,14 +230,17 @@ def test_transient_ipc_error_is_retried(timers):
 
 def test_persistent_ipc_error_is_reported_with_its_trace(timers, caplog):
     windowing = hyprland.HyprlandWindowing(
-        FakeIpc(ConnectionRefusedError("busy")), pid=PID
+        FakeIpc(ConnectionRefusedError), pid=PID
     )
     with caplog.at_level(logging.WARNING):
         windowing.place_overlay(0, *vars(AREA).values())
         for _ in hyprland.RETRY_DELAYS_MS:
             timers.fire_next()
     assert "Hyprland IPC unavailable" in caplog.text
-    assert isinstance(caplog.records[-1].exc_info[1], ConnectionRefusedError)
+    error = caplog.records[-1].exc_info[1]
+    assert isinstance(error, ConnectionRefusedError)
+    frames = traceback.extract_tb(error.__traceback__)
+    assert [frame.name for frame in frames] == ["_attempt", "clients"]
 
 
 def test_malformed_monitor_list_is_retried_not_raised(timers, caplog):
