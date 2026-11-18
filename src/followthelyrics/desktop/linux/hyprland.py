@@ -47,6 +47,7 @@ def running(environ=os.environ):
     return bool(
         environ.get("HYPRLAND_INSTANCE_SIGNATURE")
         and environ.get("WAYLAND_DISPLAY")
+        and os.path.exists(socket_path(environ))
     )
 
 
@@ -193,16 +194,16 @@ class HyprlandWindowing(generic.QtWindowing):
             if client is not None:
                 self._apply(client)
                 return
-        except (OSError, ValueError):
-            logger.warning("Hyprland IPC unavailable", exc_info=True)
-            return
+            failure = "Hyprland never listed the overlay window"
+        except (OSError, ValueError) as error:
+            failure = f"Hyprland IPC unavailable: {error}"
         if retry < len(RETRY_DELAYS_MS):
             QTimer.singleShot(
                 RETRY_DELAYS_MS[retry],
                 lambda: self._attempt(generation, retry + 1),
             )
         else:
-            logger.warning("Hyprland never listed the overlay window")
+            logger.warning(failure)
 
     def _apply(self, client):
         workspace = workspace_to_join(client, self.ipc.monitors(), self.area)
