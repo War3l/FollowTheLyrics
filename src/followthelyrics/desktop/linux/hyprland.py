@@ -69,16 +69,52 @@ def find_overlay(clients, pid):
     return None
 
 
-def lua_commands(client, area):
+def logical_size(monitor):
+    width = monitor["width"] / monitor.get("scale", 1)
+    height = monitor["height"] / monitor.get("scale", 1)
+    if monitor.get("transform", 0) % 2:
+        return height, width
+    return width, height
+
+
+def monitor_at(monitors, area):
+    for monitor in monitors:
+        width, height = logical_size(monitor)
+        if (
+            monitor["x"] <= area.x < monitor["x"] + width
+            and monitor["y"] <= area.y < monitor["y"] + height
+        ):
+            return monitor
+    return None
+
+
+def workspace_to_join(client, monitors, area):
+    monitor = monitor_at(monitors, area)
+    if monitor is None or client.get("monitor") == monitor["id"]:
+        return None
+    return monitor["activeWorkspace"]["id"]
+
+
+def lua_commands(client, area, workspace=None):
     target = f'window="address:{client["address"]}"'
+    pin = f"hl.dsp.window.pin({{{target}}})"
     commands = [
         f'hl.dsp.window.set_prop({{{target}, prop="{prop}", value="{value}"}})'
         for prop, value in LUA_OVERLAY_PROPS
     ]
     if not client.get("floating"):
         commands.append(f"hl.dsp.window.float({{{target}}})")
-    if not client.get("pinned"):
-        commands.append(f"hl.dsp.window.pin({{{target}}})")
+    pinned = client.get("pinned")
+    if workspace is not None:
+        if pinned:
+            commands.append(pin)
+            pinned = False
+        commands.append(
+            f"hl.dsp.window.move({{workspace={workspace},"
+            f" follow=false, {target}}})"
+        )
+    if not pinned:
+        commands.append(pin)
     commands += [
         f"hl.dsp.window.resize({{x={area.width}, y={area.height},"
         f" exact=true, {target}}})",
@@ -87,16 +123,23 @@ def lua_commands(client, area):
     return commands
 
 
-def classic_commands(client, area):
+def classic_commands(client, area, workspace=None):
     target = f"address:{client['address']}"
+    pin = f"pin {target}"
     commands = [
         f"setprop {target} {prop} {value}"
         for prop, value in CLASSIC_OVERLAY_PROPS
     ]
     if not client.get("floating"):
         commands.append(f"setfloating {target}")
-    if not client.get("pinned"):
-        commands.append(f"pin {target}")
+    pinned = client.get("pinned")
+    if workspace is not None:
+        if pinned:
+            commands.append(pin)
+            pinned = False
+        commands.append(f"movetoworkspacesilent {workspace},{target}")
+    if not pinned:
+        commands.append(pin)
     commands += [
         f"resizewindowpixel exact {area.width} {area.height},{target}",
         f"movewindowpixel exact {area.x} {area.y},{target}",
@@ -122,6 +165,9 @@ class HyprlandIpc:
 
     def clients(self):
         return json.loads(self.request("j/clients"))
+
+    def monitors(self):
+        return json.loads(self.request("j/monitors"))
 
     def dispatch(self, command):
         return self.request("/dispatch " + command) == OK_REPLY
@@ -159,11 +205,12 @@ class HyprlandWindowing(generic.QtWindowing):
             logger.warning("Hyprland never listed the overlay window")
 
     def _apply(self, client):
-        lua = lua_commands(client, self.area)
+        workspace = workspace_to_join(client, self.ipc.monitors(), self.area)
+        lua = lua_commands(client, self.area, workspace)
         if self.ipc.dispatch(lua[0]):
             remaining = lua[1:]
         else:
-            remaining = classic_commands(client, self.area)
+            remaining = classic_commands(client, self.area, workspace)
         refused = [c for c in remaining if not self.ipc.dispatch(c)]
         if refused:
             logger.warning("Hyprland refused %s", refused)

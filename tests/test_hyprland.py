@@ -15,6 +15,12 @@ HYPRLAND_SESSION = {
     "DISPLAY": ":1",
 }
 AREA = hyprland.Area(1920, 0, 2560, 1440)
+SMALL = {"id": 1, "x": 0, "y": 0, "width": 1920, "height": 1080}
+LARGE = {"id": 0, "x": 1920, "y": 0, "width": 2560, "height": 1440}
+MONITORS = [
+    SMALL | {"activeWorkspace": {"id": 2}},
+    LARGE | {"activeWorkspace": {"id": 4}},
+]
 
 
 def overlay_client(**state):
@@ -24,6 +30,7 @@ def overlay_client(**state):
         "title": settings.OVERLAY_TITLE,
         "floating": False,
         "pinned": False,
+        "monitor": 0,
     } | state
 
 
@@ -35,6 +42,9 @@ class FakeIpc:
 
     def clients(self):
         return self.listed
+
+    def monitors(self):
+        return MONITORS
 
     def dispatch(self, command):
         self.sent.append(command)
@@ -107,3 +117,28 @@ def test_ipc_speaks_the_hyprland_socket_protocol(tmp_path):
         thread.join()
         server.close()
     assert received == ["/dispatch pin address:0x1"]
+
+
+def test_overlay_born_elsewhere_joins_the_target_workspace_first():
+    born_left = overlay_client(monitor=1)
+    assert hyprland.workspace_to_join(born_left, MONITORS, AREA) == 4
+    assert hyprland.workspace_to_join(overlay_client(), MONITORS, AREA) is None
+    commands = hyprland.lua_commands(born_left, AREA, 4)
+    joins = next(i for i, c in enumerate(commands) if "workspace=4" in c)
+    assert joins < commands.index('hl.dsp.window.pin({window="address:0x1"})')
+
+
+def test_pinned_overlay_is_unpinned_to_change_monitor():
+    pinned = overlay_client(monitor=1, floating=True, pinned=True)
+    for builder in (hyprland.lua_commands, hyprland.classic_commands):
+        commands = builder(pinned, AREA, 4)
+        pins = [i for i, c in enumerate(commands) if "pin" in c]
+        joins = [i for i, c in enumerate(commands) if "workspace" in c]
+        assert len(pins) == 2
+        assert pins[0] < joins[0] < pins[1]
+
+
+def test_monitor_lookup_uses_logical_size():
+    scaled = SMALL | {"width": 3840, "height": 2160, "scale": 2.0}
+    assert hyprland.monitor_at([scaled], hyprland.Area(1900, 0, 1, 1))
+    assert not hyprland.monitor_at([scaled], hyprland.Area(1920, 0, 1, 1))
