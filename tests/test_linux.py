@@ -179,3 +179,12 @@ def test_each_player_is_dated_right_after_its_own_reading(monkeypatch):
     np = reader.now_playing(frozenset(), None)
     assert np.title == "Choral Chambers"
     assert np.read_at == 1.0
+
+
+@pytest.mark.parametrize(
+    ("rate", "speed"), [(1.5, 1.5), (0.0, 1.0), ("x", 1.0), (None, 1.0)]
+)
+def test_the_player_speed_is_read_from_mpris(rate, speed):
+    properties = dict(SPOTIFY, Rate=rate)
+    player = mpris.player_of("spotify", properties)
+    assert mpris.now_playing_of(player, "").speed == speed

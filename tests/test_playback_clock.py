@@ -121,12 +121,56 @@ def test_a_stalled_player_holds_the_lyrics_instead_of_stepping_back():
     assert c.position(6.0) == pytest.approx(truth(6.0), abs=clock.DEADBAND)
 
 
-def test_a_faster_player_is_never_left_a_second_behind():
-    c = playing_clock(position=0.0)
-    for poll in range(1, 60):
+def follow(c, truth, polls, speed=1.0):
+    previous = c.position(0.3)
+    for poll in range(1, polls):
         now = 0.4 * poll
-        c.sync(1.5 * now, True, now, now)
-        assert abs(c.position(now) - 1.5 * now) < clock.JUMP
+        c.sync(truth(now), True, now, now, speed)
+        for step in range(4):
+            current = c.position(now + step * 0.1)
+            assert current >= previous - 1e-9
+            previous = current
+
+
+def test_a_player_at_its_reported_speed_is_followed_without_jumps():
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.5)
+    follow(c, lambda t: 1.5 * t, 60, speed=1.5)
+    assert speeds(c, 23.6, 27.6) == pytest.approx([1.5] * 80)
+
+
+def test_a_change_of_speed_is_followed():
+    c = playing_clock()
+    c.sync(11.0, True, 1.0, 1.0, 2.0)
+    assert c.position(3.0) == pytest.approx(15.0)
+
+
+def test_a_discontinuity_of_exactly_one_second_is_a_seek():
+    c = playing_clock()
+    c.sync(12.0, True, 1.0, 1.0)
+    assert c.position(1.0) == pytest.approx(12.0)
+
+
+@pytest.mark.parametrize("shift", [-0.7, -0.4])
+def test_a_short_backward_seek_is_settled_by_holding(shift):
+    c = playing_clock(position=0.0)
+
+    def truth(t):
+        return t if t < 4.0 else t + shift
+
+    follow(c, truth, 20)
+    assert c.position(7.6) == pytest.approx(truth(7.6), abs=clock.DEADBAND)
+
+
+@pytest.mark.parametrize("shift", [0.4, 0.7])
+def test_a_short_forward_seek_is_settled_within_two_seconds(shift):
+    c = playing_clock(position=0.0)
+
+    def truth(t):
+        return t if t < 4.0 else t + shift
+
+    follow(c, truth, 16)
+    assert c.position(6.0) == pytest.approx(truth(6.0), abs=clock.DEADBAND)
 
 
 def test_jittery_player_never_steps_back_inside_a_track():
@@ -142,3 +186,37 @@ def test_jittery_player_never_steps_back_inside_a_track():
             assert current >= previous - 1e-9
             assert 0.0 <= current - previous <= 0.1 * 1.05 + 1e-9
             previous = current
+
+
+def fast_clock():
+    c = clock.PlaybackClock(0.0)
+    c.reset(10.0, True, 0.0, 2.0)
+    return c
+
+
+def test_a_seek_is_measured_at_the_player_speed():
+    c = fast_clock()
+    c.sync(12.8, True, 2.0, 2.0, 2.0)
+    assert c.position(2.0) == pytest.approx(12.8)
+
+
+def test_the_reading_age_counts_at_the_player_speed():
+    c = fast_clock()
+    c.sync(11.2, True, 0.6, 1.2, 2.0)
+    assert c.position(3.2) == pytest.approx(16.4)
+
+
+def test_catching_up_scales_with_the_player_speed():
+    c = fast_clock()
+    c.sync(12.5, True, 1.0, 1.0, 2.0)
+    assert c.position(6.0) == pytest.approx(22.5)
+    assert c.position(11.0) == pytest.approx(32.5)
+
+
+def test_a_seek_starts_counting_drift_again():
+    c = playing_clock(position=0.0)
+    c.sync(0.8, True, 0.4, 0.4)
+    c.sync(1.2, True, 0.8, 0.8)
+    c.sync(10.0, True, 1.2, 1.2)
+    c.sync(10.8, True, 1.6, 1.6)
+    assert c.position(1.6) == pytest.approx(10.4)

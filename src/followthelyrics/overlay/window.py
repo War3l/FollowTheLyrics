@@ -245,6 +245,7 @@ class Overlay(QWidget):
             self.track = None
             return
         read_at = min(getattr(np, "read_at", None) or now, now)
+        speed = getattr(np, "speed", 1.0)
         if np.key != self.track_key:
             self.track_key = np.key
             self.track_changed_at = self.card_since = now
@@ -257,11 +258,11 @@ class Overlay(QWidget):
             self.cover_img = None
             self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
             self._places.clear()
-            self.playback.reset(np.position, np.playing, read_at)
+            self.playback.reset(np.position, np.playing, read_at, speed)
             self.force_paint = True
             self.wake()
         else:
-            self.playback.sync(np.position, np.playing, read_at, now)
+            self.playback.sync(np.position, np.playing, read_at, now, speed)
         self.playing = np.playing
         self.track = np
 

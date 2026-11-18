@@ -44,7 +44,7 @@ def overlay(manual_clock):
     app.processEvents()
 
 
-def now_playing(position, read_at=None):
+def now_playing(position, read_at=None, speed=1.0):
     return track.NowPlaying(
         title="Titre",
         artist="Groupe",
@@ -54,6 +54,7 @@ def now_playing(position, read_at=None):
         playing=True,
         app="test",
         read_at=read_at,
+        speed=speed,
     )
 
 
@@ -186,3 +187,12 @@ def test_turning_the_card_on_or_off_forgets_the_old_places(monkeypatch):
     monkeypatch.setattr(settings, "save_config", lambda cfg: None)
     app.App.set_cfg(fake_app, "card", False)
     assert calls == ["reset_layout"]
+
+
+def test_the_player_speed_drives_the_lyrics(overlay, manual_clock):
+    overlay.on_track(now_playing(10.0, speed=2.0))
+    manual_clock.now = 1.0
+    assert overlay.raw_position() == pytest.approx(12.0)
+    overlay.on_track(now_playing(12.0, speed=2.0))
+    manual_clock.now = 2.0
+    assert overlay.raw_position() == pytest.approx(14.0)

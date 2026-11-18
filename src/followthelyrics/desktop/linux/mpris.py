@@ -35,6 +35,7 @@ class Player:
     art_url: str = ""
     page_url: str = ""
     read_at: float | None = None
+    speed: float = 1.0
 
 
 def _text(value):
@@ -63,6 +64,7 @@ def player_of(app_id, properties, read_at=None):
         art_url=_text(metadata.get("mpris:artUrl")),
         page_url=_text(metadata.get("xesam:url")),
         read_at=read_at,
+        speed=track.playback_speed(properties.get("Rate", 1.0)),
     )
 
 
@@ -98,6 +100,7 @@ def now_playing_of(player, site):
         app=player.app_id,
         site=site,
         read_at=player.read_at,
+        speed=player.speed,
     )
 
 
