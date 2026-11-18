@@ -9,6 +9,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 APP_NAME = "FollowTheLyrics"
+OVERLAY_TITLE = APP_NAME + " Overlay"
 OLD_NAMES = ("LyricsOverlay", "Lyrics Overlay")
 PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(PACKAGE_DIR))

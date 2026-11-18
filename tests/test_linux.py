@@ -144,6 +144,22 @@ def test_config_home_follows_xdg():
             },
             None,
         ),
+        (
+            {
+                "WAYLAND_DISPLAY": "wayland-1",
+                "DISPLAY": ":1",
+                "QT_QPA_PLATFORM": "wayland;xcb",
+            },
+            "xcb",
+        ),
+        (
+            {
+                "WAYLAND_DISPLAY": "wayland-1",
+                "DISPLAY": ":1",
+                "QT_QPA_PLATFORM": "wayland;offscreen",
+            },
+            None,
+        ),
     ],
 )
 def test_platform_plugin_prefers_xwayland(environ, plugin):
@@ -161,3 +177,30 @@ def test_x11_key_mapping():
     assert x11.keysym_name(0xFE) is None
     mask = x11.modifier_mask(ports.MOD_CTRL | ports.MOD_ALT)
     assert mask == x11.X.ControlMask | x11.X.Mod1Mask
+
+
+def test_each_player_is_dated_right_after_its_own_reading(monkeypatch):
+    now = [0.0]
+
+    def slow_properties(service):
+        now[0] += 1.0
+        return {"spotify": SPOTIFY, "vlc": {}}[service]
+
+    monkeypatch.setattr(mpris.time, "monotonic", lambda: now[0])
+    reader = mpris.MprisSession.__new__(mpris.MprisSession)
+    monkeypatch.setattr(
+        reader, "_services", lambda: {"spotify": "spotify", "vlc": "vlc"}
+    )
+    monkeypatch.setattr(reader, "_properties", slow_properties)
+    np = reader.now_playing(frozenset(), None)
+    assert np.title == "Choral Chambers"
+    assert np.read_at == 1.0
+
+
+@pytest.mark.parametrize(
+    ("rate", "speed"), [(1.5, 1.5), (0.0, 1.0), ("x", 1.0), (None, 1.0)]
+)
+def test_the_player_speed_is_read_from_mpris(rate, speed):
+    properties = dict(SPOTIFY, Rate=rate)
+    player = mpris.player_of("spotify", properties)
+    assert mpris.now_playing_of(player, "").speed == speed

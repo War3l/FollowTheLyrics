@@ -108,6 +108,10 @@ class Windowing(Protocol):
 
     def raise_overlay(self, window: WindowHandle) -> None: ...
 
+    def place_overlay(
+        self, window: WindowHandle, x: int, y: int, width: int, height: int
+    ) -> None: ...
+
     def on_foreground_change(
         self, callback: Callable[[], None]
     ) -> Subscription: ...

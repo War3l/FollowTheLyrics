@@ -8,6 +8,7 @@ import urllib.request
 from followthelyrics import version
 from followthelyrics.lyrics import model
 from followthelyrics.lyrics import parsing
+from followthelyrics.system import certificates
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,13 @@ _VERSION = re.compile(
 )
 
 
+def _log_request_failure(error: BaseException, message: str, url: str):
+    if certificates.is_verification_error(error):
+        logger.error("certificate verification failed: %s", url)
+    else:
+        logger.warning(message, url, exc_info=error)
+
+
 def translate_lines(lines: list[model.Line], target: str = "fr") -> str | None:
     texts = list(dict.fromkeys(line.text for line in lines if line.text))
     if not texts:
@@ -48,8 +56,8 @@ def translate_lines(lines: list[model.Line], target: str = "fr") -> str | None:
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.loads(r.read().decode("utf-8"))
-    except (OSError, ValueError):
-        logger.warning("translate_lines failed", exc_info=True)
+    except (OSError, ValueError) as e:
+        _log_request_failure(e, "translate_lines failed: %s", url)
         return None
     src = data[2] if len(data) > 2 else None
     if src == target:
@@ -79,8 +87,8 @@ class _Session:
             if e.code >= 500 or e.code == 429:
                 self.failed = True
             return None
-        except (OSError, ValueError):
-            logger.warning("lyrics request failed: %s", url, exc_info=True)
+        except (OSError, ValueError) as e:
+            _log_request_failure(e, "lyrics request failed: %s", url)
             self.failed = True
             return None
 
@@ -413,8 +421,8 @@ def fetch_liriqo(
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         return None, not (e.code >= 500 or e.code == 429)
-    except (OSError, ValueError):
-        logger.warning("liriqo request failed", exc_info=True)
+    except (OSError, ValueError) as e:
+        _log_request_failure(e, "liriqo request failed: %s", url)
         return None, False
     if not isinstance(data, dict):
         return None, True

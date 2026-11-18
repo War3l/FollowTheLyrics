@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -33,6 +34,8 @@ class Player:
     playing: bool
     art_url: str = ""
     page_url: str = ""
+    read_at: float | None = None
+    speed: float = 1.0
 
 
 def _text(value):
@@ -48,7 +51,7 @@ def _seconds(value):
         return 0.0
 
 
-def player_of(app_id, properties):
+def player_of(app_id, properties, read_at=None):
     metadata = properties.get("Metadata") or {}
     return Player(
         app_id=app_id,
@@ -60,6 +63,8 @@ def player_of(app_id, properties):
         playing=properties.get("PlaybackStatus") == "Playing",
         art_url=_text(metadata.get("mpris:artUrl")),
         page_url=_text(metadata.get("xesam:url")),
+        read_at=read_at,
+        speed=track.playback_speed(properties.get("Rate", 1.0)),
     )
 
 
@@ -94,6 +99,8 @@ def now_playing_of(player, site):
         playing=player.playing,
         app=player.app_id,
         site=site,
+        read_at=player.read_at,
+        speed=player.speed,
     )
 
 
@@ -163,7 +170,7 @@ class MprisSession:
         for app_id, service in self._services().items():
             properties = self._properties(service)
             if properties is not None:
-                players.append(player_of(app_id, properties))
+                players.append(player_of(app_id, properties, time.monotonic()))
         return players
 
     def _properties(self, service):

@@ -11,6 +11,7 @@ from PyQt6.QtCore import pyqtSignal
 from followthelyrics import i18n
 from followthelyrics import version
 from followthelyrics.config import settings
+from followthelyrics.system import certificates
 from followthelyrics.system import startup
 
 logger = logging.getLogger(__name__)
@@ -152,8 +153,11 @@ class UpdateCheck(QThread):
                 self.found.emit(info)
             else:
                 self.nothing.emit(False)
-        except Exception:
-            logger.warning("run failed", exc_info=True)
+        except Exception as e:
+            if certificates.is_verification_error(e):
+                logger.error("update check failed: certificate verification")
+            else:
+                logger.warning("run failed", exc_info=True)
             self.nothing.emit(True)
 
 
