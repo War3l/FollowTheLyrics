@@ -1,4 +1,5 @@
 import logging
+import os
 import ssl
 import urllib.error
 import urllib.request
@@ -6,12 +7,14 @@ import urllib.request
 import pytest
 
 from followthelyrics.config import settings
+from followthelyrics.lyrics import model
 from followthelyrics.lyrics import providers
 from followthelyrics.system import certificates
 from followthelyrics.system import updater
 
 DEBIAN = "/etc/ssl/certs/ca-certificates.crt"
 FEDORA = "/etc/pki/tls/certs/ca-bundle.crt"
+INITIAL_CERT_FILE = os.environ.get("SSL_CERT_FILE")
 
 
 def only(*present):
@@ -76,7 +79,8 @@ def test_nothing_changes_without_a_bundle():
 def test_setup_only_touches_the_packaged_linux_app(
     monkeypatch, frozen, platform, applied
 ):
-    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.setenv("SSL_CERT_FILE", "")
+    monkeypatch.delenv("SSL_CERT_FILE")
     monkeypatch.setattr(settings, "FROZEN", frozen)
     monkeypatch.setattr(certificates.sys, "platform", platform)
     monkeypatch.setattr(certificates, "find_bundle", lambda exists: FEDORA)
@@ -107,8 +111,9 @@ def test_lyrics_certificate_failure_has_its_own_log_line(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         assert providers._Session().get_json("https://lrclib.net/x", {}) is None
         assert providers.fetch_liriqo("t", "a") == (None, False)
+        assert providers.translate_lines([model.Line(0.0, "bonjour")]) is None
     errors = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(errors) == 2
+    assert len(errors) == 3
     assert all("certificate verification failed" in r.message for r in errors)
 
 
@@ -121,3 +126,7 @@ def test_update_certificate_failure_has_its_own_log_line(monkeypatch, caplog):
         check.run()
     assert outcomes == [True]
     assert [r.levelno for r in caplog.records] == [logging.ERROR]
+
+
+def test_setup_leaves_the_environment_as_it_found_it():
+    assert certificates.os.environ.get("SSL_CERT_FILE") == INITIAL_CERT_FILE
