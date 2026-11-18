@@ -1,3 +1,4 @@
+import enum
 import math
 
 DEADBAND = 0.15
@@ -9,6 +10,12 @@ STILL = 0.001
 JUMP = 1.0
 MAX_SKEW = 0.05
 SLEW_SECONDS = 2.0
+
+
+class Rewind(enum.Enum):
+    NONE = enum.auto()
+    DOUBTED = enum.auto()
+    CONFIRMED = enum.auto()
 
 
 class PlaybackClock:
@@ -58,9 +65,10 @@ class PlaybackClock:
         elapsed = (at - last_at) * self.speed if self.playing else 0.0
         jump = position - (last_position + elapsed)
         reported_now = position + ((now - at) * speed if playing else 0.0)
-        if self._doubts(jump, position, at, speed if playing else 0.0):
+        rewind = self._doubts(jump, position, at, speed if playing else None)
+        if rewind is Rewind.DOUBTED:
             return
-        if abs(jump) >= JUMP:
+        if rewind is Rewind.CONFIRMED or abs(jump) >= JUMP:
             self.reset(reported_now, playing, now, speed)
             return
         self._reading = (position, at)
@@ -86,20 +94,24 @@ class PlaybackClock:
         self._steer(shown, error, now, stalled, settled or resumed_behind)
 
     def _doubts(
-        self, jump: float, position: float, at: float, speed: float
-    ) -> bool:
+        self, jump: float, position: float, at: float, speed: float | None
+    ) -> Rewind:
+        if speed is None:
+            self._doubt = None
+            return Rewind.NONE
+        if self._doubt is not None:
+            first_position, first_at = self._doubt
+            drift = position - (first_position + (at - first_at) * speed)
+            if abs(drift) <= SETTLE:
+                if at - first_at < CONFIRM_SECONDS:
+                    return Rewind.DOUBTED
+                self._doubt = None
+                return Rewind.CONFIRMED
         if jump > -JUMP:
             self._doubt = None
-            return False
-        if self._doubt is None:
-            self._doubt = (position, at)
-            return True
-        first_position, first_at = self._doubt
-        drift = position - (first_position + (at - first_at) * speed)
-        if abs(drift) > SETTLE:
-            self._doubt = (position, at)
-            return True
-        return at - first_at < CONFIRM_SECONDS
+            return Rewind.NONE
+        self._doubt = (position, at)
+        return Rewind.DOUBTED
 
     def _track_shift(self, jump: float, speed: float, at: float):
         if speed != self.speed:

@@ -440,15 +440,29 @@ def test_a_frozen_player_ahead_of_the_lyrics_is_joined():
     assert c.position(2.8) > c.position(2.4)
 
 
-def test_a_rewind_while_paused_is_applied_once_confirmed():
+def test_a_rewind_while_paused_is_applied_at_once():
     c = playing_clock(position=50.0)
     c.sync(50.4, False, 0.4, 0.4)
-    for poll in range(2, 5):
-        now = 0.4 * poll
-        c.sync(10.0, False, now, now)
-        assert c.position(now) == pytest.approx(50.4)
-    c.sync(10.0, False, 2.0, 2.0)
-    assert c.position(2.0) == pytest.approx(10.0)
+    c.sync(10.0, False, 0.8, 0.8)
+    assert c.position(0.8) == pytest.approx(10.0)
+
+
+def test_a_pause_right_after_a_rewind_stops_at_the_rewound_place():
+    c = playing_clock(position=10.0)
+    c.sync(10.4, True, 0.4, 0.4)
+    c.sync(9.3, True, 0.8, 0.8)
+    assert c.position(0.8) > 10.5
+    c.sync(9.5, False, 1.2, 1.2)
+    assert c.position(1.2) == pytest.approx(9.5)
+    assert c.position(4.0) == pytest.approx(9.5)
+
+
+def test_a_rewind_at_a_speed_change_is_applied_once_confirmed():
+    c = playing_clock(position=4.8, at=4.8)
+    for poll, position in enumerate([3.9, 4.7, 5.5, 6.3], start=1):
+        at = 4.8 + 0.4 * poll
+        c.sync(position, True, at, at, 2.0)
+    assert c.position(6.4) == pytest.approx(6.3)
 
 
 def test_a_new_track_does_not_confirm_an_old_doubt():
