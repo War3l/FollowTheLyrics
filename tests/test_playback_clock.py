@@ -226,6 +226,36 @@ def test_a_long_past_stall_does_not_delay_the_next_one():
     assert c.position(last + 0.4) == pytest.approx(c.position(last))
 
 
+def test_a_frozen_player_with_a_jittery_position_is_held():
+    c = player_moving_at_every_reading()
+    noise = itertools.cycle([0.002, -0.002, 0.003, -0.001])
+    for poll in range(7, 16):
+        now = 0.4 * poll
+        c.sync(12.6 + next(noise), True, now, now)
+    assert c.position(6.0) < 13.45
+
+
+def test_a_very_slow_player_is_not_mistaken_for_a_frozen_one():
+    c = playing_clock(position=10.0)
+    shown = []
+    for poll in range(1, 20):
+        now = 0.4 * poll
+        c.sync(10.0 + 0.02 * now, True, now, now, speed=0.02)
+        shown.append(c.position(now))
+    assert all(b > a for a, b in itertools.pairwise(shown))
+
+
+def test_an_old_slow_update_is_forgotten_after_a_while():
+    c = playing_clock(position=0.0)
+    readings = [0.4, 0.8, 0.8, 0.8, 1.2]
+    readings += [1.2 + 0.4 * step for step in range(1, 10)]
+    readings += [4.8] * 6
+    for poll, position in enumerate(readings, start=1):
+        now = 0.4 * poll
+        c.sync(position, True, now, now)
+    assert c.position(0.4 * len(readings)) < 5.7
+
+
 def test_a_pause_does_not_count_as_a_slow_update():
     c = player_moving_at_every_reading()
     c.sync(12.6, False, 2.8, 2.8)

@@ -1,3 +1,4 @@
+import collections
 import enum
 import math
 
@@ -8,9 +9,10 @@ STALL_SECONDS = 1.0
 QUICK_STALL_SECONDS = 0.5
 UPDATE_MARGIN = 1.25
 MOVES_BEFORE_TRUST = 5
+RECENT_GAPS = 8
 LOOP_MARGIN = 2.0
 CONFIRM_SECONDS = 1.0
-STILL = 0.001
+STILL = 0.01
 JUMP = 1.0
 MAX_SKEW = 0.05
 SLEW_SECONDS = 2.0
@@ -34,8 +36,10 @@ class PlaybackClock:
         self._shift: tuple[float, float] | None = None
         self._doubt: tuple[float, float] | None = None
         self._still_since = now
-        self._longest_still = 0.0
-        self._moves = 0
+        self._still_position = 0.0
+        self._gaps: collections.deque[float] = collections.deque(
+            maxlen=RECENT_GAPS
+        )
 
     def position(self, now: float) -> float:
         if not self.playing:
@@ -58,8 +62,8 @@ class PlaybackClock:
         self._shift = None
         self._doubt = None
         self._still_since = at
-        self._longest_still = 0.0
-        self._moves = 0
+        self._still_position = position
+        self._gaps.clear()
 
     def sync(
         self,
@@ -93,11 +97,12 @@ class PlaybackClock:
             else:
                 self.reset(position, False, now, speed)
             return
-        moved = abs(position - last_position) >= STILL
+        moved = abs(position - self._still_position) >= STILL
         if self.playing and moved:
-            self._learn_update_gap(at - self._still_since)
+            self._gaps.append(at - self._still_since)
         if not self.playing or moved:
             self._still_since = at
+            self._still_position = position
         stalled = at - self._still_since >= self._stall_patience()
         self._track_shift(jump, speed, at)
         resumed = not self.playing
@@ -108,14 +113,10 @@ class PlaybackClock:
         resumed_off = resumed and abs(error) > DEADBAND
         self._steer(shown, error, now, stalled, settled or resumed_off)
 
-    def _learn_update_gap(self, still: float):
-        self._longest_still = max(self._longest_still, still)
-        self._moves += 1
-
     def _stall_patience(self) -> float:
-        if self._moves < MOVES_BEFORE_TRUST:
+        if len(self._gaps) < MOVES_BEFORE_TRUST:
             return STALL_SECONDS
-        expected = self._longest_still * UPDATE_MARGIN
+        expected = max(self._gaps) * UPDATE_MARGIN
         return min(STALL_SECONDS, max(QUICK_STALL_SECONDS, expected))
 
     @staticmethod
