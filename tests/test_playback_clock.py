@@ -471,3 +471,12 @@ def test_a_new_track_does_not_confirm_an_old_doubt():
     c.reset(100.0, True, 1.4)
     c.sync(11.2, True, 2.2, 2.2)
     assert c.position(2.2) > 99.0
+
+
+def test_a_pause_forgets_a_doubted_rewind():
+    c = playing_clock(position=10.0)
+    c.sync(10.4, True, 0.4, 0.4)
+    c.sync(9.0, True, 0.8, 0.8)
+    c.sync(11.0, False, 1.2, 1.2)
+    c.sync(10.2, True, 2.0, 2.0)
+    assert c.position(2.0) > 10.5
