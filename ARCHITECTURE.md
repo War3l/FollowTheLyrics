@@ -74,10 +74,11 @@ src/followthelyrics/
 │   ├── welcome.py   first launch screen
 │   └── zone_editor.py editor for a game's forbidden zones
 └── system/
-    ├── startup.py   autostart, desktop shortcut, launch command
-    ├── install.py   installation, registration, uninstallation
-    ├── updater.py   lookup, download and replacement of the program
-    └── hotkeys.py   key combinations and shortcut manager
+    ├── startup.py      autostart, desktop shortcut, launch command
+    ├── install.py      installation, registration, uninstallation
+    ├── updater.py      lookup, download and replacement of the program
+    ├── certificates.py system certificates for the Linux binary
+    └── hotkeys.py      key combinations and shortcut manager
 ```
 
 ## Dependency rules
