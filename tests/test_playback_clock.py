@@ -117,36 +117,123 @@ def test_a_late_reading_near_the_start_is_not_a_restart():
     assert c.position(0.8) > 2.5
 
 
-def precise_player_at_eleven():
+def player_moving_at_every_reading():
     c = playing_clock(position=10.2)
-    c.sync(10.6, True, 0.4, 0.4)
-    c.sync(11.0, True, 0.8, 0.8)
+    for poll in range(1, 7):
+        now = 0.4 * poll
+        c.sync(10.2 + now, True, now, now)
     return c
 
 
-def test_a_precise_player_is_held_sooner_when_it_stalls():
-    c = precise_player_at_eleven()
-    c.sync(11.0, True, 1.2, 1.2)
-    c.sync(11.0, True, 1.6, 1.6)
-    assert c.position(2.0) == pytest.approx(c.position(1.6))
+def test_a_player_updating_at_every_reading_is_held_sooner():
+    c = player_moving_at_every_reading()
+    c.sync(12.6, True, 2.8, 2.8)
+    c.sync(12.6, True, 3.2, 3.2)
+    assert c.position(3.6) == pytest.approx(c.position(3.2))
 
 
-def test_a_precise_player_slow_to_update_is_not_a_stall():
-    c = precise_player_at_eleven()
-    c.sync(11.0, True, 1.2, 1.2)
-    assert c.position(1.4) > c.position(1.2)
+def test_a_single_unchanged_reading_is_not_a_stall():
+    c = player_moving_at_every_reading()
+    c.sync(12.6, True, 2.8, 2.8)
+    assert c.position(3.0) > c.position(2.8)
 
 
-def test_a_new_track_forgets_that_the_player_was_precise():
-    c = playing_clock(position=10.25)
-    c.sync(10.65, True, 0.4, 0.4)
-    c.reset(0.0, True, 1.0)
-    shown = [c.position(1.0)]
+def test_a_new_track_forgets_how_often_the_player_updates():
+    c = player_moving_at_every_reading()
+    c.reset(0.0, True, 3.0)
+    shown = [c.position(3.0)]
     for poll in range(1, 8):
-        now = 1.0 + 0.4 * poll
-        c.sync(float(math.floor(now - 1.0)), True, now, now)
+        now = 3.0 + 0.4 * poll
+        c.sync(float(math.floor(now - 3.0)), True, now, now)
         shown.append(c.position(now))
     assert all(b > a for a, b in itertools.pairwise(shown))
+
+
+def test_a_precise_player_updating_every_second_is_never_frozen():
+    def reported(t):
+        return 10.3 + math.floor(t + 0.3)
+
+    c = clock.PlaybackClock(0.0)
+    c.reset(reported(0.0), True, 0.0)
+    shown = [c.position(0.0)]
+    for poll in range(1, 76):
+        now = 0.4 * poll
+        shown += [c.position(now - 0.4 + 0.1 * step) for step in (1, 2, 3)]
+        c.sync(reported(now), True, now, now)
+        shown.append(c.position(now))
+    assert all(b > a for a, b in itertools.pairwise(shown))
+
+
+def test_a_stall_right_after_the_start_waits_a_full_second():
+    c = playing_clock(position=0.0)
+    c.sync(0.4, True, 0.4, 0.4)
+    c.sync(0.8, True, 0.8, 0.8)
+    c.sync(0.8, True, 1.2, 1.2)
+    c.sync(0.8, True, 1.6, 1.6)
+    assert c.position(1.8) > c.position(1.6)
+
+
+def test_a_whole_second_player_is_held_after_a_second():
+    c = playing_clock(position=0.0)
+    for poll in range(1, 11):
+        now = 0.4 * poll
+        c.sync(float(math.floor(now)), True, now, now)
+    for poll in range(11, 14):
+        now = 0.4 * poll
+        c.sync(4.0, True, now, now)
+    assert c.position(5.6) == pytest.approx(c.position(5.2))
+
+
+def test_readings_closer_together_still_wait_half_a_second():
+    c = playing_clock(position=10.0)
+    for poll in range(1, 8):
+        now = 0.2 * poll
+        c.sync(10.0 + now, True, now, now)
+    c.sync(11.4, True, 1.8, 1.8)
+    assert c.position(1.9) > c.position(1.8)
+
+
+def test_one_late_update_after_a_quick_one_is_not_a_stall():
+    c = playing_clock(position=10.0)
+    readings = [10.0] + [10.8 + 0.8 * (poll // 2) for poll in range(11)]
+    readings += [15.2, 15.2, 15.2]
+    for poll, position in enumerate(readings, start=1):
+        now = 0.4 * poll
+        c.sync(position, True, now, now)
+    assert c.position(6.1) > c.position(6.0)
+
+
+def test_an_update_a_little_late_on_its_usual_gap_is_not_a_stall():
+    c = playing_clock(position=10.0)
+    readings = [10.0 + 0.5 * (poll // 2) for poll in range(2, 16)]
+    readings.append(readings[-1])
+    for poll, position in enumerate(readings, start=1):
+        now = 0.25 * poll
+        c.sync(position, True, now, now)
+    last = 0.25 * len(readings)
+    assert c.position(last + 0.1) > c.position(last)
+
+
+def test_a_long_past_stall_does_not_delay_the_next_one():
+    c = playing_clock(position=0.0)
+    readings = [0.4, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 1.2]
+    readings += [1.2 + 0.4 * step for step in range(1, 7)]
+    readings += [3.6, 3.6, 3.6, 3.6]
+    for poll, position in enumerate(readings, start=1):
+        now = 0.4 * poll
+        c.sync(position, True, now, now)
+    last = 0.4 * len(readings)
+    assert c.position(last + 0.4) == pytest.approx(c.position(last))
+
+
+def test_a_pause_does_not_count_as_a_slow_update():
+    c = player_moving_at_every_reading()
+    c.sync(12.6, False, 2.8, 2.8)
+    c.sync(12.7, True, 5.0, 5.0)
+    c.sync(13.1, True, 5.4, 5.4)
+    c.sync(13.1, True, 5.8, 5.8)
+    c.sync(13.1, True, 6.2, 6.2)
+    assert c.position(6.6) == pytest.approx(c.position(6.2))
 
 
 def test_a_rewind_near_the_end_is_not_a_restart():
