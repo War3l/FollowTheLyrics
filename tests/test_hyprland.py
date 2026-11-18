@@ -227,6 +227,18 @@ def test_transient_ipc_error_is_retried(timers):
     assert ipc.sent == hyprland.lua_commands(overlay_client(), AREA)
 
 
+def test_persistent_ipc_error_is_reported_with_its_trace(timers, caplog):
+    windowing = hyprland.HyprlandWindowing(
+        FakeIpc(ConnectionRefusedError("busy")), pid=PID
+    )
+    with caplog.at_level(logging.WARNING):
+        windowing.place_overlay(0, *vars(AREA).values())
+        for _ in hyprland.RETRY_DELAYS_MS:
+            timers.fire_next()
+    assert "Hyprland IPC unavailable" in caplog.text
+    assert isinstance(caplog.records[-1].exc_info[1], ConnectionRefusedError)
+
+
 def test_malformed_monitor_list_is_retried_not_raised(timers, caplog):
     ipc = FakeIpc([overlay_client(monitor=1)])
     ipc.monitors = lambda: [LARGE]
@@ -236,7 +248,8 @@ def test_malformed_monitor_list_is_retried_not_raised(timers, caplog):
         for _ in hyprland.RETRY_DELAYS_MS:
             timers.fire_next()
     assert ipc.sent == []
-    assert "activeWorkspace" in caplog.text
+    assert "Unexpected reply from Hyprland" in caplog.text
+    assert isinstance(caplog.records[-1].exc_info[1], KeyError)
 
 
 def test_retries_stop_after_the_last_delay(timers, caplog):
