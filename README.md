@@ -12,7 +12,7 @@ Word by word, in time, in the colours of the album cover. Windows 10 and 11, and
 
 Works with Spotify, YouTube Music, Deezer, Apple Music… without signing in to any account.
 
-> The app is in English by default, and also available in French, Spanish, Chinese and Russian (General page).
+> The app is in English by default, and also available in French, Spanish, Chinese, Russian and Japanese (General page).
 
 ## Install
 1. Download **[FollowTheLyrics.exe](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics.exe)**: a single file.
