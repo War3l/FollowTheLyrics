@@ -1134,7 +1134,7 @@ class Panel(QWidget):
             )
             cards.append(start)
         lang = Card(i18n.tr("Langue"))
-        self.language = widgets.Segmented(dict(i18n.LANGUAGES))
+        self.language = widgets.Segmented(dict(i18n.LANGUAGES), flags=True)
         self.language.set_value(i18n.language())
         self.language.changed.connect(self.app.set_language)
         lang.add_row(i18n.tr("Langue de l'appli"), self.language)
