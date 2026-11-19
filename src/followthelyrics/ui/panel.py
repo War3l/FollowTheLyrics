@@ -1349,7 +1349,7 @@ class Panel(QWidget):
             else mode
         )
         self.tile_style.set_value(
-            f"{'Album' if cfg['color'] == 'album' else 'Blanc'} · "
+            f"{i18n.tr('Album' if cfg['color'] == 'album' else 'Blanc')} · "
             f"{i18n.tr(settings.STYLES[cfg['style']])}"
         )
         self.preview.update()
