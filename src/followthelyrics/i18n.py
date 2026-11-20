@@ -1050,6 +1050,26 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "Язык приложения",
         "アプリの言語",
     ),
+    "Statut Discord": (
+        "Discord status",
+        "Estado de Discord",
+        "Discord 状态",
+    ),
+    "Affiche sur ton profil Discord que tu utilises FollowTheLyrics, avec les liens du site et du GitHub. L'appli parle seulement à Discord sur ton PC.": (
+        "Shows on your Discord profile that you're using FollowTheLyrics, with links to the website and GitHub. The app only talks to Discord on your PC.",
+        "Muestra en tu perfil de Discord que usas FollowTheLyrics, con enlaces al sitio web y a GitHub. La app solo se comunica con Discord en tu PC.",
+        "在你的 Discord 个人资料上显示你正在使用 FollowTheLyrics，并附上网站和 GitHub 链接。应用只与你电脑上的 Discord 通信。",
+    ),
+    "Montrer le morceau": (
+        "Show the track",
+        "Mostrar la canción",
+        "显示歌曲",
+    ),
+    "Ajoute le titre et l'artiste en cours, avec la progression.": (
+        "Adds the current title and artist, with the progress bar.",
+        "Añade el título y el artista actuales, con la barra de progreso.",
+        "添加当前歌曲名和歌手，并显示播放进度。",
+    ),
     "Installation": (
         "Installation",
         "Instalación",
