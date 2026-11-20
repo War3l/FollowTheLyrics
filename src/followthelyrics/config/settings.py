@@ -146,7 +146,7 @@ def load_config():
             cfg["lang"] = "fr"
     except (OSError, ValueError, TypeError):
         pass
-    if cfg.get("lang") not in ("en", "fr", "es", "zh"):
+    if cfg.get("lang") not in ("en", "fr", "es", "zh", "ru"):
         cfg["lang"] = DEFAULTS["lang"]
     if cfg.get("style") == "pop":
         cfg["style"] = "kinetic"
