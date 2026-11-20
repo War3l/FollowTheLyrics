@@ -1162,7 +1162,8 @@ class Panel(QWidget):
                 i18n.tr("Montrer le morceau"),
                 self.discord_track,
                 i18n.tr(
-                    "Ajoute le titre et l'artiste en cours, avec la progression."
+                    "Ajoute le titre, l'artiste, la pochette et la progression. "
+                    "La pochette est cherchée sur iTunes."
                 ),
             )
             cards.append(discord)
