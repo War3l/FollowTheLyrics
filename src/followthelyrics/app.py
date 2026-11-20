@@ -29,6 +29,7 @@ from followthelyrics.playback import audio
 from followthelyrics.playback import sites
 from followthelyrics.playback import worker
 from followthelyrics.system import certificates
+from followthelyrics.system import discord_presence
 from followthelyrics.system import hotkeys
 from followthelyrics.system import install
 from followthelyrics.system import startup
@@ -103,6 +104,11 @@ class App:
         self.profile_timer = QTimer()
         self.profile_timer.timeout.connect(self.check_profile)
         self.profile_timer.start(1000)
+
+        self.presence = discord_presence.DiscordPresence()
+        self.presence_timer = QTimer()
+        self.presence_timer.timeout.connect(self.feed_presence)
+        self.presence_timer.start(2000)
 
         self.cfg["hotkeys"] = hotkeys.normalize(self.cfg.get("hotkeys"))
         self.hotkeys_failed = []
@@ -459,9 +465,21 @@ class App:
         self.overlay.apply_geometry()
         self.panel.refresh_screens()
 
+    def feed_presence(self):
+        try:
+            self.presence.update(
+                self.real_track,
+                bool(self.cfg.get("discord", True)),
+                bool(self.cfg.get("discord_track", True)),
+            )
+        except Exception:
+            logger.debug("feed_presence failed", exc_info=True)
+
     def set_cfg(self, key, value):
         self.cfg[key] = value
         settings.save_config(self.cfg)
+        if key in ("discord", "discord_track"):
+            self.feed_presence()
         o = self.overlay
         if key in ("scale", "screen"):
             o.apply_geometry()
@@ -673,6 +691,9 @@ class App:
             self.audio.stop()
         self.hotkeys.stop()
         self.worker.stop()
+        self.presence_timer.stop()
+        self.presence.update(None, False, False)
+        self.presence.stop()
 
 
 INSTANCE_NAME = "LyricsOverlay-instance" + install.TEST_INSTANCE

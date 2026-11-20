@@ -1139,6 +1139,33 @@ class Panel(QWidget):
         self.language.changed.connect(self.app.set_language)
         lang.add_row(i18n.tr("Langue de l'appli"), self.language)
         cards.append(lang)
+        if self.app.presence.available:
+            discord = Card("Discord")
+            self.discord_on = widgets.Toggle()
+            self.discord_on.toggled.connect(
+                lambda v: self.set("discord", bool(v))
+            )
+            discord.add_row(
+                i18n.tr("Statut Discord"),
+                self.discord_on,
+                i18n.tr(
+                    "Affiche sur ton profil Discord que tu utilises "
+                    "FollowTheLyrics, avec les liens du site et du GitHub. "
+                    "L'appli parle seulement à Discord sur ton PC."
+                ),
+            )
+            self.discord_track = widgets.Toggle()
+            self.discord_track.toggled.connect(
+                lambda v: self.set("discord_track", bool(v))
+            )
+            discord.add_row(
+                i18n.tr("Montrer le morceau"),
+                self.discord_track,
+                i18n.tr(
+                    "Ajoute le titre et l'artiste en cours, avec la progression."
+                ),
+            )
+            cards.append(discord)
         installation = self.app.installation
         if settings.FROZEN and installation is not None:
             setup = Card(i18n.tr("Installation"))
@@ -1328,6 +1355,13 @@ class Panel(QWidget):
                 t.setChecked(bool(cfg.get(k, True)))
             self.demo.setChecked(self.app.demo)
             self.autostart.setChecked(self.app.startup.enabled())
+            if getattr(self, "discord_on", None) is not None:
+                on = bool(cfg.get("discord", True))
+                self.discord_on.setChecked(on)
+                self.discord_track.setChecked(
+                    bool(cfg.get("discord_track", True))
+                )
+                self.discord_track.setEnabled(on)
             self.master.setChecked(not self.app.overlay.user_hidden)
             self.master_state.setText(
                 i18n.tr("Affichées")
