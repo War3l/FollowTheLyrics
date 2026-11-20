@@ -12,7 +12,7 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-APP_ID = os.environ.get("FTL_DISCORD_APP_ID", "")
+APP_ID = os.environ.get("FTL_DISCORD_APP_ID", "1573301626469359647")
 SITE_URL = "https://war3l.github.io/FollowTheLyrics/"
 GITHUB_URL = "https://github.com/War3l/FollowTheLyrics"
 LOGO_URL = "https://war3l.github.io/FollowTheLyrics/img/logo.png"
