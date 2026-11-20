@@ -101,6 +101,7 @@ def now_playing_of(player, site):
         site=site,
         read_at=player.read_at,
         speed=player.speed,
+        art_url=player.art_url if player.art_url.startswith("https://") else "",
     )
 
 

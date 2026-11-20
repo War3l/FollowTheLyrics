@@ -2,6 +2,8 @@ import json
 import struct
 import time
 
+import pytest
+
 from followthelyrics.playback import track
 from followthelyrics.system import discord_presence as dp
 
@@ -149,3 +151,82 @@ def test_nothing_happens_without_an_app_id():
 
     assert not presence.available
     assert presence.thread is None
+
+
+def itunes(*items):
+    def fetch(url):
+        fetch.url = url
+        return {"results": list(items)}
+
+    return fetch
+
+
+def test_cover_found_on_itunes_in_large_size():
+    fetch = itunes(
+        {
+            "trackName": "Monte le son (Remix)",
+            "artistName": "Encore une fois",
+            "artworkUrl100": "https://img.example/a/100x100bb.jpg",
+        }
+    )
+
+    cover = dp.find_cover("Monte le son", "Encore une fois", fetch)
+
+    assert cover == "https://img.example/a/512x512bb.jpg"
+    assert "Monte+le+son" in fetch.url
+
+
+def test_wrong_song_gives_no_cover():
+    fetch = itunes(
+        {
+            "trackName": "Autre chanson",
+            "artistName": "Encore une fois",
+            "artworkUrl100": "https://img.example/b/100x100bb.jpg",
+        }
+    )
+
+    assert dp.find_cover("Monte le son", "Encore une fois", fetch) is None
+
+
+def test_cover_goes_big_and_logo_small():
+    base = dp.build_activity(song(), True, wall=1000.0, mono=110.0)
+
+    dressed = dp.with_cover(base, "https://img.example/c.jpg", "Album")
+
+    assert dressed["assets"] == {
+        "large_image": "https://img.example/c.jpg",
+        "large_text": "Album",
+        "small_image": dp.LOGO_URL,
+        "small_text": dp.NAME,
+    }
+    assert base["assets"]["large_image"] == dp.LOGO_URL
+
+
+def test_player_cover_url_is_used_without_lookup():
+    presence = dp.DiscordPresence(app_id="123")
+    presence.find = lambda t, a: pytest.fail("no lookup expected")
+
+    url = presence.cover_for(("t", "a", "", "https://player.example/cover.jpg"))
+
+    assert url == "https://player.example/cover.jpg"
+
+
+def test_lookups_are_cached_and_failures_keep_the_logo():
+    calls = []
+    presence = dp.DiscordPresence(app_id="123")
+
+    def find(title, artist):
+        calls.append(title)
+        raise OSError("offline")
+
+    presence.find = find
+    base = dp.build_activity(song(), True, wall=1000.0, mono=110.0)
+    dressed = presence.dressed(
+        base, ("Monte le son", "Encore une fois", "", "")
+    )
+
+    assert dressed["assets"]["large_image"] == dp.LOGO_URL
+    presence.find = lambda t, a: calls.append(t) or "https://img.example/d.jpg"
+    presence.cover_for(("Monte le son", "Encore une fois", "", ""))
+    presence.cover_for(("Monte le son", "Encore une fois", "", ""))
+    assert calls == ["Monte le son", "Monte le son"]

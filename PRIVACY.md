@@ -9,6 +9,7 @@ computer.
 | A track starts | Its title, artist, album and duration | NetEase Cloud Music (`music.163.com`) and LRCLIB (`lrclib.net`) | No, this is the core of the app. Quitting the app stops all requests |
 | Word timing is missing | The title, artist and duration | LiriQo (`api.liriqo-alfarrizi.my.id`) | Yes: **Music** page |
 | Translation is on | The text of the lyrics shown | Google Translate (`translate.googleapis.com`) | Yes: **Music** page |
+| Discord status shows the track | Its title and artist, to find the cover shown on Discord | Apple iTunes Search (`itunes.apple.com`) | Yes: **General** page, Discord status or Show the track |
 | From time to time | A plain "what is the latest version?" request | GitHub (`api.github.com`) | No |
 | You click **Update** | The download of the new program | GitHub | Yes: do not click |
 
@@ -19,6 +20,7 @@ What stays on your computer:
 
 - **Sound**: the app listens to the PC's audio output to follow the beat. Nothing is recorded or
   sent.
+- **Discord status**: the app only talks to the Discord app running on your computer. Discord then shows the status on your profile.
 - **The foreground program**: the app checks which game is open to place the lyrics. This never
   leaves the computer.
 - **Settings, game profiles and lyrics already found**: stored in `%APPDATA%\FollowTheLyrics`
