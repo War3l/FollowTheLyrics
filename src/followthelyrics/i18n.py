@@ -1071,12 +1071,12 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "Показывать трек",
         "曲を表示",
     ),
-    "Ajoute le titre et l'artiste en cours, avec la progression.": (
-        "Adds the current title and artist, with the progress bar.",
-        "Añade el título y el artista actuales, con la barra de progreso.",
-        "添加当前歌曲名和歌手，并显示播放进度。",
-        "Добавляет название и исполнителя текущего трека с полосой прогресса.",
-        "再生中の曲名とアーティストを、進行状況と一緒に表示します。",
+    "Ajoute le titre, l'artiste, la pochette et la progression. La pochette est cherchée sur iTunes.": (
+        "Adds the current title, artist, cover and progress bar. The cover is looked up on iTunes.",
+        "Añade el título, el artista, la portada y la barra de progreso. La portada se busca en iTunes.",
+        "添加当前歌曲名、歌手、封面和播放进度。封面通过 iTunes 查找。",
+        "Добавляет название, исполнителя, обложку и полосу прогресса. Обложка ищется в iTunes.",
+        "曲名、アーティスト、ジャケット、進行状況を表示します。ジャケットは iTunes で検索します。",
     ),
     "Installation": (
         "Installation",

@@ -16,6 +16,7 @@ class NowPlaying:
     site: str = ""
     read_at: float | None = None
     speed: float = 1.0
+    art_url: str = ""
 
     @property
     def key(self):

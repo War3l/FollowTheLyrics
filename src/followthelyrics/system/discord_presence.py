@@ -8,6 +8,9 @@ import struct
 import sys
 import threading
 import time
+import unicodedata
+import urllib.parse
+import urllib.request
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,10 @@ MIN_GAP = 4.0
 RETRY = 15.0
 DRIFT_MS = 2500
 TEXT_MAX = 128
+ITUNES_URL = "https://itunes.apple.com/search?"
+COVER_SIZE = "512x512bb"
+COVER_CACHE = 200
+COVER_TIMEOUT = 6
 LINUX_DIRS = (
     "",
     "app/com.discordapp.Discord",
@@ -45,6 +52,56 @@ def position_now(np, now=None):
     if np.playing and read_at is not None:
         pos += max(0.0, now - read_at) * float(getattr(np, "speed", 1.0) or 1.0)
     return pos
+
+
+def _norm(text):
+    text = unicodedata.normalize("NFKD", str(text or "")).lower()
+    return "".join(ch for ch in text if ch.isalnum())
+
+
+def _fetch_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": NAME})
+    with urllib.request.urlopen(req, timeout=COVER_TIMEOUT) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _matches(wanted, found):
+    a, b = _norm(wanted), _norm(found)
+    return bool(a and b and (a in b or b in a))
+
+
+def find_cover(title, artist, fetch=_fetch_json):
+    query = urllib.parse.urlencode(
+        {
+            "term": f"{artist} {title}".strip(),
+            "media": "music",
+            "entity": "song",
+            "limit": 8,
+        }
+    )
+    results = fetch(ITUNES_URL + query).get("results") or []
+    for item in results:
+        art = str(item.get("artworkUrl100") or "")
+        if not art.startswith("https://"):
+            continue
+        if _matches(title, item.get("trackName")) and _matches(
+            artist, item.get("artistName")
+        ):
+            return art.replace("100x100bb", COVER_SIZE)
+    return None
+
+
+def with_cover(activity, cover, album=""):
+    if not activity or not cover or activity.get("type") != LISTENING:
+        return activity
+    out = dict(activity)
+    out["assets"] = {
+        "large_image": cover,
+        "large_text": _clip(album) or activity.get("details") or NAME,
+        "small_image": LOGO_URL,
+        "small_text": NAME,
+    }
+    return out
 
 
 def build_activity(np, show_track, wall=None, mono=None):
@@ -215,6 +272,9 @@ class DiscordPresence:
         self.stopped = False
         self.thread = None
         self.status = "off"
+        self.track = None
+        self.covers = {}
+        self.find = find_cover
 
     @property
     def available(self):
@@ -224,10 +284,16 @@ class DiscordPresence:
         if not self.available:
             return
         activity = build_activity(np, show_track) if enabled else None
+        listening = activity is not None and activity["type"] == LISTENING
+        track = (
+            (np.title, np.artist, np.album, getattr(np, "art_url", "") or "")
+            if listening
+            else None
+        )
         with self.lock:
             if self.enabled == enabled and same_activity(self.wanted, activity):
                 return
-            self.wanted, self.enabled = activity, enabled
+            self.wanted, self.enabled, self.track = activity, enabled, track
         if enabled and self.thread is None:
             self.thread = threading.Thread(
                 target=self.run, name="discord", daemon=True
@@ -239,6 +305,26 @@ class DiscordPresence:
         self.stopped = True
         self.wake.set()
 
+    def cover_for(self, track):
+        title, artist, _album, art_url = track
+        if art_url.startswith("https://"):
+            return art_url
+        key = (title.lower(), artist.lower())
+        if key not in self.covers:
+            try:
+                self.covers[key] = self.find(title, artist)
+            except (OSError, ValueError):
+                logger.debug("cover lookup failed", exc_info=True)
+                return None
+            if len(self.covers) > COVER_CACHE:
+                self.covers.pop(next(iter(self.covers)))
+        return self.covers[key]
+
+    def dressed(self, activity, track):
+        if track is None:
+            return activity
+        return with_cover(activity, self.cover_for(track), track[2])
+
     def run(self):
         transport = None
         sent = None
@@ -248,7 +334,7 @@ class DiscordPresence:
             self.wake.wait(timeout=RETRY)
             self.wake.clear()
             with self.lock:
-                wanted, enabled = self.wanted, self.enabled
+                wanted, enabled, track = self.wanted, self.enabled, self.track
             if not enabled:
                 if transport is not None:
                     with contextlib.suppress(Exception):
@@ -272,9 +358,9 @@ class DiscordPresence:
             if wait > 0:
                 time.sleep(wait)
                 with self.lock:
-                    wanted = self.wanted
+                    wanted, track = self.wanted, self.track
             try:
-                send_activity(transport, wanted)
+                send_activity(transport, self.dressed(wanted, track))
                 sent, last = wanted, self.clock()
                 self.status = "connected"
             except (OSError, ValueError, ConnectionError):
