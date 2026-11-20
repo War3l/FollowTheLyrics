@@ -1,6 +1,7 @@
 import pytest
 
 from followthelyrics import i18n
+from followthelyrics.ui import flags
 
 
 @pytest.fixture(autouse=True)
@@ -54,3 +55,7 @@ def test_chinese_lyrics_are_asked_in_simplified_chinese():
     i18n.set_language("zh")
 
     assert i18n.translate_target() == "zh-CN"
+
+
+def test_every_language_has_a_flag():
+    assert set(flags.PAINTERS) == set(i18n.LANGUAGES)

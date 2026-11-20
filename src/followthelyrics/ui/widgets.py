@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import QWidget
 from followthelyrics import fonts
 from followthelyrics import i18n
 from followthelyrics.system import hotkeys
+from followthelyrics.ui import flags as flag_art
 
 logger = logging.getLogger(__name__)
 
@@ -390,14 +391,18 @@ class Toggle(QAbstractButton):
 class Segmented(QWidget):
     changed = pyqtSignal(str)
     H, PAD = 40, 4
+    FLAG_GAP = 7
 
-    def __init__(self, options: dict, parent=None):
+    def __init__(self, options: dict, parent=None, flags=False):
         super().__init__(parent)
         self.keys = list(options)
         self.labels = [options[k] for k in self.keys]
+        self.flags = flags
         self.font_ = ui_font(13, QFont.Weight.Medium)
         fm = QFontMetricsF(self.font_)
-        self.widths = [fm.horizontalAdvance(t) + 30 for t in self.labels]
+        self.text_widths = [fm.horizontalAdvance(t) for t in self.labels]
+        extra = flag_art.W + self.FLAG_GAP if flags else 0
+        self.widths = [w + 30 + extra for w in self.text_widths]
         self.index = 0
         self._x = 0.0
         self._hover_i = -1
@@ -496,7 +501,22 @@ class Segmented(QWidget):
             else:
                 col = QColor("#66666b")
             p.setPen(col)
-            p.drawText(self.seg_rect(i), Qt.AlignmentFlag.AlignCenter, label)
+            r = self.seg_rect(i)
+            if not self.flags:
+                p.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
+                continue
+            x = r.center().x() - (self.widths[i] - 30) / 2
+            box = QRectF(
+                x, r.center().y() - flag_art.H / 2, flag_art.W, flag_art.H
+            )
+            flag_art.paint(p, self.keys[i], box, 1.0 if on else 0.4)
+            text = QRectF(box.right() + self.FLAG_GAP, r.top(), 0, r.height())
+            text.setWidth(self.text_widths[i] + 2)
+            p.drawText(
+                text,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                label,
+            )
 
 
 class TopNav(QWidget):
