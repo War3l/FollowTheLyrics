@@ -17,7 +17,13 @@ def test_french_is_the_source_text():
 
 @pytest.mark.parametrize(
     ("code", "expected"),
-    [("en", "Home"), ("es", "Inicio"), ("zh", "首页"), ("ru", "Главная")],
+    [
+        ("en", "Home"),
+        ("es", "Inicio"),
+        ("zh", "首页"),
+        ("ru", "Главная"),
+        ("ja", "ホーム"),
+    ],
 )
 def test_each_language_has_its_text(code, expected):
     i18n.set_language(code)
