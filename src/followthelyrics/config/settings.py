@@ -133,6 +133,8 @@ DEFAULTS: dict[str, Any] = {
     "welcomed": False,
     "glass": True,
     "screen": "",
+    "discord": True,
+    "discord_track": True,
 }
 
 
