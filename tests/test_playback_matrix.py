@@ -9,6 +9,7 @@ RATIO_LOW = 0.25
 RATIO_HIGH = 4.0
 CONVERGED_BY = 20.0
 AMBIGUOUS_BOUND = 0.3
+SMALL_LEAD = 0.3
 LONG_HORIZON = 60.0
 SHORT_HORIZON = CONVERGED_BY + 10.0
 JITTER = 0.03
@@ -244,6 +245,19 @@ def test_a_round_player_slightly_fast_polled_every_0_6_seconds_converges():
     assert_converges_or_stays_bounded_while_ambiguous(
         "round", 1.5, 1.5 * 1.0407, 0.6
     )
+
+
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_small_lead_of_the_display_is_never_stepped_back(mode):
+    quantize = QUANTIZE[mode]
+    clk = clock.PlaybackClock(0.0)
+    clk.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    steps_back = []
+    for t in sample_times(0.4, LONG_HORIZON):
+        before = clk.position(t)
+        clk.sync(quantize(1.03 * t), True, t, t, 1.0, 600.0, app="app")
+        steps_back.append(before - clk.position(t))
+    assert not [step for step in steps_back if 0.0 < step < SMALL_LEAD]
 
 
 def test_a_round_player_polled_every_1_5_seconds_is_relearned_after_a_jump():
