@@ -170,8 +170,9 @@ also push a change, and the app uses it as soon as it arrives.
   An offset above `SEEK_SECONDS` (0.3 s) and up to 1 s is held as pending. The
   pending reading is confirmed only by a later update, dated after it and within
   `HOLD_SECONDS` (5 s), that continues from its position within `SEEK_SECONDS`;
-  a repeat of the same update never confirms it. A lag of 0.3 to 0.5 s that the
-  next update recovers from is discarded. Other updates only wake the poll.
+  a repeat of the same update never confirms it. A pending offset that the
+  next update does not continue, such as a lag the player recovers from, is
+  discarded. Other updates only wake the poll.
   `PlaybackInfoChanged` only wakes the poll. The SMTC dating by
   `last_updated_time` does not go through the truncation logic below, which
   is for MPRIS players only.
@@ -185,7 +186,10 @@ also push a change, and the app uses it as soon as it arrives.
   16), the rates `track.py` accepts. A reset (new track, new lyrics) drops the
   readings and the learning window, so a stale window never teaches a speed.
   The gain already learned is kept across the reset and replaced only by a new
-  window that fits.
+  window that fits. A window that changes the gain by more than `MAX_SKEW` (5%)
+  counts as a correction whatever the error it leaves, so a display that ran a
+  second or more ahead holds until the track catches up instead of sliding back
+  at `MAX_SKEW` for tens of seconds.
 - **Truncated positions**: Firefox reports `Position` truncated to the whole
   second, while its `Seeked` carries the exact target. Three whole-number
   readings at distinct instants (`QUANTIZED_READS`) make the player quantized,
@@ -211,9 +215,6 @@ also push a change, and the app uses it as soon as it arrives.
   is multiplied by the observed ratio, and the clock is re-anchored on the
   reading. Smaller jumps keep the usual steering, so a 10% speed difference
   polled every 0.4 s is still absorbed by slewing.
-  A learned rate counts as a correction whatever the error it leaves, so a
-  display that ran a second or more ahead holds until the track catches up
-  instead of sliding back at `MAX_SKEW` for tens of seconds.
 - **Backward jump**: a reading at least `JUMP` (1 s) behind the clock is
   doubted. It is confirmed as a rewind when the readings that follow keep to
   it within `SETTLE` for `CONFIRM_SECONDS` (1 s). While it is doubted, a whole
@@ -242,7 +243,8 @@ also push a change, and the app uses it as soon as it arrives.
   gain is not changed by this rule.
 - **Exact anchors**: four events give an exact position, and each one keeps
   the mode (`_phases`, learned per application identifier and kept across
-  tracks of that application) once the candidates collapse to one:
+  tracks of that application) once the candidates collapse to one. An exact
+  anchor starts again from both phases, so it revises a remembered mode:
   - the start of a track at position 0 (`reset(track_start=True)`);
   - a `Seeked` target, which is exact in microseconds;
   - a `PlaybackStatus` change to `Paused`, dated at reception by the private
@@ -305,7 +307,12 @@ also push a change, and the app uses it as soon as it arrives.
 - **Signalled seek hold, playing**: after a seek during playback, the clock
   holds the signalled target and ignores readings that disagree with it, until
   a reading confirms the target (within `DEADBAND`) or `SETTLE_SECONDS` (2 s)
-  pass.
+  pass. A whole reading held this way still narrows the truth cells of an
+  anchored clock, and any held reading that advanced from the last accepted
+  reading at a ratio between
+  `SEEK_RATIO_LOW` and `SEEK_RATIO_HIGH` becomes the base of the next jump, so
+  a player running faster than announced is not read as a jump once the hold
+  ends.
 - **Signalled seek hold, paused**: a seek sent while paused is held with no time
   limit, as long as the readings stay paused and report either the target or
   the position shown before the seek. The hold is released by a reading that
