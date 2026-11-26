@@ -214,6 +214,14 @@ also push a change, and the app uses it as soon as it arrives.
   A learned rate counts as a correction whatever the error it leaves, so a
   display that ran a second or more ahead holds until the track catches up
   instead of sliding back at `MAX_SKEW` for tens of seconds.
+- **Backward jump**: a reading at least `JUMP` (1 s) behind the clock is
+  doubted. It is confirmed as a rewind when the readings that follow keep to
+  it within `SETTLE` for `CONFIRM_SECONDS` (1 s). While it is doubted, a whole
+  reading that advanced at most `SLOWER_SHARE` of the clock's own rate since
+  the last accepted reading relearns the rate at once. The share is taken
+  against the learned rate, not the announced one, so a rate learned far too
+  high from the first readings is corrected instead of leaving the display
+  running ahead while every reading stays doubted.
 - **Stall patience for quantized players**: a quantized player that holds its
   last whole reading is stalled only after one quantum at its effective rate,
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A

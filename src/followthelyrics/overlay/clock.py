@@ -261,7 +261,7 @@ class PlaybackClock:
                     last_position,
                     last_at,
                     at,
-                    speed,
+                    effective,
                     0.0,
                     SLOWER_SHARE,
                 )

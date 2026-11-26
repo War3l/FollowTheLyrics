@@ -1153,6 +1153,19 @@ def test_without_the_probe_two_pre_anchor_truths_apart_read_the_same():
     assert worst >= (truncated_origin - rounded_origin) / 2
 
 
+def test_a_rate_learned_too_high_is_relearned_from_readings_left_behind():
+    real = 2.1
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.5, app="app", track_start=True)
+    times = [0.1, 0.2, 0.3] + [round(1.4 + 0.4 * k, 6) for k in range(97)]
+    worst = 0.0
+    for t in times:
+        c.sync(math.floor(real * t + 0.5), True, t, t, 1.5, 600.0, app="app")
+        if t >= 20.0:
+            worst = max(worst, abs(c.position(t) - real * t))
+    assert worst <= clock.DEADBAND
+
+
 def test_a_mode_learned_for_one_app_is_not_applied_to_another():
     learned = clock.PlaybackClock(0.0)
     probed_track(learned, 0.0, 1.0, 0.5, 0.0, "first", True)
