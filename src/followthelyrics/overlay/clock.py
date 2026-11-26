@@ -266,7 +266,7 @@ class PlaybackClock:
             and _whole(position)
             and self._explained(position, at, speed)
         )
-        if rewind is Rewind.CONFIRMED or (abs(jump) >= JUMP and not explained):
+        if (rewind is Rewind.CONFIRMED or abs(jump) >= JUMP) and not explained:
             if (
                 quantized
                 and playing

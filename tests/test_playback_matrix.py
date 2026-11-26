@@ -198,18 +198,9 @@ def test_the_round_alias_cell_is_flagged_ambiguous_and_dies_later():
     assert death is not None and death > CONVERGED_BY
 
 
-ANNOUNCED_HALF_AND_DOUBLE = (0.5, 2.0)
-QUANTIZED_RATIOS = (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.5, 4.0)
-
-
-@pytest.mark.parametrize("sampling", SAMPLINGS)
-@pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("ratio", QUANTIZED_RATIOS)
-@pytest.mark.parametrize("announced", ANNOUNCED_HALF_AND_DOUBLE)
-def test_players_at_announced_half_and_double_speed_converge(
-    announced, ratio, mode, sampling
+def assert_converges_or_stays_bounded_while_ambiguous(
+    mode, announced, real, sampling
 ):
-    real = announced * ratio
     if not ambiguous_at_converged(mode, announced, real, sampling):
         late = [
             error
@@ -231,6 +222,28 @@ def test_players_at_announced_half_and_double_speed_converge(
     assert max(while_ambiguous) < AMBIGUOUS_BOUND
     assert after_death
     assert max(after_death) <= DEADBAND
+
+
+ANNOUNCED_HALF_AND_DOUBLE = (0.5, 2.0)
+QUANTIZED_RATIOS = (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.5, 4.0)
+
+
+@pytest.mark.parametrize("sampling", SAMPLINGS)
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("ratio", QUANTIZED_RATIOS)
+@pytest.mark.parametrize("announced", ANNOUNCED_HALF_AND_DOUBLE)
+def test_players_at_announced_half_and_double_speed_converge(
+    announced, ratio, mode, sampling
+):
+    assert_converges_or_stays_bounded_while_ambiguous(
+        mode, announced, announced * ratio, sampling
+    )
+
+
+def test_a_round_player_slightly_fast_polled_every_0_6_seconds_converges():
+    assert_converges_or_stays_bounded_while_ambiguous(
+        "round", 1.5, 1.5 * 1.0407, 0.6
+    )
 
 
 def test_a_round_player_polled_every_1_5_seconds_is_relearned_after_a_jump():
