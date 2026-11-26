@@ -336,7 +336,7 @@ class PlaybackClock:
         settled = self._settled(error, at, abs(jump) <= SETTLE)
         resumed_off = resumed and abs(error) > DEADBAND
         tolerance = QUANTIZED_TOLERANCE if narrowing else DEADBAND
-        relearned = learned and abs(error) <= JUMP
+        relearned = learned
         self._steer(
             shown,
             error,

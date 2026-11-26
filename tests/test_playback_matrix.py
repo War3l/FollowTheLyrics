@@ -253,3 +253,7 @@ def test_a_round_player_polled_every_1_5_seconds_is_relearned_after_a_jump():
 
 def test_a_truncating_player_polled_every_second_keeps_its_first_readings():
     assert_converges_or_stays_bounded_while_ambiguous("trunc", 1.0, 0.97, 1.0)
+
+
+def test_an_exact_player_slower_than_announced_is_corrected_at_once():
+    assert_converges_or_stays_bounded_while_ambiguous("exact", 1.5, 1.125, 0.8)

@@ -211,6 +211,9 @@ also push a change, and the app uses it as soon as it arrives.
   agree within `MAX_SKEW`. The gain is multiplied by the observed ratio, and
   the clock is re-anchored on the reading. Smaller jumps keep the usual
   steering, so a 10% speed difference is still absorbed by slewing.
+  A learned rate counts as a correction whatever the error it leaves, so a
+  display that ran a second or more ahead holds until the track catches up
+  instead of sliding back at `MAX_SKEW` for tens of seconds.
 - **Stall patience for quantized players**: a quantized player that holds its
   last whole reading is stalled only after one quantum at its effective rate,
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A
