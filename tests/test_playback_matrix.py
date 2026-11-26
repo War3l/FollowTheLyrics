@@ -249,3 +249,7 @@ def test_a_round_player_slightly_fast_polled_every_0_6_seconds_converges():
 def test_a_round_player_polled_every_1_5_seconds_is_relearned_after_a_jump():
     errors = converge_errors("round", 0.5, 1.25, 1.5, 40.0)
     assert max(error for t, error in errors if t >= CONVERGED_BY) <= DEADBAND
+
+
+def test_a_truncating_player_polled_every_second_keeps_its_first_readings():
+    assert_converges_or_stays_bounded_while_ambiguous("trunc", 1.0, 0.97, 1.0)

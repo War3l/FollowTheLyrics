@@ -243,7 +243,15 @@ class PlaybackClock:
         rewind = self._doubts(
             jump, position, at, effective if playing else None
         )
+        explained = (
+            playing
+            and self._anchored
+            and _whole(position)
+            and self._explained(position, at, speed)
+        )
         if rewind is Rewind.DOUBTED:
+            if explained:
+                self._narrow(position, at, speed)
             if (
                 quantized
                 and playing
@@ -260,12 +268,6 @@ class PlaybackClock:
             ):
                 self._relearn_rate(position, at, now, speed)
             return
-        explained = (
-            playing
-            and self._anchored
-            and _whole(position)
-            and self._explained(position, at, speed)
-        )
         if (rewind is Rewind.CONFIRMED or abs(jump) >= JUMP) and not explained:
             if (
                 quantized
