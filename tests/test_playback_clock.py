@@ -1132,6 +1132,27 @@ def test_a_track_without_any_anchor_stays_within_the_pre_anchor_bound(
     )
 
 
+def test_without_the_probe_two_pre_anchor_truths_apart_read_the_same():
+    rounded_origin, truncated_origin = 12.3, 12.99
+    times = [round(0.4 * k, 6) for k in range(1, 151)]
+    rounded = [math.floor(rounded_origin + t + 0.5) for t in times]
+    truncated = [math.floor(truncated_origin + t) for t in times]
+    assert rounded == truncated
+    c = clock.PlaybackClock(0.0)
+    c.reset(rounded[0], True, times[0], 1.0, app="app")
+    worst = 0.0
+    for t, reading in zip(times, rounded, strict=True):
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        if t >= 20.0:
+            shown = c.position(t)
+            worst = max(
+                worst,
+                abs(shown - rounded_origin - t),
+                abs(shown - truncated_origin - t),
+            )
+    assert worst >= (truncated_origin - rounded_origin) / 2
+
+
 def test_a_mode_learned_for_one_app_is_not_applied_to_another():
     learned = clock.PlaybackClock(0.0)
     probed_track(learned, 0.0, 1.0, 0.5, 0.0, "first", True)
