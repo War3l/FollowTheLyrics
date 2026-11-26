@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import threading
 import time
@@ -25,6 +26,7 @@ class MediaWorker(QThread):
     COVER_READS = (0.8, 3.5)
     MAX_DURATION = 20 * 60
     READ_GRACE = 1.0
+    POLL_SECONDS = 0.4
     RETRY_DELAYS = (10, 30, 60, 120, 300)
     UPGRADE_TRIES = 2
     UPGRADE_WAIT = 12.0
@@ -129,7 +131,7 @@ class MediaWorker(QThread):
                 if data and data != last_cover:
                     last_cover = data
                     self.cover.emit(np.key, data)
-            time.sleep(0.4)
+            session.wait(self.POLL_SECONDS)
         pool.shutdown(wait=False)
 
     def _still_fresh(self, np):
@@ -137,7 +139,7 @@ class MediaWorker(QThread):
             return None
         if time.monotonic() - np.read_at > self.READ_GRACE:
             return None
-        return np
+        return dataclasses.replace(np, seek=None)
 
     def _fetch(self, np):
         try:

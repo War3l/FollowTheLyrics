@@ -218,3 +218,106 @@ def test_a_track_played_again_starts_over_at_once(overlay, manual_clock):
     manual_clock.now = 0.4
     overlay.on_track(now_playing(0.2))
     assert overlay.raw_position() == pytest.approx(0.2)
+
+
+def seeking(position, at, playing=True):
+    np = now_playing(position)
+    np.playing = playing
+    np.seek = track.Seek(position=100.0, at=at)
+    return np
+
+
+def test_a_seek_lands_the_lyrics_on_its_target_at_once(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 5.0
+    overlay.on_track(seeking(0.0, at=5.0))
+    assert overlay.raw_position() == pytest.approx(100.0)
+
+
+def test_a_seek_while_paused_holds_its_target(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 5.0
+    overlay.on_track(seeking(0.0, at=5.0, playing=False))
+    manual_clock.now = 9.0
+    assert overlay.raw_position() == pytest.approx(100.0)
+
+
+def test_a_seek_is_projected_from_the_moment_it_was_received(
+    overlay, manual_clock
+):
+    start_song(overlay)
+    manual_clock.now = 5.5
+    overlay.on_track(seeking(0.0, at=5.0))
+    assert overlay.raw_position() == pytest.approx(100.5)
+
+
+def test_a_seek_is_applied_when_the_duration_is_unknown(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 5.0
+    np = seeking_to(20.0, at=5.0)
+    np.duration = 0.0
+    overlay.on_track(np)
+    assert overlay.raw_position() == pytest.approx(20.0)
+
+
+def seeking_to(target, at, speed=1.0):
+    np = now_playing(0.0, speed=speed)
+    np.seek = track.Seek(position=target, at=at, speed=speed)
+    return np
+
+
+def test_a_seek_past_the_end_lands_on_the_end(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 5.0
+    overlay.on_track(seeking_to(250.0, at=5.0))
+    assert overlay.raw_position() == pytest.approx(200.0)
+
+
+def test_a_seek_keeps_the_speed_it_was_received_at(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 5.5
+    overlay.on_track(seeking_to(100.0, at=5.0, speed=2.0))
+    assert overlay.raw_position() == pytest.approx(101.0)
+
+
+def test_readings_of_a_paused_player_are_not_applied(overlay, manual_clock):
+    start_song(overlay)
+    manual_clock.now = 5.0
+    np = now_playing(5.0, read_at=5.0)
+    np.playing = False
+    np.readings = (track.Reading(50.0, 5.0, np.key),)
+    overlay.on_track(np)
+    assert overlay.raw_position() == pytest.approx(5.0, abs=0.5)
+
+
+def test_readings_of_a_paused_player_never_reach_the_clock_as_playing(
+    overlay, manual_clock, monkeypatch
+):
+    start_song(overlay)
+    received = []
+    real_sync = overlay.playback.sync
+
+    def spy(*args, **kwargs):
+        received.append(args[1])
+        return real_sync(*args, **kwargs)
+
+    monkeypatch.setattr(overlay.playback, "sync", spy)
+    manual_clock.now = 5.0
+    np = now_playing(5.0, read_at=5.0)
+    np.playing = False
+    np.readings = (track.Reading(50.0, 5.0, np.key),)
+    overlay.on_track(np)
+    assert received == [False]
+
+
+def test_repeated_readings_of_a_paused_player_never_move_the_lyrics(
+    overlay, manual_clock
+):
+    start_song(overlay)
+    for at in (5.0 + 0.4 * step for step in range(10)):
+        manual_clock.now = at
+        np = now_playing(5.0, read_at=at)
+        np.playing = False
+        np.readings = (track.Reading(50.0 + at - 5.0, at, np.key),)
+        overlay.on_track(np)
+    assert overlay.raw_position() == pytest.approx(5.0, abs=0.5)

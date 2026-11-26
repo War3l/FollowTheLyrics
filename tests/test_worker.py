@@ -1,3 +1,4 @@
+import dataclasses
 import threading
 import time
 import types
@@ -8,6 +9,7 @@ from PyQt6.QtCore import Qt
 from followthelyrics.lyrics import cache
 from followthelyrics.lyrics import model
 from followthelyrics.lyrics import providers
+from followthelyrics.playback import track
 from followthelyrics.playback import worker
 
 
@@ -135,10 +137,24 @@ def test_nothing_is_sent_for_translation_when_it_is_off(
     assert calls == [1]
 
 
+def playing(title="titre", position=1.0, read_at=None):
+    return track.NowPlaying(
+        title=title,
+        artist="groupe",
+        album="",
+        duration=200.0,
+        position=position,
+        playing=True,
+        app="test",
+        read_at=read_at,
+    )
+
+
 class OnePollSession:
     def __init__(self, media_worker, np):
         self.media_worker = media_worker
         self.np = np
+        self.waits = []
 
     def now_playing(self, blocked, guard):
         self.media_worker._stop = True
@@ -150,9 +166,11 @@ class OnePollSession:
     def cover(self, blocked, guard):
         return None
 
+    def wait(self, seconds):
+        self.waits.append(seconds)
+
 
 def test_each_reading_carries_the_time_it_was_taken(media_worker, monkeypatch):
-    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
     np = types.SimpleNamespace(key=("titre", "groupe"), read_at=None)
     monkeypatch.setattr(media_worker, "_fetch", lambda np: None)
     sent = []
@@ -167,8 +185,10 @@ class ScriptedSession(OnePollSession):
     def __init__(self, media_worker, readings):
         super().__init__(media_worker, None)
         self.readings = list(readings)
+        self.reads = 0
 
     def now_playing(self, blocked, guard):
+        self.reads += 1
         reading = self.readings.pop(0)
         if not self.readings:
             self.media_worker._stop = True
@@ -178,7 +198,6 @@ class ScriptedSession(OnePollSession):
 
 
 def poll_readings(media_worker, monkeypatch, readings):
-    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
     monkeypatch.setattr(media_worker, "_fetch", lambda np: None)
     sent = []
     media_worker.track.connect(sent.append, Qt.ConnectionType.DirectConnection)
@@ -189,20 +208,54 @@ def poll_readings(media_worker, monkeypatch, readings):
 def test_a_reading_dated_by_the_player_keeps_its_date(
     media_worker, monkeypatch
 ):
-    np = types.SimpleNamespace(key=("titre", "groupe"), read_at=12.5)
+    np = playing(read_at=12.5)
     assert poll_readings(media_worker, monkeypatch, [np]) == [np]
     assert np.read_at == 12.5
 
 
 def test_one_failed_reading_keeps_the_last_one(media_worker, monkeypatch):
-    np = types.SimpleNamespace(key=("titre", "groupe"), read_at=None)
+    np = playing()
     sent = poll_readings(media_worker, monkeypatch, [np, OSError("bus")])
-    assert sent == [np, np]
+    assert sent[1] is not None
+    assert sent[1].title == np.title
+    assert sent[1].position == np.position
 
 
 def test_an_old_reading_is_not_kept_after_a_failure(media_worker, monkeypatch):
-    np = types.SimpleNamespace(
-        key=("titre", "groupe"), read_at=time.monotonic() - 5
-    )
+    np = playing(read_at=time.monotonic() - 5)
     sent = poll_readings(media_worker, monkeypatch, [np, OSError("bus")])
-    assert sent == [np, None]
+    assert sent[1] is None
+
+
+def test_the_poll_waits_on_the_session_instead_of_sleeping(
+    media_worker, monkeypatch
+):
+    slept = []
+    monkeypatch.setattr(worker.time, "sleep", slept.append)
+    monkeypatch.setattr(media_worker, "_fetch", lambda np: None)
+    session = ScriptedSession(media_worker, [playing(), playing()])
+    media_worker._poll(session)
+    assert slept == []
+    assert session.waits == [media_worker.POLL_SECONDS] * 2
+
+
+def test_a_seek_is_sent_once_and_not_kept_after_a_failure(
+    media_worker, monkeypatch
+):
+    seek = track.Seek(position=90.0, at=time.monotonic())
+    seeking = dataclasses.replace(playing(), seek=seek)
+    sent = poll_readings(media_worker, monkeypatch, [seeking, OSError("bus")])
+    assert sent[0].seek == seek
+    assert sent[1].seek is None
+    assert sent[1].position == seeking.position
+
+
+def test_a_failed_reading_never_keeps_a_seek_that_was_already_sent(
+    media_worker, monkeypatch
+):
+    seek = track.Seek(position=90.0, at=time.monotonic())
+    seeking = dataclasses.replace(playing(read_at=time.monotonic()), seek=seek)
+    sent = poll_readings(
+        media_worker, monkeypatch, [seeking, OSError("bus"), OSError("bus")]
+    )
+    assert [np.seek for np in sent] == [seek, None, None]
