@@ -1166,6 +1166,33 @@ def test_a_rate_learned_too_high_is_relearned_from_readings_left_behind():
     assert worst <= clock.DEADBAND
 
 
+def held_seek_errors(real):
+    target, seeked_at = 198.4, 10.2
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    c.seeked(target, seeked_at, seeked_at, True, 1.0, app="app")
+    errors = []
+    for k in range(40):
+        t = round(11.1 + 0.9 * k, 6)
+        truth = target + real * (t - seeked_at)
+        c.sync(math.floor(truth), True, t, t, 1.0, 600.0, app="app")
+        errors.append((t - seeked_at, c.position(t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize("real", [1.2, 1.4])
+def test_a_held_seek_on_a_player_faster_than_announced_converges(real):
+    late = [abs(e) for elapsed, e in held_seek_errors(real) if elapsed >= 20.0]
+    assert max(late) <= clock.DEADBAND
+
+
+def test_readings_during_a_held_seek_keep_the_display_within_a_jump():
+    released = [
+        abs(e) for elapsed, e in held_seek_errors(1.4) if 2.0 < elapsed < 6.0
+    ]
+    assert max(released) < clock.JUMP
+
+
 def test_a_mode_learned_for_one_app_is_not_applied_to_another():
     learned = clock.PlaybackClock(0.0)
     probed_track(learned, 0.0, 1.0, 0.5, 0.0, "first", True)
