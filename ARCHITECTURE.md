@@ -205,23 +205,24 @@ also push a change, and the app uses it as soon as it arrives.
   anchor and narrows the cells, and it counts as a correction, so the display
   follows at once instead of sliding for `SLEW_SECONDS` (2 s).
 - **Exact rate mismatch**: an exact player (whole seconds are not required)
-  whose readings advance at a rate outside `SLOWER_SHARE` to `FASTER_SHARE`
-  but inside `SEEK_RATIO_LOW` to `SEEK_RATIO_HIGH`, in jumps of at least
-  `SETTLE` (0.3 s), is relearned once `MISMATCH_READS` (3) consecutive readings
-  agree within `MAX_SKEW`. The gain is multiplied by the observed ratio, and
-  the clock is re-anchored on the reading. Smaller jumps keep the usual
-  steering, so a 10% speed difference is still absorbed by slewing.
+  whose readings advance at a rate inside `SEEK_RATIO_LOW` to
+  `SEEK_RATIO_HIGH`, in jumps of more than `SETTLE` (0.3 s), is relearned once
+  `MISMATCH_READS` (3) consecutive readings agree within `MAX_SKEW`. The gain
+  is multiplied by the observed ratio, and the clock is re-anchored on the
+  reading. Smaller jumps keep the usual steering, so a 10% speed difference
+  polled every 0.4 s is still absorbed by slewing.
   A learned rate counts as a correction whatever the error it leaves, so a
   display that ran a second or more ahead holds until the track catches up
   instead of sliding back at `MAX_SKEW` for tens of seconds.
 - **Backward jump**: a reading at least `JUMP` (1 s) behind the clock is
   doubted. It is confirmed as a rewind when the readings that follow keep to
   it within `SETTLE` for `CONFIRM_SECONDS` (1 s). While it is doubted, a whole
-  reading that advanced at most `SLOWER_SHARE` of the clock's own rate since
-  the last accepted reading relearns the rate at once. The share is taken
-  against the learned rate, not the announced one, so a rate learned far too
-  high from the first readings is corrected instead of leaving the display
-  running ahead while every reading stays doubted.
+  reading that still moved forward since the last accepted reading relearns
+  the rate from the truth cells at once, and a doubted reading the cells
+  explain narrows them. A rate learned far too high from the first readings
+  is corrected instead of leaving the display running ahead while every
+  reading stays doubted. A confirmed rewind, or any jump of `JUMP` or more,
+  resets the clock unless the cells explain the reading.
 - **Stall patience for quantized players**: a quantized player that holds its
   last whole reading is stalled only after one quantum at its effective rate,
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A

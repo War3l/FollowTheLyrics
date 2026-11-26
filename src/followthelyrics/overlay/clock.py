@@ -31,8 +31,6 @@ PIN_WIDTH = 0.05
 ERR_PIN = 0.2
 SEEK_RATIO_LOW = 0.25
 SEEK_RATIO_HIGH = 4.0
-SLOWER_SHARE = 0.95
-FASTER_SHARE = 1.05
 MISMATCH_READS = 3
 
 
@@ -256,35 +254,11 @@ class PlaybackClock:
                 quantized
                 and playing
                 and _whole(position)
-                and self._ratio_advance(
-                    position,
-                    last_position,
-                    last_at,
-                    at,
-                    effective,
-                    0.0,
-                    SLOWER_SHARE,
-                )
+                and position > last_position
             ):
                 self._relearn_rate(position, at, now, speed)
             return
         if (rewind is Rewind.CONFIRMED or abs(jump) >= JUMP) and not explained:
-            if (
-                quantized
-                and playing
-                and _whole(position)
-                and self._ratio_advance(
-                    position,
-                    last_position,
-                    last_at,
-                    at,
-                    speed,
-                    FASTER_SHARE,
-                    SEEK_RATIO_HIGH,
-                )
-            ):
-                self._relearn_rate(position, at, now, speed)
-                return
             self.reset(reported_now, playing, now, speed)
             return
         learned = self._learn(position, at, speed, playing)
@@ -359,10 +333,7 @@ class PlaybackClock:
             self._mismatch = None
             return False
         ratio = (position - last_position) / elapsed
-        if (
-            SLOWER_SHARE <= ratio <= FASTER_SHARE
-            or not SEEK_RATIO_LOW <= ratio <= SEEK_RATIO_HIGH
-        ):
+        if not SEEK_RATIO_LOW <= ratio <= SEEK_RATIO_HIGH:
             self._mismatch = None
             return False
         if self._mismatch is not None and abs(ratio - self._mismatch[0]) <= (
@@ -376,21 +347,6 @@ class PlaybackClock:
         self._gain = min(GAIN_MAX, max(GAIN_MIN, self._gain * ratio))
         self._mismatch = None
         return True
-
-    def _ratio_advance(
-        self,
-        position: float,
-        last_position: float,
-        last_at: float,
-        at: float,
-        speed: float,
-        low: float,
-        high: float,
-    ) -> bool:
-        expected = speed * (at - last_at)
-        if expected <= 0.0:
-            return False
-        return low < (position - last_position) / expected <= high
 
     def _relearn_rate(
         self, position: float, at: float, now: float, speed: float
