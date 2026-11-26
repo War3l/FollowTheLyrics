@@ -29,6 +29,7 @@ PHASES = (0.0, 0.5)
 ANCHOR_WIDTH = 1e-9
 PIN_WIDTH = 0.05
 ERR_PIN = 0.2
+HOLD_LEAD = 0.3
 SEEK_RATIO_LOW = 0.25
 SEEK_RATIO_HIGH = 4.0
 MISMATCH_READS = 3
@@ -311,6 +312,9 @@ class PlaybackClock:
         resumed_off = resumed and abs(error) > DEADBAND
         tolerance = QUANTIZED_TOLERANCE if narrowing else DEADBAND
         relearned = learned
+        if corrected and error < -HOLD_LEAD:
+            self._anchor(shown + error, now, self.speed, now)
+            return
         self._steer(
             shown,
             error,

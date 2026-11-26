@@ -1166,6 +1166,23 @@ def test_a_rate_learned_too_high_is_relearned_from_readings_left_behind():
     assert worst <= clock.DEADBAND
 
 
+def test_a_correction_far_behind_the_display_steps_back_at_the_reading():
+    real = 1.04
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    at_reading, half_a_poll_later = [], []
+    for k in range(1, 61):
+        t = float(k)
+        c.sync(math.floor(real * t + 0.5), True, t, t, 1.0, 600.0, app="app")
+        at_reading.append(abs(c.position(t) - real * t))
+        half_a_poll_later.append(abs(c.position(t + 0.5) - real * (t + 0.5)))
+    last_off = max(
+        i for i, e in enumerate(half_a_poll_later) if e > clock.DEADBAND
+    )
+    assert at_reading[last_off] > clock.HOLD_LEAD
+    assert at_reading[last_off + 1] <= clock.DEADBAND
+
+
 def held_seek_errors(real):
     target, seeked_at = 198.4, 10.2
     c = clock.PlaybackClock(0.0)

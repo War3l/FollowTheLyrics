@@ -223,6 +223,12 @@ also push a change, and the app uses it as soon as it arrives.
   is corrected instead of leaving the display running ahead while every
   reading stays doubted. A confirmed rewind, or any jump of `JUMP` or more,
   resets the clock unless the cells explain the reading.
+- **Display ahead after a correction**: a display ahead of the estimate waits
+  for the track instead of stepping back, so small leads never show a backward
+  jump. A correcting reading (it rules out a phase, explains a jump, or changes
+  the learned gain once a single phase is left) that leaves the display more
+  than `HOLD_LEAD` (0.3 s) ahead moves it back to the estimate at once, instead
+  of freezing it for as long as the lead lasts.
 - **Stall patience for quantized players**: a quantized player that holds its
   last whole reading is stalled only after one quantum at its effective rate,
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A
