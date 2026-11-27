@@ -255,6 +255,8 @@ class PlaybackClock:
             self._exact(0.0, at, True)
         elif track_start and playing and not _whole(position):
             self._remember_track_start(position, at)
+        elif track_start and playing:
+            self._remember_whole_track_start(position, at)
 
     def seeked(
         self,
@@ -271,7 +273,7 @@ class PlaybackClock:
         anchored_cells = (
             (self._truth, self._truth_t, self._truth_playing)
             if self._truth
-            else self._exact_reading_cells()
+            else self._exact_reading_cells() or self._track_start_cells()
         )
         rival = anchored_cells is not None and not self._covers(
             anchored_cells, target, now
@@ -666,6 +668,10 @@ class PlaybackClock:
         )
         self._before_anchor_from_track_start = True
 
+    def _remember_whole_track_start(self, position: float, at: float):
+        self._cells_before_anchor = (self._reading_cells(position), at, True)
+        self._before_anchor_from_track_start = True
+
     def _revived_cells(
         self, position: float, at: float, speed: float
     ) -> dict[float, list[tuple[float, float]]]:
@@ -806,6 +812,13 @@ class PlaybackClock:
             at,
             self.playing,
         )
+
+    def _track_start_cells(
+        self,
+    ) -> tuple[dict[float, list[tuple[float, float]]], float, bool] | None:
+        if not self._before_anchor_from_track_start:
+            return None
+        return self._cells_before_anchor
 
     def _narrow_rival(self, position: float, at: float, speed: float):
         if self._cells_before_anchor is None or not self._rival_alive:

@@ -1218,32 +1218,72 @@ FUZZ_POLLS = (0.1, 0.25, 0.4, 0.5, 1.0)
 FUZZ_SEEK_SPREAD = (0.2, 1.5)
 FUZZ_REPORTED_SEEDS = (16, 52, 64, 65, 73)
 FUZZ_SAMPLE_EVERY = 15
+UNBOUNDED_START = 1e6
 
 
 def random_start(seed):
     return random.Random(seed).uniform(0.0, 60.0)
 
 
-def step_hypotheses(start, target):
-    held = (lambda at: start, lambda at: at, None)
+def step_hypotheses(target):
+    held = (lambda at: 1.0, lambda at: 0.0, lambda at: at, None)
     if target is None:
         return [held]
     sought = (
-        lambda at: start if at < STEP_SEEK_AT else target,
+        lambda at: 1.0 if at < STEP_SEEK_AT else 0.0,
+        lambda at: 0.0 if at < STEP_SEEK_AT else target,
         lambda at: at if at < STEP_SEEK_AT else at - STEP_SEEK_AT,
         STEP_SEEK_AT,
     )
     return [held, sought]
 
 
+def keep_below(polygon, along_start, along_ratio, bound):
+    kept = []
+    for i, first in enumerate(polygon):
+        second = polygon[(i + 1) % len(polygon)]
+        first_slack = bound - along_start * first[0] - along_ratio * first[1]
+        second_slack = bound - along_start * second[0] - along_ratio * second[1]
+        if first_slack >= 0:
+            kept.append(first)
+        if (first_slack >= 0) != (second_slack >= 0):
+            share = first_slack / (first_slack - second_slack)
+            kept.append(
+                (
+                    first[0] + share * (second[0] - first[0]),
+                    first[1] + share * (second[1] - first[1]),
+                )
+            )
+    return kept
+
+
+def start_and_ratio_cell(readings, hypothesis, phases):
+    weight, offset, played, switch = hypothesis
+    span = UNBOUNDED_START
+    low, high = SLOWEST_REPORTABLE_RATIO, FASTEST_REPORTABLE_RATIO
+    cell = [(-span, low), (span, low), (span, high), (-span, high)]
+    for at, reading in readings:
+        phase = phases[0] if switch is None or at < switch else phases[1]
+        lowest, highest = reading_interval(reading, phase)
+        along_start, along_ratio = weight(at), played(at)
+        cell = keep_below(cell, along_start, along_ratio, highest - offset(at))
+        cell = keep_below(cell, -along_start, -along_ratio, offset(at) - lowest)
+        if not cell:
+            return None
+    return cell
+
+
 def proven_upper(readings, hypotheses, at):
     ends = []
     for hypothesis in hypotheses:
-        offset, played, switch = hypothesis
+        weight, offset, played, switch = hypothesis
         for phases in phase_pairs(readings, switch):
-            ratios = hypothesis_ratios(readings, hypothesis, phases)
-            if ratios is not None:
-                ends += [offset(at) + ratio * played(at) for ratio in ratios]
+            cell = start_and_ratio_cell(readings, hypothesis, phases)
+            if cell is not None:
+                ends += [
+                    weight(at) * start + offset(at) + ratio * played(at)
+                    for start, ratio in cell
+                ]
     return max(ends)
 
 
@@ -1257,10 +1297,11 @@ def display_steps_back(scenario):
     mode, real, poll, announced, start, target, applied, warm = scenario
     quantize = QUANTIZE[mode]
     c = clock.PlaybackClock(0.0)
-    c.reset(start, True, 0.0, announced, app="app", track_start=True)
-    hypotheses = step_hypotheses(start, target)
+    reported_start = quantize(start)
+    c.reset(reported_start, True, 0.0, announced, app="app", track_start=True)
+    hypotheses = step_hypotheses(target)
     reported_speed = 1.0 if warm else real
-    readings = []
+    readings = [(0.0, reported_start)]
     steps = []
     shown = c.position(0.0)
     previous = 0.0
