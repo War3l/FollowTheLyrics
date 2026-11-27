@@ -180,6 +180,7 @@ class PlaybackClock:
         ) = None
         self._rival_alive = False
         self._truth: dict[float, list[tuple[float, float]]] = {}
+        self._wholes: list[tuple[float, float, float]] = []
         self._truth_t = now
         self._truth_playing = False
         self._anchored = False
@@ -188,6 +189,7 @@ class PlaybackClock:
         self._rate = 1.0
         self._gain = 1.0
         self._gain_proven = False
+        self._gain_fitted = False
         self._gain_before_chance: tuple[float, bool] | None = None
         self._window: tuple[float, list[tuple[float, float]]] | None = None
         self._hold: tuple[float, float, float, float | None] | None = None
@@ -244,6 +246,7 @@ class PlaybackClock:
         self._anchored = False
         self._cells_before_anchor = None
         self._rival_alive = False
+        self._wholes = [(position, at, speed)] if playing else []
         if track_start and playing and position < QUANTUM:
             self._exact(0.0, at, True)
 
@@ -303,6 +306,8 @@ class PlaybackClock:
             return
         if not playing:
             self._freeze(at)
+        elif _whole(position):
+            self._narrow_rival(position, at, speed)
         if self._seek_given_up(now):
             self._given_up = True
         if self._holds(position, playing, at, now):
@@ -421,6 +426,7 @@ class PlaybackClock:
             self._truth = {}
             self._anchored = False
             corrected = False
+            self._remember_whole(position, at, speed)
         error = self._error(position, at, now, shown, effective, narrowing)
         outside = strayed = False
         if narrowing:
@@ -699,7 +705,7 @@ class PlaybackClock:
             elapsed = at - self._truth_t if self._truth_playing else 0.0
             survivors = _admitting(self._truth, elapsed, position, speed)
         else:
-            survivors = self._reading_cells(position)
+            survivors = self._cells_since_wholes(position, at, speed)
         died = not survivors
         if died:
             self._gain_proven = False
@@ -714,6 +720,43 @@ class PlaybackClock:
         self._truth_t = at
         self._truth_playing = True
         return died
+
+    def _remember_whole(self, position: float, at: float, speed: float):
+        if not _whole(position) or (
+            self._wholes and self._wholes[-1][2] != speed
+        ):
+            self._wholes = []
+        if _whole(position):
+            self._wholes.append((position, at, speed))
+
+    def _cells_since_wholes(
+        self, position: float, at: float, speed: float
+    ) -> dict[float, list[tuple[float, float]]]:
+        readings = [
+            (whole, seen)
+            for whole, seen, rate in self._wholes
+            if rate == speed and seen < at
+        ]
+        self._wholes = []
+        run = len(readings)
+        while run > 0 and readings[run - 1][0] == position:
+            run -= 1
+        if run == 0 or readings[run - 1][0] != position - QUANTUM:
+            return self._reading_cells(position)
+        start = run - 1
+        while start > 0 and readings[start][0] - readings[start - 1][0] in (
+            0.0,
+            QUANTUM,
+        ):
+            start -= 1
+        (first, since), *later = readings[start:]
+        cells = self._reading_cells(first)
+        for whole, seen in [*later, (position, at)]:
+            cells = _admitting(cells, seen - since, whole, speed)
+            if not cells:
+                return self._reading_cells(position)
+            since = seen
+        return cells
 
     def _narrow_rival(self, position: float, at: float, speed: float):
         if self._cells_before_anchor is None or not self._rival_alive:
@@ -738,7 +781,8 @@ class PlaybackClock:
             _xbounds(_shear(cell, elapsed, speed)) for cell in cells.values()
         ]
         return any(
-            lower - POSITION_RESOLUTION <= target <= upper + POSITION_RESOLUTION
+            lower <= target <= upper
+            and abs(target - (lower + upper) / 2) <= SETTLE
             for lower, upper in bounds
         )
 
@@ -833,18 +877,28 @@ class PlaybackClock:
 
     def _learn_rate(self):
         if self._gain_proven and self._fits_all(self._gain):
+            if not self._gain_fitted and not self._fits_centrally(self._gain):
+                self._gain = self._middle_ratio()
             return
         if self._announced_fits():
             self._gain = 1.0
             self._gain_proven = False
+            self._gain_fitted = False
             return
         self._gain_proven = True
         if self._fits_all(self._gain):
             return
-        ratios = [ratio for cell in self._truth.values() for _, ratio in cell]
-        self._gain = min(
-            GAIN_MAX, max(GAIN_MIN, (max(ratios) + min(ratios)) / 2)
-        )
+        self._gain = self._middle_ratio()
+        self._gain_fitted = False
+
+    def _middle_ratio(self) -> float:
+        slowest, fastest = _ratio_range(self._truth)
+        return min(GAIN_MAX, max(GAIN_MIN, (slowest + fastest) / 2))
+
+    def _fits_centrally(self, gain: float) -> bool:
+        slowest, fastest = _ratio_range(self._truth)
+        margin = min((fastest - slowest) / 2, MAX_SKEW * gain)
+        return slowest + margin <= gain <= fastest - margin
 
     def _error(
         self,
@@ -931,6 +985,7 @@ class PlaybackClock:
             gain = min(GAIN_MAX, max(GAIN_MIN, slope / speed))
             changed = abs(gain - self._gain) > MAX_SKEW * self._gain
             self._gain = gain
+            self._gain_fitted = True
             return changed
         return False
 
@@ -1025,6 +1080,9 @@ class PlaybackClock:
                 else (MAX_SKEW, SLEW_SECONDS)
             )
             skew = max(-limit, min(limit, error / span))
+            proven = error / (SLEW_SECONDS * self.speed)
+            if narrowing and self._gain_proven and abs(proven) > abs(skew):
+                skew = max(-1.0, proven)
             until = now + error / (skew * self.speed)
             self._anchor(shown, now, self.speed * (1.0 + skew), until)
             if closing:

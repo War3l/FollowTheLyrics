@@ -2162,17 +2162,23 @@ def test_a_playing_seek_the_player_ignores_keeps_the_speed_its_cells_proved(
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
     t = 0.0
-    before = None
+    sought = False
+    readings_before = []
     speeds_after = []
     while t < 25.0:
         t = round(t + 0.9, 6)
-        if before is None and t >= 15.0:
-            before = c.speed
+        if not sought and t >= 15.0:
+            sought = True
             c.seeked(target, t, t, True, 1.0, app="app")
-        c.sync(round_half_up(real * t), True, t, t, 1.0, 600.0, app="app")
-        if before is not None:
+        reading = round_half_up(real * t)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        if sought:
             speeds_after.append(c.speed)
-    assert max(abs(speed - before) for speed in speeds_after) <= 1e-9
+        else:
+            readings_before.append((t, reading))
+    slowest = max((reading - 0.5) / t for t, reading in readings_before)
+    fastest = min((reading + 0.5) / t for t, reading in readings_before)
+    assert all(slowest <= speed <= fastest for speed in speeds_after)
 
 
 @pytest.mark.parametrize(

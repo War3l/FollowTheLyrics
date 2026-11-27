@@ -296,6 +296,14 @@ also push a change, and the app uses it as soon as it arrives.
     the surviving cell admits it, and drifts within that cell until a reading
     rules the announced rate out
     (`test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell`).
+  - a player joined at 5.05, 12.7 or 27.45 s instead of 0 is held, on every
+    rate pair of the matrix, from `CONVERGED_BY` on, to the hull of the
+    offsets and rates its readings older than `SETTLE_SECONDS` plus one poll
+    allow, at twice its half-width when rate 1 is feasible, never under
+    `DEADBAND`, plus `HULL_MARGIN`; whole readings seen before the first
+    cells chain into them, and an error the cells prove is slewed back
+    within `SLEW_SECONDS` of wall time even on a slow player
+    (`test_a_player_joined_mid_track_converges_within_what_its_readings_prove`).
 - **Scenario grids**: five grids of whole-second, rounding and exact players
   run in the test suite, each against a bound taken from the contract rather
   than from the measured errors:
@@ -312,11 +320,7 @@ also push a change, and the app uses it as soon as it arrives.
     seek ignored or applied, with a phase switch at the resume or at the
     seek, keeps feasible, from the readings older than `SETTLE_SECONDS` plus
     one poll, at twice its half-width when rate 1 is feasible, never under
-    `DEADBAND`, plus `HULL_MARGIN`; 57 of the 1344 cells still exceed it and
-    are strict expected failures, so a fix shows up: a stale proven gain kept
-    while it fits the cells, a single hypothesis kept when the target is near
-    the played position, and an exact player resumed at 0.4 s polls that
-    outruns the reaction delay
+    `DEADBAND`, plus `HULL_MARGIN`, and all 1344 cells stay within it
     (`test_an_ignored_seek_errs_within_the_bound_of_what_the_readings_allow`);
   - a rounding player that switches to truncation at a resume, at the rate
     that keeps its readings, reads like the original player until the two

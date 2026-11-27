@@ -331,10 +331,10 @@ def offset_ratio_polygons(readings, announced):
     polygons = []
     for phase, _ in phases:
         polygon = [
-            (-MID_TRACK_OFFSET_SPAN, RATIO_LOW),
-            (MID_TRACK_OFFSET_SPAN, RATIO_LOW),
-            (MID_TRACK_OFFSET_SPAN, RATIO_HIGH),
-            (-MID_TRACK_OFFSET_SPAN, RATIO_HIGH),
+            (-MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_LOW),
+            (MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_LOW),
+            (MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_HIGH),
+            (-MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_HIGH),
         ]
         for at, reading in readings:
             low, high = reading_interval(reading, phase)
@@ -423,6 +423,24 @@ def test_players_at_announced_half_and_double_speed_converge(
     announced, ratio, mode, sampling
 ):
     assert_announced_rate_contract(mode, announced, announced * ratio, sampling)
+
+
+CONVERGE_STARTS = (5.05, 12.7, 27.45)
+OFFSET_CONVERGE_PAIRS = CONVERGE_PAIRS + tuple(
+    (announced, announced * ratio)
+    for announced in ANNOUNCED_HALF_AND_DOUBLE
+    for ratio in QUANTIZED_RATIOS
+)
+
+
+@pytest.mark.parametrize("start", CONVERGE_STARTS)
+@pytest.mark.parametrize("sampling", SAMPLINGS)
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("announced,real", OFFSET_CONVERGE_PAIRS)
+def test_a_player_joined_mid_track_converges_within_what_its_readings_prove(
+    announced, real, mode, sampling, start
+):
+    assert mid_track_excess(mode, announced, real, sampling, start) <= 0.0
 
 
 def test_a_round_player_slightly_fast_polled_every_0_6_seconds_converges():
@@ -1131,36 +1149,13 @@ def ignored_seek_oracle_excess(mode, real, poll, paused, target):
     return max(excess)
 
 
-STALE_GAIN_SHORTFALLS = (
-    *(("trunc", 1.5, 1.5, False, target) for target in IGNORED_SEEK_TARGETS),
-    *(("trunc", 0.8, 2.0, False, target) for target in IGNORED_SEEK_TARGETS),
-    *(("round", 1.25, 2.0, True, target) for target in IGNORED_SEEK_TARGETS),
-    *(("round", 0.5, 1.5, False, target) for target in (16.0, 30.0, 40.0)),
-    *(("round", 0.5, 1.0, False, target) for target in (16.0, 30.0, 40.0)),
-    *(("trunc", 1.1, 2.0, False, target) for target in (30.0, 40.0)),
-)
-NEAR_TARGET_SHORTFALLS = (("trunc", 1.1, 0.9, True, 16.0),)
-ORACLE_SHORTFALLS = {
-    **dict.fromkeys(STALE_GAIN_SHORTFALLS, "a stale proven gain is kept"),
-    **dict.fromkeys(
-        NEAR_TARGET_SHORTFALLS, "a single hypothesis is kept near the target"
-    ),
-}
-
-
 def ignored_seek_oracle_cells():
     for mode in GRID_MODES:
         for real in IGNORED_SEEK_RATES:
             for poll in IGNORED_SEEK_POLLS:
                 for paused in (False, True):
                     for target in IGNORED_SEEK_TARGETS:
-                        cell = (mode, real, poll, paused, target)
-                        marks = ()
-                        if cell in ORACLE_SHORTFALLS:
-                            marks = pytest.mark.xfail(
-                                strict=True, reason=ORACLE_SHORTFALLS[cell]
-                            )
-                        yield pytest.param(*cell, marks=marks)
+                        yield mode, real, poll, paused, target
 
 
 @pytest.mark.parametrize(
