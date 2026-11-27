@@ -190,6 +190,7 @@ class PlaybackClock:
         self._gain_before_chance: tuple[float, bool] | None = None
         self._window: tuple[float, list[tuple[float, float]]] | None = None
         self._hold: tuple[float, float, float, float | None] | None = None
+        self._given_up = False
         self._slew_until = now
         self._closing_until = now
         self._reading = (0.0, now)
@@ -199,6 +200,7 @@ class PlaybackClock:
         self._still_position = 0.0
         self._whole_run = 0
         self._whole_at = -math.inf
+        self._fraction_seen = False
         self._mismatch: tuple[float, int] | None = None
         self._gaps: collections.deque[float] = collections.deque(
             maxlen=RECENT_GAPS
@@ -236,6 +238,7 @@ class PlaybackClock:
         self._gaps.clear()
         self._window = None
         self._hold = None
+        self._given_up = False
         self._truth = {}
         self._anchored = False
         self._cells_before_anchor = None
@@ -294,6 +297,8 @@ class PlaybackClock:
             return
         if not playing:
             self._freeze(at)
+        if self._seek_given_up(now):
+            self._given_up = True
         if self._holds(position, playing, at, now):
             if (
                 playing
@@ -348,8 +353,7 @@ class PlaybackClock:
         )
         explained = (
             playing
-            and (self._anchored or quantized)
-            and _whole(position)
+            and self._reads_cells(position, quantized)
             and self._explained(position, at, speed)
         )
         if rewind is Rewind.DOUBTED:
@@ -392,8 +396,7 @@ class PlaybackClock:
         resumed = not self.playing
         self.playing = True
         self.speed = effective
-        whole = _whole(position)
-        narrowing = whole and (quantized or self._anchored)
+        narrowing = self._reads_cells(position, quantized)
         if narrowing:
             hypotheses_before = len(self._truth)
             self._narrow(position, at, speed)
@@ -422,7 +425,10 @@ class PlaybackClock:
             )
             strayed = not lower <= shown <= upper
         settled = self._settled(error, at, abs(jump) <= SETTLE)
-        resumed_off = resumed and abs(error) > DEADBAND
+        given_up = self._given_up and not narrowing
+        if given_up:
+            self._given_up = False
+        resumed_off = (resumed or given_up) and abs(error) > DEADBAND
         relearned = learned
         if corrected and error < -HOLD_LEAD:
             self._anchor(shown + error, now, self.speed, now)
@@ -514,12 +520,20 @@ class PlaybackClock:
             <= SEEK_RATIO_HIGH * elapsed
         )
 
+    def _reads_cells(self, position: float, quantized: bool) -> bool:
+        return _whole(position) and (
+            quantized or (self._anchored and not self._fraction_seen)
+        )
+
     def _count_whole(self, position: float, playing: bool, at: float):
         if not _whole(position):
             self._whole_run = 0
+            self._fraction_seen = True
         elif playing and at > self._whole_at:
             self._whole_run += 1
             self._whole_at = at
+        if self._whole_run >= QUANTIZED_READS:
+            self._fraction_seen = False
 
     def status(self, playing: bool, at: float, speed: float = 1.0):
         if playing == self.playing:
@@ -802,6 +816,13 @@ class PlaybackClock:
             return (lower + upper) / 2 - shown
         lower, upper = self._truth_bounds()
         return (lower + upper) / 2 + (now - at) * effective - shown
+
+    def _seek_given_up(self, now: float) -> bool:
+        return (
+            self._hold is not None
+            and self._hold[3] is None
+            and now >= self._hold[2]
+        )
 
     def _holds(
         self, position: float, playing: bool, at: float, now: float

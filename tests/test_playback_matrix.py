@@ -1139,9 +1139,6 @@ STALE_GAIN_SHORTFALLS = (
 NEAR_TARGET_SHORTFALLS = (
     *(("trunc", 1.1, poll, False, 16.0) for poll in (0.25, 0.5, 1.0, 1.5)),
     *(("trunc", 1.1, poll, True, 16.0) for poll in (0.25, 0.5, 0.9, 1.0, 1.5)),
-    *(("exact", 1.1, poll, False, 16.0) for poll in (0.25, 0.4, 0.5, 0.9, 1.5)),
-    *(("exact", 1.0, poll, False, 16.0) for poll in (0.4, 0.9)),
-    ("exact", 0.8, 2.0, False, 16.0),
 )
 ORACLE_SHORTFALLS = {
     **dict.fromkeys(STALE_GAIN_SHORTFALLS, "a stale proven gain is kept"),
