@@ -308,6 +308,10 @@ class PlaybackClock:
             self._anchored = False
             corrected = False
         error = self._error(position, at, now, shown, effective, narrowing)
+        outside = False
+        if narrowing and self._anchored:
+            lower, upper = self._hull(now - at, speed)
+            outside = error > SETTLE or not lower <= shown <= upper
         settled = self._settled(error, at, abs(jump) <= SETTLE)
         resumed_off = resumed and abs(error) > DEADBAND
         tolerance = QUANTIZED_TOLERANCE if narrowing else DEADBAND
@@ -320,7 +324,7 @@ class PlaybackClock:
             error,
             now,
             stalled,
-            settled or resumed_off or relearned or corrected,
+            settled or resumed_off or relearned or corrected or outside,
             tolerance,
         )
 
@@ -517,11 +521,28 @@ class PlaybackClock:
             max(upper for _, upper in bounds),
         )
 
+    def _hull(self, elapsed: float, speed: float) -> tuple[float, float]:
+        bounds = [
+            _xbounds(_shear(cell, elapsed, speed))
+            for cell in self._truth.values()
+        ]
+        return (
+            min(lower for lower, _ in bounds),
+            max(upper for _, upper in bounds),
+        )
+
+    def _ratio_spread(self) -> float:
+        ratios = [ratio for cell in self._truth.values() for _, ratio in cell]
+        return max(ratios) - min(ratios)
+
     def _learn_rate(self):
-        if any(
+        sliced = [
             _slice(cell, self._gain) is not None
             for cell in self._truth.values()
-        ):
+        ]
+        if all(sliced):
+            return
+        if any(sliced) and self._gain == 1.0:
             return
         ratios = [ratio for cell in self._truth.values() for _, ratio in cell]
         self._gain = min(
@@ -539,14 +560,9 @@ class PlaybackClock:
     ) -> float:
         if not quantized:
             return position + (now - at) * effective - shown
-        if len(self._truth) == 1:
-            (cell,) = self._truth.values()
-            lower, upper = _xbounds(
-                _shear(cell, now - at, effective / self._gain)
-            )
-            ratios = [ratio for _, ratio in cell]
-            if max(ratios) - min(ratios) <= ERR_PIN:
-                return (lower + upper) / 2 - shown
+        if len(self._truth) == 1 and self._ratio_spread() <= ERR_PIN:
+            lower, upper = self._hull(now - at, effective / self._gain)
+            return (lower + upper) / 2 - shown
         lower, upper = self._truth_bounds()
         return (lower + upper) / 2 + (now - at) * effective - shown
 

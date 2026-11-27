@@ -8,7 +8,7 @@ DEADBAND = clock.DEADBAND
 RATIO_LOW = 0.25
 RATIO_HIGH = 4.0
 CONVERGED_BY = 20.0
-AMBIGUOUS_BOUND = 0.3
+HULL_MARGIN = 0.08
 SMALL_LEAD = 0.3
 LONG_HORIZON = 60.0
 SHORT_HORIZON = CONVERGED_BY + 10.0
@@ -16,9 +16,10 @@ JITTER = 0.03
 GOLDEN = 2.399963
 SEEK_ORIGIN = 12.3
 SEEK_PAUSE_DELAY = 0.79
+SEEK_HORIZON = 16.0
 
 MODES = ("exact", "trunc", "round")
-SAMPLINGS = (0.1, 0.4, 0.8)
+SAMPLINGS = (0.1, 0.4, 0.8, 1.0)
 CONVERGE_PAIRS = (
     (1.0, 0.25),
     (1.0, 0.5),
@@ -41,6 +42,7 @@ EXACT_RATE_PAIRS = (
 )
 SEEK_TRUTHS = (1.0, 1.94, 2.0)
 ALTERNATIVE_OFFSET = {"trunc": 0.5, "round": 0.0}
+PHASES = (0.0, 0.5)
 
 
 def round_half_up(value):
@@ -87,6 +89,32 @@ def alternative_death(mode, readings, origin, announced):
     return None
 
 
+def feasible_ratios(readings, origin, announced):
+    low = dict.fromkeys(PHASES, -math.inf)
+    high = dict.fromkeys(PHASES, math.inf)
+    for at, reading in readings:
+        scale = announced * at
+        for phase in PHASES:
+            low[phase] = max(low[phase], (reading - phase - origin) / scale)
+            high[phase] = min(
+                high[phase], (reading - phase + 1.0 - origin) / scale
+            )
+    return {
+        phase: (low[phase], high[phase])
+        for phase in PHASES
+        if low[phase] < high[phase]
+    }
+
+
+def hull_half_width(readings, origin, announced, at):
+    ends = [
+        announced * at * bound
+        for bounds in feasible_ratios(readings, origin, announced).values()
+        for bound in bounds
+    ]
+    return (max(ends) - min(ends)) / 2
+
+
 def converge_errors(mode, announced, real, sampling, horizon):
     quantize = QUANTIZE[mode]
     clk = clock.PlaybackClock(0.0)
@@ -98,18 +126,26 @@ def converge_errors(mode, announced, real, sampling, horizon):
     return errors
 
 
-def seek_error(mode, truth, sampling):
+def seek_readings(mode, truth, sampling):
     quantize = QUANTIZE[mode]
+    return [
+        (t, quantize(SEEK_ORIGIN + truth * t))
+        for t in sample_times(sampling, SEEK_HORIZON)
+    ]
+
+
+def seek_pause(readings):
+    return round(readings[-1][0] + SEEK_PAUSE_DELAY, 6)
+
+
+def seek_error(mode, truth, sampling):
+    readings = seek_readings(mode, truth, sampling)
     clk = clock.PlaybackClock(0.0)
     clk.reset(0.0, True, 0.0, 2.0, app="app", track_start=True)
     clk.seeked(SEEK_ORIGIN, 0.0, 0.0, True, 2.0, app="app")
-    last = 0.0
-    for t in sample_times(sampling, 16.0):
-        clk.sync(
-            quantize(SEEK_ORIGIN + truth * t), True, t, t, 2.0, 600.0, app="app"
-        )
-        last = t
-    pause = round(last + SEEK_PAUSE_DELAY, 6)
+    for t, reading in readings:
+        clk.sync(reading, True, t, t, 2.0, 600.0, app="app")
+    pause = seek_pause(readings)
     clk.status(False, pause, 2.0)
     return abs(clk.position(pause) - (SEEK_ORIGIN + truth * pause))
 
@@ -136,23 +172,36 @@ def test_converged_estimate_stays_within_the_deadband(
         assert max(late) <= DEADBAND
         return
     readings = readings_of(mode, real, sampling, LONG_HORIZON)
-    death = alternative_death(mode, readings, 0.0, announced)
-    assert death is not None
+    death = alternative_death(mode, readings, 0.0, announced) or math.inf
     errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
-    while_ambiguous = [
-        error for t, error in errors if CONVERGED_BY <= t < death
+    beyond_the_hull = [
+        error
+        - hull_half_width(
+            [(at, reading) for at, reading in readings if at <= t],
+            0.0,
+            announced,
+            t,
+        )
+        for t, error in errors
+        if CONVERGED_BY <= t < death
     ]
     after_death = [error for t, error in errors if t > death]
-    assert max(while_ambiguous) < AMBIGUOUS_BOUND
-    assert after_death
-    assert max(after_death) <= DEADBAND
+    assert max(beyond_the_hull) <= HULL_MARGIN
+    assert max(after_death, default=0.0) <= DEADBAND
 
 
 @pytest.mark.parametrize("sampling", SAMPLINGS)
 @pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("truth", SEEK_TRUTHS)
 def test_seek_then_pause_holds_the_true_position(mode, truth, sampling):
-    assert seek_error(mode, truth, sampling) <= DEADBAND
+    readings = seek_readings(mode, truth, sampling)
+    pause = seek_pause(readings)
+    error = seek_error(mode, truth, sampling)
+    if alternative_is_alive(mode, readings, SEEK_ORIGIN, 2.0, pause):
+        half = hull_half_width(readings, SEEK_ORIGIN, 2.0, pause)
+        assert error - half <= HULL_MARGIN
+        return
+    assert error <= DEADBAND
 
 
 @pytest.mark.parametrize("sampling", SAMPLINGS)
@@ -213,16 +262,22 @@ def assert_converges_or_stays_bounded_while_ambiguous(
         assert max(late) <= DEADBAND
         return
     readings = readings_of(mode, real, sampling, LONG_HORIZON)
-    death = alternative_death(mode, readings, 0.0, announced)
-    assert death is not None
+    death = alternative_death(mode, readings, 0.0, announced) or math.inf
     errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
-    while_ambiguous = [
-        error for t, error in errors if CONVERGED_BY <= t < death
+    beyond_the_hull = [
+        error
+        - hull_half_width(
+            [(at, reading) for at, reading in readings if at <= t],
+            0.0,
+            announced,
+            t,
+        )
+        for t, error in errors
+        if CONVERGED_BY <= t < death
     ]
     after_death = [error for t, error in errors if t > death]
-    assert max(while_ambiguous) < AMBIGUOUS_BOUND
-    assert after_death
-    assert max(after_death) <= DEADBAND
+    assert max(beyond_the_hull) <= HULL_MARGIN
+    assert max(after_death, default=0.0) <= DEADBAND
 
 
 ANNOUNCED_HALF_AND_DOUBLE = (0.5, 2.0)
@@ -244,6 +299,15 @@ def test_players_at_announced_half_and_double_speed_converge(
 def test_a_round_player_slightly_fast_polled_every_0_6_seconds_converges():
     assert_converges_or_stays_bounded_while_ambiguous(
         "round", 1.5, 1.5 * 1.0407, 0.6
+    )
+
+
+@pytest.mark.parametrize("ratio", [1.04, 1.0414])
+def test_a_truncating_player_slightly_fast_at_half_speed_stays_in_the_hull(
+    ratio,
+):
+    assert_converges_or_stays_bounded_while_ambiguous(
+        "trunc", 0.5, 0.5 * ratio, 1.0
     )
 
 
