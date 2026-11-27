@@ -1188,6 +1188,38 @@ def test_a_correction_far_behind_the_display_steps_back_at_the_reading():
     assert at_reading[last_off + 1] <= clock.DEADBAND
 
 
+def test_a_whole_second_read_twice_holds_the_display_within_its_readings():
+    start, real, repeated_at = 7.96, 0.8, 3.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, 1.0, app="app", track_start=True)
+    for t in (1.0, 2.0, repeated_at):
+        reading = math.floor(start + real * t + 0.5)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+    slower_than_announced = 1.0
+    latest = reading + clock.QUANTUM / 2 + slower_than_announced * 1.0
+    assert reading == math.floor(start + real * 2.0 + 0.5)
+    assert c.position(repeated_at + 1.0) < latest
+
+
+def test_an_exact_player_steps_back_onto_its_reading_after_an_ignored_seek():
+    start, real, lead, sought_at = 57.36, 0.8, 2.0, 10.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, real, app="app", track_start=True)
+    c.seeked(
+        start + real * sought_at + lead, sought_at, sought_at, True, app="app"
+    )
+    landings = []
+    for k in range(20):
+        t = sought_at + k
+        reading = start + real * t
+        shown = c.position(t)
+        c.sync(reading, True, t, t, real, 600.0, app="app")
+        if c.position(t) < shown:
+            landings.append(abs(c.position(t) - reading))
+    assert landings
+    assert max(landings) <= clock.POSITION_RESOLUTION
+
+
 HELD_TARGET, HELD_AT = 198.4, 10.2
 
 
