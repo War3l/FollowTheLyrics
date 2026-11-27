@@ -1933,3 +1933,98 @@ def test_an_exact_player_ignoring_a_seek_never_learns_from_a_whole_reading(
             errors.append((t, abs(c.position(t) - truth)))
     assert max(error for _, error in errors) <= ignored + clock.DEADBAND
     assert max(error for at, error in errors if at > 21.0) <= clock.DEADBAND
+
+
+@pytest.mark.parametrize("quantize", [math.floor, round_half_up])
+@pytest.mark.parametrize("poll", [0.25, 0.4, 0.5, 0.9, 1.0, 1.5, 2.0])
+@pytest.mark.parametrize("target", [5.0, 30.0, 40.0])
+def test_a_quantized_player_at_its_announced_rate_ignoring_a_seek_ends_exact(
+    quantize, poll, target
+):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = 0.0
+    seeked = False
+    errors = []
+    while t < 45.0:
+        t = round(t + poll, 6)
+        if not seeked and t >= 15.0:
+            seeked = True
+            c.seeked(target, t, t, True, 1.0, app="app")
+        c.sync(quantize(t), True, t, t, 1.0, 600.0, app="app")
+        if t > 21.0:
+            errors.append(abs(c.position(t) - t))
+    assert max(errors) <= 1e-6
+
+
+@pytest.mark.parametrize("quantize", [math.floor, round_half_up])
+@pytest.mark.parametrize("real", [0.8, 1.25, 1.5])
+@pytest.mark.parametrize("poll", [0.25, 0.4, 0.5])
+@pytest.mark.parametrize("target", [5.0, 40.0])
+def test_a_rate_learned_before_an_ignored_paused_seek_survives_the_resume(
+    quantize, real, poll, target
+):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = 0.0
+    while t < 15.0:
+        t = round(t + poll, 6)
+        c.sync(quantize(real * t), True, t, t, 1.0, 600.0, app="app")
+    paused_at = t
+    c.status(False, t, 1.0)
+    c.seeked(target, t, t, False, 1.0, app="app")
+    while t < paused_at + 3.0:
+        t = round(t + poll, 6)
+        c.sync(quantize(real * paused_at), False, t, t, 1.0, 600.0, app="app")
+    c.status(True, t, 1.0)
+    resumed_at = t
+    speeds = []
+    while t < resumed_at + 20.0:
+        t = round(t + poll, 6)
+        truth = real * (paused_at + t - resumed_at)
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t > resumed_at + 10.0:
+            speeds.append(c.speed)
+    assert all(abs(speed - real) <= clock.MAX_SKEW * real for speed in speeds)
+
+
+@pytest.mark.parametrize("real", [0.8, 1.5, 2.0, 3.0])
+@pytest.mark.parametrize("poll", [0.4, 0.9, 1.0])
+def test_a_paused_ignored_seek_keeps_the_rate_the_cells_proved(real, poll):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = 0.0
+    paused_at = None
+    resumed_at = None
+    errors = []
+    while t < 45.0:
+        t = round(t + poll, 6)
+        if paused_at is None and t >= 15.0:
+            paused_at = t
+            c.status(False, t, 1.0)
+            c.seeked(5.0, t, t, False, 1.0, app="app")
+        if (
+            resumed_at is None
+            and paused_at is not None
+            and t >= paused_at + 3.0
+        ):
+            resumed_at = t
+            c.status(True, t, 1.0)
+        if paused_at is None:
+            truth = real * t
+        elif resumed_at is None:
+            truth = real * paused_at
+        else:
+            truth = real * (paused_at + t - resumed_at)
+        c.sync(
+            math.floor(truth),
+            resumed_at is not None or paused_at is None,
+            t,
+            t,
+            1.0,
+            600.0,
+            app="app",
+        )
+        if t > 21.0:
+            errors.append(abs(c.position(t) - truth))
+    assert max(errors) <= clock.QUANTUM / 2 + clock.DEADBAND

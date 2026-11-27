@@ -201,9 +201,14 @@ also push a change, and the app uses it as soon as it arrives.
   instant, so the phase is a half-second time shift that no reading reveals.
   Only an exact anchor narrows the set. When no cell survives a reading, the
   anchor was wrong (a seek the player ignored, for instance): the clock
-  restarts from the reading's own cells. The gain is then learned again from
-  those cells, which always admit the announced rate, so the prior brings it
-  back to 1 and the display speed follows at once: a rate fitted to a false
+  restarts from the cells it had before the anchor when they still admit the
+  reading, with the phase it had then, and from the reading's own cells
+  otherwise. A rewind confirmed against the anchor restarts the same way. A
+  player at its announced rate that ignored a seek thus goes on with the cells
+  it had already narrowed and is shown exact again
+  (`test_a_quantized_player_at_its_announced_rate_ignoring_a_seek_ends_exact`).
+  The gain is then learned again from those cells, which always admit the
+  announced rate when they are new, so the prior brings it back to 1 and the display speed follows at once: a rate fitted to a false
   anchor does not drag the display away from the middle of the new cells for
   tens of seconds
   (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`,
@@ -228,6 +233,16 @@ also push a change, and the app uses it as soon as it arrives.
   cell is kept, and only a gain that a cell rules out moves to the middle of
   the ratio range, so a learned 2x is not moved at every reading as the cells
   narrow (`test_a_learned_rate_that_fits_every_cell_is_kept_as_they_narrow`).
+  Such a gain is proven by the cells: it stays ahead of the prior as long as it
+  fits every cell, also after a restart that drops the cells without
+  contradicting them, so a rate learned before a paused seek the player ignored
+  is kept when playback resumes from fresh cells
+  (`test_a_rate_learned_before_an_ignored_paused_seek_survives_the_resume`,
+  `test_a_paused_ignored_seek_keeps_the_rate_the_cells_proved`). The proof dies
+  with the cells when no cell survives a reading. A cell admits a reading
+  within `POSITION_RESOLUTION` (1e-6 s) of its quantum window, so a cell
+  narrowed to a single point by a player whose true position lands on whole
+  seconds is not killed by rounding.
   The prior only costs anything when the player runs at a rate it does not
   announce: after a seek to 198.4 polled every 0.9 s, a truncating player at
   1.2x and a rounding player at 1x read the same whole seconds up to 6.3 s,
