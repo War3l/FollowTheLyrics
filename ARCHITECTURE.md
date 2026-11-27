@@ -200,7 +200,12 @@ also push a change, and the app uses it as soon as it arrives.
   the phases. A truncating player at position `x` and a rounding player at
   `x - 0.5` report the same whole number at every instant, so the phase is a
   half-second time shift that no reading reveals. Only an exact anchor narrows
-  the set.
+  the set. When no cell survives a reading, the anchor was wrong (a seek the
+  player ignored, for instance): the clock restarts from the reading's own
+  cells and drops the gain learned from the dead cells back to 1, so a rate
+  fitted to a false anchor does not drag the display away from the middle of
+  the new cells for tens of seconds
+  (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`).
 - **Explained jumps**: a whole-second reading that jumps by at least `JUMP`
   (1 s) resets the clock as a new position, unless the truth cells already
   explain it. A reading is explained when, after the cells have been sheared to
