@@ -236,7 +236,7 @@ class PlaybackClock:
         app: str = "",
     ):
         self._app = app
-        self._count_whole(position, at)
+        self._count_whole(position, playing, at)
         quantized = self._whole_run >= QUANTIZED_READS
         if quantized:
             self._gain_before_chance = None
@@ -459,10 +459,10 @@ class PlaybackClock:
             <= SEEK_RATIO_HIGH * elapsed
         )
 
-    def _count_whole(self, position: float, at: float):
+    def _count_whole(self, position: float, playing: bool, at: float):
         if not _whole(position):
             self._whole_run = 0
-        elif at > self._whole_at:
+        elif playing and at > self._whole_at:
             self._whole_run += 1
             self._whole_at = at
 

@@ -2018,6 +2018,15 @@ def test_a_rounded_reading_on_the_upper_edge_of_a_cell_keeps_it(target):
     )
 
 
+@pytest.mark.parametrize(
+    ("real", "poll"), [(0.8, 0.25), (0.8, 0.5), (0.8, 1.0), (2.0, 0.25)]
+)
+def test_an_exact_player_paused_on_a_whole_second_resumes_at_its_rate(
+    real, poll
+):
+    assert_paused_ignored_seek_error(float, real, poll, 16.0, 1e-6)
+
+
 def assert_paused_ignored_seek_error(quantize, real, poll, target, bound):
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)

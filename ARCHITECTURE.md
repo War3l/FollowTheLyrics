@@ -193,6 +193,9 @@ also push a change, and the app uses it as soon as it arrives.
 - **Truncated positions**: Firefox reports `Position` truncated to the whole
   second, while its `Seeked` carries the exact target. Three whole-number
   readings at distinct instants (`QUANTIZED_READS`) make the player quantized,
+  counted only while it plays, so an exact player paused on a whole second is
+  not mistaken for one and resumes at the rate it had
+  (`test_an_exact_player_paused_on_a_whole_second_resumes_at_its_rate`). It is
   read as truncated or rounded, with the same reading model `r = floor(x + c)`
   where `c` is 0 or 0.5. The clock keeps a set of candidate phases (`PHASES`, 0
   and 0.5) and, for each, the interval where the true position can lie.
