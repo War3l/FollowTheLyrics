@@ -5,11 +5,12 @@ import random
 import pytest
 
 from followthelyrics.overlay import clock
+from followthelyrics.playback import track
 
 DEADBAND = 0.15
 QUANTUM = 1.0
-PLAYER_RATIO_LOW = 1.0 / 16.0
-PLAYER_RATIO_HIGH = 16.0
+SLOWEST_REPORTABLE_RATIO = 1.0 / track.MAX_SPEED
+FASTEST_REPORTABLE_RATIO = track.MAX_SPEED
 RATIO_LOW = 0.25
 RATIO_HIGH = 4.0
 CONVERGED_BY = 20.0
@@ -336,10 +337,10 @@ def offset_ratio_polygons(readings, announced):
     polygons = []
     for phase, _ in phases:
         polygon = [
-            (-MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_LOW),
-            (MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_LOW),
-            (MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_HIGH),
-            (-MID_TRACK_OFFSET_SPAN, PLAYER_RATIO_HIGH),
+            (-MID_TRACK_OFFSET_SPAN, SLOWEST_REPORTABLE_RATIO),
+            (MID_TRACK_OFFSET_SPAN, SLOWEST_REPORTABLE_RATIO),
+            (MID_TRACK_OFFSET_SPAN, FASTEST_REPORTABLE_RATIO),
+            (-MID_TRACK_OFFSET_SPAN, FASTEST_REPORTABLE_RATIO),
         ]
         for at, reading in readings:
             low, high = reading_interval(reading, phase)
@@ -1093,7 +1094,7 @@ def reading_interval(reading, phase):
 
 def hypothesis_ratios(readings, hypothesis, phases):
     offset, played, switch = hypothesis
-    low, high = PLAYER_RATIO_LOW, PLAYER_RATIO_HIGH
+    low, high = SLOWEST_REPORTABLE_RATIO, FASTEST_REPORTABLE_RATIO
     for at, reading in readings:
         phase = phases[0] if switch is None or at < switch else phases[1]
         lowest, highest = reading_interval(reading, phase)
@@ -1432,7 +1433,12 @@ def test_a_double_speed_player_polled_each_second_errs_within_its_twins(
 
 
 def test_the_oracle_shares_the_clock_deadband_quantum_and_ratio_range():
-    assert (DEADBAND, QUANTUM, PLAYER_RATIO_LOW, PLAYER_RATIO_HIGH) == (
+    assert (
+        DEADBAND,
+        QUANTUM,
+        SLOWEST_REPORTABLE_RATIO,
+        FASTEST_REPORTABLE_RATIO,
+    ) == (
         clock.DEADBAND,
         clock.QUANTUM,
         clock.GAIN_MIN,

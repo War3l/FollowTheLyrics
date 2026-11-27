@@ -296,6 +296,11 @@ also push a change, and the app uses it as soon as it arrives.
     the surviving cell admits it, and drifts within that cell until a reading
     rules the announced rate out
     (`test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell`).
+  - the oracle admits every ratio between `SLOWEST_REPORTABLE_RATIO` and
+    `FASTEST_REPORTABLE_RATIO`, `1 / MAX_SPEED` and `MAX_SPEED`, the same
+    range as the clock's gain: an oracle limited to 0.25 to 4 left out true
+    ratios that the clock may adopt, so it judged a correct clock wrong on
+    the edges of that range;
   - a player joined at 5.05, 12.7 or 27.45 s instead of 0 is held, on every
     rate pair of the matrix, from `CONVERGED_BY` on, to the hull of the
     offsets and rates its readings older than `SETTLE_SECONDS` plus one poll
@@ -306,7 +311,30 @@ also push a change, and the app uses it as soon as it arrives.
     (`test_a_player_joined_mid_track_converges_within_what_its_readings_prove`).
 - **Scenario grids**: five grids of whole-second, rounding and exact players
   run in the test suite, each against a bound taken from the contract rather
-  than from the measured errors:
+  than from the measured errors. The full grids carry the `slow` marker and
+  run with `pytest -m slow` (or `pytest -m ""` for everything); the default
+  run keeps a fixed subset of each that turns through every class of player,
+  mode, poll period and target:
+  - backward steps of the display are measured on every scenario, between
+    two readings every 50 ms as well as at each reading. A step is allowed
+    only down to the highest position that the readings (the track start
+    included) still allow under the hypotheses of the scenario, the seek
+    applied or ignored, with any phase before and after it. Any part of a
+    step below that is counted, and none is allowed, on a grid of leads of
+    0.2 to 2 s after a seek, applied or ignored, followed from the start or
+    joined at the seek
+    (`test_a_lead_after_a_seek_is_stepped_back_only_as_far_as_the_readings_prove`),
+    and on 150 random players with and without a seek
+    (`test_a_random_player_is_stepped_back_only_as_far_as_the_readings_prove`).
+    A small lead after an ignored seek shows no step back over 0.05 s at all
+    (`test_a_small_lead_after_an_ignored_seek_shows_no_visible_step_back`);
+  - a player at twice its announced rate polled every second has twins that
+    no clock can tell apart: a truncating player started anywhere in
+    `[N, N + 1)` and a rounding one started in `[N - 0.5, N + 0.5)` give the
+    same readings and the same reported start. The error is therefore at
+    least half the width of those starts, 0.75 s, above `DEADBAND`, and the
+    clock stays within it over every twin
+    (`test_a_double_speed_player_polled_each_second_errs_within_its_twins`);
   - a seek the player ignores, playing or paused for 3 s, at 8 rates, 7 poll
     periods and 4 targets, is shown within `QUANTUM` of the truth from 6 s
     after the seek on; a seek of a single second is the limit, since an
@@ -404,14 +432,39 @@ also push a change, and the app uses it as soon as it arrives.
   the rate from the truth cells at once, and a doubted reading the cells
   explain narrows them. A rate learned far too high from the first readings
   is corrected instead of leaving the display running ahead while every
-  reading stays doubted. A confirmed rewind, or any jump of `JUMP` or more,
-  resets the clock unless the cells explain the reading.
+  reading stays doubted. A whole reading that the cells explain and that is
+  not behind the last accepted one is never doubted, even when the display is
+  more than `JUMP` ahead of it: a quantized player repeats its whole second,
+  and that repeat is not a rewind. A confirmed rewind, or any jump of `JUMP`
+  or more, resets the clock unless the cells explain the reading or the cells
+  kept from before the anchor revive on it. Only a whole reading revives
+  them, since they are cells of whole-second readings.
+- **Track start off a whole second**: a track that starts playing at a
+  position of at least `QUANTUM` that is not a whole second keeps that start
+  as the cells kept from before the anchor, a box of `POSITION_RESOLUTION`
+  around it at every reportable ratio. It is not an anchor: the display
+  follows the readings as before. A confirmed rewind revives it, so a player
+  slower than announced is narrowed from its real start instead of restarting
+  at the lower edge of the reading
+  (`test_a_random_player_is_stepped_back_only_as_far_as_the_readings_prove`,
+  seed 15). A jump forward drops it instead, because a fast player read early
+  admits a wide band of ratios from its start and adopting their middle would
+  overshoot and then step back
+  (`test_a_fast_player_from_its_track_start_shows_no_visible_step_back`).
 - **Display ahead after a correction**: a display ahead of the estimate waits
   for the track instead of stepping back, so small leads never show a backward
   jump. A correcting reading (it rules out a phase, explains a jump, or changes
   the learned gain once a single phase is left) that leaves the display more
-  than `HOLD_LEAD` (0.3 s) ahead moves it back to the estimate at once, instead
-  of freezing it for as long as the lead lasts.
+  than `HOLD_LEAD` (0.3 s) ahead moves it back at once, and so do a rate
+  relearned while a seek is held and cells revived by a rewind. The step back
+  goes only as far as the highest position still possible (`_proven_upper`:
+  the upper edge of the truth hull, or of the cells kept from before a seek
+  while they still admit the readings), never down to the estimate when the
+  estimate is lower: the display holds at that position until the estimate
+  reaches it (`_approach`). A step back is then never larger than what the
+  readings prove, which the tests measure on every scenario (see the
+  backward-step grids below). A reading taken at the very instant of a held
+  seek gives no elapsed time to learn a rate from, so it relearns nothing.
 - **Stall patience for quantized players**: a quantized player that holds its
   last whole reading is stalled only after one quantum at its effective rate,
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A
@@ -432,7 +485,11 @@ also push a change, and the app uses it as soon as it arrives.
     position, not the rate, so when the cells before it came from an anchor
     the target's box keeps only the ratios they admitted, and a player that
     ignores the seek is followed at the rate it had proved
-    (`test_an_ignored_playing_seek_is_followed_at_the_rate_proved_before_it`);
+    (`test_an_ignored_playing_seek_is_followed_at_the_rate_proved_before_it`).
+    An exact player that was never anchored still has its last reading: when
+    it has a fraction of a second, that reading is the position before the
+    seek, kept as the rival cells (`_exact_reading_cells`), so the hypothesis
+    of an ignored seek stays open for it too;
   - a `PlaybackStatus` change to `Paused`, dated at reception by the private
     listener. The paused value is frozen at that time, and the bounds are
     advanced to it, only when the interval is pinned (width at most
