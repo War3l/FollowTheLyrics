@@ -210,6 +210,8 @@ class PlaybackClock:
         if self._holds(position, playing, at, now):
             if playing and self._anchored and _whole(position):
                 self._narrow(position, at, speed)
+                if self._anchored:
+                    self._adopt_rate(at, now, speed)
             if playing and self._follows_base(position, at):
                 self._reading = (position, at)
             return
@@ -360,6 +362,9 @@ class PlaybackClock:
         self, position: float, at: float, now: float, speed: float
     ):
         self._narrow(position, at, speed)
+        self._adopt_rate(at, now, speed)
+
+    def _adopt_rate(self, at: float, now: float, speed: float):
         gain = self._gain
         self._learn_rate()
         if self._gain != gain:

@@ -1191,6 +1191,9 @@ def held_seek_times():
     return [round(11.1 + 0.9 * k, 6) for k in range(40)]
 
 
+HELD_HULL_MARGIN = 0.08
+
+
 def held_seek_readings(real, quantize):
     return [
         (t, quantize(HELD_TARGET + real * (t - HELD_AT)))
@@ -1229,7 +1232,12 @@ def held_seek_hull(readings):
             for phase in alive
             for bound in (low[phase], high[phase])
         ]
-        hulls.append((len(alive), max(ends) - min(ends)))
+        width = max(ends) - min(ends)
+        if any(low[phase] <= 1.0 <= high[phase] for phase in alive):
+            bound = width
+        else:
+            bound = width / 2 + HELD_HULL_MARGIN
+        hulls.append((len(alive), bound))
     return hulls
 
 
@@ -1282,9 +1290,9 @@ def test_a_seek_at_rate_is_exact_on_and_beside_the_reading_boundaries(
 def test_a_held_seek_off_its_announced_rate_stays_in_the_hull(real):
     errors = held_seek_errors(real)
     hulls = held_seek_hull(held_seek_readings(real, math.floor))
-    for (_, error), (alive, width) in zip(errors, hulls, strict=True):
+    for (_, error), (alive, bound) in zip(errors, hulls, strict=True):
         if alive == len(clock.PHASES):
-            assert abs(error) <= width
+            assert abs(error) <= bound
         else:
             assert abs(error) <= clock.DEADBAND
 

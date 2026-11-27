@@ -220,9 +220,10 @@ also push a change, and the app uses it as soon as it arrives.
   1.2x and a rounding player at 1x read the same whole seconds up to 6.3 s,
   when they are 1.26 s apart, so no estimate serves both
   (`test_a_truncating_player_fast_and_a_rounding_one_at_rate_read_alike`). The
-  contract, checked on every cell of the playback matrix against an oracle that
-  rebuilds the feasible positions from the readings alone
-  (`assert_announced_rate_contract`):
+  contract, checked on every cell of the playback matrix and on held seeks
+  against an oracle that rebuilds the feasible positions from the readings
+  alone (`assert_announced_rate_contract`,
+  `test_a_held_seek_off_its_announced_rate_stays_in_the_hull`):
   - a player at its announced rate is shown within 1e-6 s of its true position
     from the anchor on;
   - a player off its announced rate, while the oracle keeps both phases, is
@@ -348,8 +349,11 @@ also push a change, and the app uses it as soon as it arrives.
   holds the signalled target and ignores readings that disagree with it, until
   a reading confirms the target (within `DEADBAND`) or `SETTLE_SECONDS` (2 s)
   pass. A whole reading held this way still narrows the truth cells of an
-  anchored clock, and any held reading that advanced from the last accepted
-  reading at a ratio between
+  anchored clock. When the narrowed cells no longer fit the gain, the gain is
+  learned from them at once and the display moves to the middle of the cells,
+  so a player faster than announced is followed during the hold
+  (`test_a_held_seek_off_its_announced_rate_stays_in_the_hull`). Any held
+  reading that advanced from the last accepted reading at a ratio between
   `SEEK_RATIO_LOW` and `SEEK_RATIO_HIGH` becomes the base of the next jump, so
   a player running faster than announced is not read as a jump once the hold
   ends.
