@@ -206,6 +206,18 @@ also push a change, and the app uses it as soon as it arrives.
   fitted to a false anchor does not drag the display away from the middle of
   the new cells for tens of seconds
   (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`).
+- **Announced rate as the prior**: while the announced rate (gain 1) still
+  fits at least one phase cell, the clock keeps it, because players almost
+  always play at the rate they announce. This only costs anything when the
+  player runs at a rate it does not announce. After a seek to 198.4 polled
+  every 0.9 s, a truncating player at 1.2x and a rounding player at 1x read
+  the same whole seconds up to 6.3 s, when they are 1.26 s apart, so no
+  estimate serves both. The clock follows the announced one: for an
+  unannounced rate the error stays within the width of the positions the
+  readings allow while both phases fit, and within `DEADBAND` once a single
+  phase is left
+  (`test_a_truncating_player_fast_and_a_rounding_one_at_rate_read_alike`,
+  `test_a_held_seek_off_its_announced_rate_stays_in_the_hull`).
 - **Explained jumps**: a whole-second reading that jumps by at least `JUMP`
   (1 s) resets the clock as a new position, unless the truth cells already
   explain it. A reading is explained when, after the cells have been sheared to

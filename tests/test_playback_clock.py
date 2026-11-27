@@ -1184,18 +1184,72 @@ def test_a_correction_far_behind_the_display_steps_back_at_the_reading():
     assert at_reading[last_off + 1] <= clock.DEADBAND
 
 
+HELD_TARGET, HELD_AT = 198.4, 10.2
+
+
+def held_seek_times():
+    return [round(11.1 + 0.9 * k, 6) for k in range(40)]
+
+
+def held_seek_readings(real, quantize):
+    return [
+        (t, quantize(HELD_TARGET + real * (t - HELD_AT)))
+        for t in held_seek_times()
+    ]
+
+
 def held_seek_errors(real):
-    target, seeked_at = 198.4, 10.2
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
-    c.seeked(target, seeked_at, seeked_at, True, 1.0, app="app")
+    c.seeked(HELD_TARGET, HELD_AT, HELD_AT, True, 1.0, app="app")
     errors = []
-    for k in range(40):
-        t = round(11.1 + 0.9 * k, 6)
-        truth = target + real * (t - seeked_at)
-        c.sync(math.floor(truth), True, t, t, 1.0, 600.0, app="app")
-        errors.append((t - seeked_at, c.position(t) - truth))
+    for t, reading in held_seek_readings(real, math.floor):
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        truth = HELD_TARGET + real * (t - HELD_AT)
+        errors.append((t - HELD_AT, c.position(t) - truth))
     return errors
+
+
+def held_seek_hull(readings):
+    low = dict.fromkeys(clock.PHASES, -math.inf)
+    high = dict.fromkeys(clock.PHASES, math.inf)
+    hulls = []
+    for t, reading in readings:
+        elapsed = t - HELD_AT
+        for phase in clock.PHASES:
+            low[phase] = max(
+                low[phase], (reading - phase - HELD_TARGET) / elapsed
+            )
+            high[phase] = min(
+                high[phase], (reading - phase + 1.0 - HELD_TARGET) / elapsed
+            )
+        alive = [phase for phase in clock.PHASES if low[phase] < high[phase]]
+        ends = [
+            HELD_TARGET + elapsed * bound
+            for phase in alive
+            for bound in (low[phase], high[phase])
+        ]
+        hulls.append((len(alive), max(ends) - min(ends)))
+    return hulls
+
+
+def test_a_truncating_player_fast_and_a_rounding_one_at_rate_read_alike():
+    fast = held_seek_readings(1.2, math.floor)
+    at_rate = held_seek_readings(1.0, round_half_up)
+    assert fast[:7] == at_rate[:7]
+    assert fast[6][0] - HELD_AT == pytest.approx(6.3)
+    assert fast[7] != at_rate[7]
+
+
+@pytest.mark.parametrize("real", [1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.5])
+def test_a_held_seek_off_its_announced_rate_stays_in_the_hull(real):
+    errors = held_seek_errors(real)
+    hulls = held_seek_hull(held_seek_readings(real, math.floor))
+    for (_, error), (alive, width) in zip(errors, hulls, strict=True):
+        if alive == len(clock.PHASES):
+            assert abs(error) <= width
+        else:
+            assert abs(error) <= clock.DEADBAND
 
 
 @pytest.mark.parametrize("real", [1.2, 1.4])
@@ -1204,7 +1258,7 @@ def test_a_held_seek_on_a_player_faster_than_announced_converges(real):
     assert max(late) <= clock.DEADBAND
 
 
-def test_readings_during_a_held_seek_keep_the_display_within_a_jump():
+def test_readings_during_a_held_seek_at_1_4x_keep_the_display_within_a_jump():
     released = [
         abs(e) for elapsed, e in held_seek_errors(1.4) if 2.0 < elapsed < 6.0
     ]
