@@ -48,6 +48,7 @@ EXACT_RATE_PAIRS = (
 SEEK_TRUTHS = (1.0, 1.94, 2.0)
 ALTERNATIVE_OFFSET = {"trunc": 0.5, "round": 0.0}
 PHASES = (0.0, 0.5)
+MID_TRACK_OFFSET_SPAN = 1e4
 
 
 def round_half_up(value):
@@ -292,6 +293,104 @@ def assert_announced_rate_contract(mode, announced, real, sampling):
     )
     assert max(beyond_the_bound, default=0.0) <= 0.0
     assert max(after_death, default=0.0) <= 0.0
+
+
+MID_TRACK_STARTS = tuple(round(0.05 + 1.37 * k, 2) for k in range(40))
+
+
+def clip_offset_ratio_polygon(polygon, scale, low, high):
+    def keep_side(polygon, signed):
+        kept = []
+        for corner, following in zip(
+            polygon, polygon[1:] + polygon[:1], strict=True
+        ):
+            here, there = signed(corner), signed(following)
+            if here >= 0:
+                kept.append(corner)
+            if (here >= 0) != (there >= 0):
+                share = here / (here - there)
+                kept.append(
+                    (
+                        corner[0] + share * (following[0] - corner[0]),
+                        corner[1] + share * (following[1] - corner[1]),
+                    )
+                )
+        return kept
+
+    polygon = keep_side(polygon, lambda v: v[0] + v[1] * scale - low)
+    if polygon:
+        polygon = keep_side(polygon, lambda v: high - v[0] - v[1] * scale)
+    return polygon
+
+
+def offset_ratio_polygons(readings, announced):
+    phases = phase_pairs(readings, None)
+    polygons = []
+    for phase, _ in phases:
+        polygon = [
+            (-MID_TRACK_OFFSET_SPAN, RATIO_LOW),
+            (MID_TRACK_OFFSET_SPAN, RATIO_LOW),
+            (MID_TRACK_OFFSET_SPAN, RATIO_HIGH),
+            (-MID_TRACK_OFFSET_SPAN, RATIO_HIGH),
+        ]
+        for at, reading in readings:
+            low, high = reading_interval(reading, phase)
+            polygon = clip_offset_ratio_polygon(
+                polygon, announced * at, low, high
+            )
+            if not polygon:
+                break
+        if polygon:
+            polygons.append(polygon)
+    return polygons
+
+
+def mid_track_bound(readings, announced, at):
+    polygons = offset_ratio_polygons(readings, announced)
+    ends = [
+        offset + ratio * announced * at
+        for polygon in polygons
+        for offset, ratio in polygon
+    ]
+    rate_fits = any(
+        min(ratio for _, ratio in polygon)
+        <= 1.0
+        <= max(ratio for _, ratio in polygon)
+        for polygon in polygons
+    )
+    half = (max(ends) - min(ends)) / 2
+    return max(2 * half if rate_fits else half, DEADBAND) + HULL_MARGIN
+
+
+def mid_track_excess(mode, announced, real, sampling, start):
+    quantize = QUANTIZE[mode]
+    first = quantize(start)
+    c = clock.PlaybackClock(0.0)
+    c.reset(first, True, 0.0, announced, app="app")
+    readings = [(0.0, first)]
+    excess = []
+    for t in sample_times(sampling, SHORT_HORIZON):
+        truth = start + real * t
+        readings.append((t, quantize(truth)))
+        c.sync(readings[-1][1], True, t, t, announced, 600.0, app="app")
+        if t < CONVERGED_BY:
+            continue
+        known = [
+            (at, reading)
+            for at, reading in readings
+            if at <= t - clock.SETTLE_SECONDS - sampling
+        ]
+        bound = mid_track_bound(known, announced, t)
+        excess.append(abs(c.position(t) - truth) - bound)
+    return max(excess)
+
+
+@pytest.mark.parametrize("start", MID_TRACK_STARTS)
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_half_speed_player_joined_mid_track_holds_the_phase_it_proves(
+    mode, start
+):
+    assert mid_track_excess(mode, 1.0, 0.5, 1.0, start) <= 0.0
 
 
 def beyond_the_single_phase_bound(mode, readings, announced, errors, since):
@@ -1044,18 +1143,10 @@ NEAR_TARGET_SHORTFALLS = (
     *(("exact", 1.0, poll, False, 16.0) for poll in (0.4, 0.9)),
     ("exact", 0.8, 2.0, False, 16.0),
 )
-EXACT_RESUME_SHORTFALLS = tuple(
-    ("exact", real, 0.4, True, target)
-    for real in (1.0, 1.1, 1.25, 1.5, 2.0)
-    for target in IGNORED_SEEK_TARGETS
-)
 ORACLE_SHORTFALLS = {
     **dict.fromkeys(STALE_GAIN_SHORTFALLS, "a stale proven gain is kept"),
     **dict.fromkeys(
         NEAR_TARGET_SHORTFALLS, "a single hypothesis is kept near the target"
-    ),
-    **dict.fromkeys(
-        EXACT_RESUME_SHORTFALLS, "an exact resume outruns the reaction delay"
     ),
 }
 

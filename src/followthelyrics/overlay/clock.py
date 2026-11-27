@@ -17,9 +17,11 @@ CONFIRM_SECONDS = 1.0
 STILL = 0.01
 JUMP = 1.0
 MAX_SKEW = 0.05
+PROVEN_SKEW = 0.5
 QUANTIZED_TOLERANCE = 0.001
 QUANTIZED_READS = 3
 SLEW_SECONDS = 2.0
+PROVEN_SLEW_SECONDS = 0.5
 LEARN_SECONDS = 5.0
 LEARN_RESIDUAL = 0.1
 GAIN_MAX = track.MAX_SPEED
@@ -189,6 +191,7 @@ class PlaybackClock:
         self._window: tuple[float, list[tuple[float, float]]] | None = None
         self._hold: tuple[float, float, float, float | None] | None = None
         self._slew_until = now
+        self._closing_until = now
         self._reading = (0.0, now)
         self._shift: tuple[float, float] | None = None
         self._doubt: tuple[float, float] | None = None
@@ -410,13 +413,16 @@ class PlaybackClock:
             self._anchored = False
             corrected = False
         error = self._error(position, at, now, shown, effective, narrowing)
-        outside = False
-        if narrowing and self._anchored:
+        outside = strayed = False
+        if narrowing:
             lower, upper = self._hull(now - at, speed)
-            outside = error > SETTLE or not lower <= shown <= upper
+            margin = 0.0 if self._anchored else SETTLE
+            outside = (self._anchored and error > SETTLE) or not (
+                lower - margin <= shown <= upper + margin
+            )
+            strayed = not lower <= shown <= upper
         settled = self._settled(error, at, abs(jump) <= SETTLE)
         resumed_off = resumed and abs(error) > DEADBAND
-        tolerance = QUANTIZED_TOLERANCE if narrowing else DEADBAND
         relearned = learned
         if corrected and error < -HOLD_LEAD:
             self._anchor(shown + error, now, self.speed, now)
@@ -427,7 +433,8 @@ class PlaybackClock:
             now,
             stalled,
             settled or resumed_off or relearned or corrected or outside,
-            tolerance,
+            narrowing,
+            strayed,
         )
 
     def _learn_exact_rate(
@@ -532,6 +539,7 @@ class PlaybackClock:
     def _play(self, at: float, speed: float):
         frozen = None if self._truth_playing else self._pinned_position()
         self.playing = True
+        self._still_since = at
         self.speed = speed * self._gain
         if frozen is None:
             self._truth_t = at
@@ -686,6 +694,8 @@ class PlaybackClock:
         return died
 
     def _explained(self, position: float, at: float, speed: float) -> bool:
+        if not self._truth:
+            return True
         elapsed = at - self._truth_t if self._truth_playing else 0.0
         return bool(_admitting(self._truth, elapsed, position, speed))
 
@@ -919,9 +929,12 @@ class PlaybackClock:
         now: float,
         stalled: bool,
         settled: bool,
-        tolerance: float,
+        narrowing: bool,
+        strayed: bool,
     ):
+        tolerance = QUANTIZED_TOLERANCE if narrowing else DEADBAND
         holding = self._rate == 0.0 and now < self._slew_until
+        closing = strayed or now < self._closing_until
         if stalled and error < 0.0:
             self._anchor(shown, now, 0.0, math.inf)
         elif (holding or settled) and error < 0.0:
@@ -931,16 +944,20 @@ class PlaybackClock:
         elif abs(error) <= tolerance:
             self._anchor(shown, now, self.speed, now)
         else:
-            skew = max(-MAX_SKEW, min(MAX_SKEW, error / SLEW_SECONDS))
-            self._anchor(
-                shown,
-                now,
-                self.speed * (1.0 + skew),
-                now + error / (skew * self.speed),
+            limit, span = (
+                (PROVEN_SKEW, PROVEN_SLEW_SECONDS)
+                if closing
+                else (MAX_SKEW, SLEW_SECONDS)
             )
+            skew = max(-limit, min(limit, error / span))
+            until = now + error / (skew * self.speed)
+            self._anchor(shown, now, self.speed * (1.0 + skew), until)
+            if closing:
+                self._closing_until = until
 
     def _anchor(self, position: float, at: float, rate: float, until: float):
         self._anchor_pos = position
         self._anchor_t = at
         self._rate = rate
         self._slew_until = until
+        self._closing_until = at

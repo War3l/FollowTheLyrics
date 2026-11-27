@@ -7,6 +7,10 @@ import pytest
 from followthelyrics.overlay import clock
 from followthelyrics.playback import probe
 
+PROBED_RATIO_LOW = 0.5
+PROBED_RATIO_HIGH = 1.5
+PROBED_RATIO_STEPS = 10000
+
 STEP = 0.0125
 SYNC_EVERY_STEPS = 32
 
@@ -1530,15 +1534,41 @@ def test_a_slew_pause_before_an_exact_anchor_is_within_the_pre_anchor_bound(
 ):
     quantize = math.floor if mode == "trunc" else round_half_up
     c = clock.PlaybackClock(0.0)
-    c.reset(quantize(12.3), True, 0.0, 2.0, app="app", track_start=True)
+    readings = [(0.0, quantize(12.3))]
+    c.reset(readings[0][1], True, 0.0, 2.0, app="app", track_start=True)
     t = 0.0
     while t < 2.25 - 1e-9:
         t = round(t + 0.05, 6)
-        c.sync(quantize(12.3 + 1.94 * t), True, t, t, 2.0, 600.0, app="app")
+        readings.append((t, quantize(12.3 + 1.94 * t)))
+        c.sync(readings[-1][1], True, t, t, 2.0, 600.0, app="app")
     c.status(False, 2.25, 2.0)
     pinned = c.position(2.25)
-    assert abs(pinned - (12.3 + 1.94 * 2.25)) < 0.3
+    lowest, highest = positions_quantized_readings_allow(readings, 2.0, 2.25)
+    assert lowest <= pinned <= highest
     assert c.position(3.0) == pinned
+
+
+def positions_quantized_readings_allow(readings, announced, at):
+    ends = []
+    for phase in clock.PHASES:
+        for step in range(PROBED_RATIO_STEPS + 1):
+            ratio = PROBED_RATIO_LOW + step * (
+                (PROBED_RATIO_HIGH - PROBED_RATIO_LOW) / PROBED_RATIO_STEPS
+            )
+            low = max(
+                reading - phase - ratio * announced * t
+                for t, reading in readings
+            )
+            high = min(
+                reading + clock.QUANTUM - phase - ratio * announced * t
+                for t, reading in readings
+            )
+            if low <= high:
+                ends += [
+                    low + ratio * announced * at,
+                    high + ratio * announced * at,
+                ]
+    return min(ends), max(ends)
 
 
 @pytest.mark.parametrize("sampling", [0.1, 0.4, 0.8])
