@@ -994,18 +994,57 @@ def test_a_mode_switch_at_a_resume_reads_alike_until_the_rates_part():
 @pytest.mark.parametrize("poll", LATE_APPLY_POLLS)
 @pytest.mark.parametrize("real", LATE_APPLY_RATES)
 @pytest.mark.parametrize("mode", GRID_MODES)
-def test_until_a_late_seek_is_applied_the_display_trusts_the_sought_target(
+def test_until_a_late_seek_lands_the_display_follows_the_refuting_readings(
     mode, real, poll, lag
 ):
     rows = late_apply_rows(mode, real, poll, lag, LATE_APPLY_END)
     sought = rows[-1][3]
-    trusted = [
-        (shown, LATE_SEEK_TARGET + real * (t - sought))
+    refuted = [
+        (shown, truth)
         for t, truth, shown, _ in rows
         if sought < t < sought + lag
         and abs(truth - LATE_SEEK_TARGET - real * (t - sought)) >= clock.JUMP
     ]
-    assert all(abs(shown - target) <= DEADBAND for shown, target in trusted)
+    resolution = DEADBAND if mode == "exact" else QUANTUM
+    assert all(abs(shown - truth) <= resolution for shown, truth in refuted)
+
+
+REFUTED_SEEK_AT = 10.0
+REFUTED_SEEK_START = 23.4
+REFUTED_SEEK_RATE = 0.8
+
+
+def refuted_seek_errors(mode, lead, poll):
+    quantize = QUANTIZE[mode]
+    c = clock.PlaybackClock(0.0)
+    c.reset(
+        quantize(REFUTED_SEEK_START),
+        True,
+        0.0,
+        REFUTED_SEEK_RATE,
+        app="app",
+        track_start=True,
+    )
+    errors = []
+    for t in even_polls(poll, REFUTED_SEEK_AT + 5.0):
+        truth = REFUTED_SEEK_START + REFUTED_SEEK_RATE * t
+        if t == REFUTED_SEEK_AT:
+            c.seeked(truth + lead, t, t, True, 1.0, app="app")
+        c.sync(quantize(truth), True, t, t, REFUTED_SEEK_RATE, 600.0, app="app")
+        if t > REFUTED_SEEK_AT:
+            errors.append(c.position(t) - truth)
+    return errors
+
+
+@pytest.mark.parametrize("poll", (0.25, 1.0))
+@pytest.mark.parametrize("lead", (2.0, -2.0))
+@pytest.mark.parametrize("mode", GRID_MODES)
+def test_an_ignored_seek_is_given_up_at_the_first_reading_refuting_it(
+    mode, lead, poll
+):
+    resolution = DEADBAND if mode == "exact" else QUANTUM
+    errors = refuted_seek_errors(mode, lead, poll)
+    assert max(abs(error) for error in errors) <= resolution
 
 
 HIDDEN_REWIND_RATE = LATE_SEEK_TARGET / LATE_SEEK_AT

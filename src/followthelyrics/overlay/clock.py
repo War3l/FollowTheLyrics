@@ -195,6 +195,7 @@ class PlaybackClock:
         self._window: tuple[float, list[tuple[float, float]]] | None = None
         self._hold: tuple[float, float, float, float | None] | None = None
         self._given_up = False
+        self._refuted = False
         self._sought = False
         self._slew_until = now
         self._closing_until = now
@@ -244,6 +245,7 @@ class PlaybackClock:
         self._window = None
         self._hold = None
         self._given_up = False
+        self._refuted = False
         self._sought = False
         self._truth = {}
         self._anchored = False
@@ -319,7 +321,7 @@ class PlaybackClock:
             self._narrow_rival(position, at, speed)
         if self._seek_given_up(now):
             self._given_up = True
-        if self._holds(position, playing, at, now):
+        if self._holds(position, playing, at, now, speed):
             if (
                 playing
                 and self._anchored
@@ -370,13 +372,19 @@ class PlaybackClock:
             and self._explained(position, at, speed)
         )
         repeated_whole = quantized and explained and position >= last_position
-        rewind = self._doubts(
-            max(jump, 0.0) if repeated_whole else jump,
-            position,
-            at,
-            effective if playing else None,
-            quantized,
-        )
+        refuted = self._refuted
+        self._refuted = False
+        if refuted and jump <= -JUMP:
+            self._doubt = None
+            rewind = Rewind.CONFIRMED
+        else:
+            rewind = self._doubts(
+                max(jump, 0.0) if repeated_whole else jump,
+                position,
+                at,
+                effective if playing else None,
+                quantized,
+            )
         if rewind is Rewind.DOUBTED:
             if explained:
                 self._narrow(position, at, speed)
@@ -391,8 +399,11 @@ class PlaybackClock:
         if (rewind is Rewind.CONFIRMED or abs(jump) >= JUMP) and not explained:
             if jump > 0 and self._before_anchor_from_track_start:
                 self._cells_before_anchor = None
+            ratios = _ratio_range(self._truth) if self._truth else None
             if not self._revive(position, playing, at, now, speed):
-                self.reset(reported_now, playing, now, speed)
+                self.reset(reported_now, playing, now, speed, app)
+                if ratios is not None and quantized and playing:
+                    self._keep_ratios_across_jump(position, at, ratios)
             return
         learned = self._learn(position, at, speed, playing)
         effective = speed * self._gain
@@ -671,6 +682,14 @@ class PlaybackClock:
     def _remember_whole_track_start(self, position: float, at: float):
         self._cells_before_anchor = (self._reading_cells(position), at, True)
         self._before_anchor_from_track_start = True
+
+    def _keep_ratios_across_jump(
+        self, position: float, at: float, ratios: tuple[float, float]
+    ):
+        self._truth = self._reading_cells(position, ratios)
+        self._truth_t = at
+        self._truth_playing = True
+        self._anchored = True
 
     def _revived_cells(
         self, position: float, at: float, speed: float
@@ -1011,7 +1030,12 @@ class PlaybackClock:
         )
 
     def _holds(
-        self, position: float, playing: bool, at: float, now: float
+        self,
+        position: float,
+        playing: bool,
+        at: float,
+        now: float,
+        speed: float,
     ) -> bool:
         if self._hold is None:
             return False
@@ -1033,7 +1057,21 @@ class PlaybackClock:
         if abs(position - expected) <= DEADBAND:
             self._hold = None
             return False
+        if playing and at > held_at and self._refutes_seek(position, at, speed):
+            self._hold = None
+            self._given_up = True
+            self._refuted = True
+            self._sought = False
+            return False
         return True
+
+    def _refutes_seek(self, position: float, at: float, speed: float) -> bool:
+        if self._fraction_seen or not _whole(position):
+            return True
+        if not self._truth:
+            return False
+        elapsed = at - self._truth_t if self._truth_playing else 0.0
+        return not _admitting(self._truth, elapsed, position, speed)
 
     def _learn(
         self,

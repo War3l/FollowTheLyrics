@@ -940,11 +940,11 @@ def test_a_confirmed_paused_seek_is_kept_and_later_readings_apply():
     assert c.position(1.6) == pytest.approx(30.0)
 
 
-def test_a_playing_seek_ignores_a_stale_reading_until_settled():
+def test_a_playing_seek_is_given_up_at_the_first_reading_that_refutes_it():
     c = playing_clock()
     c.seeked(40.0, 1.0, 1.0, True, 1.0)
     c.sync(11.5, True, 1.5, 1.5, 1.0, 600.0)
-    assert c.position(1.5) == pytest.approx(40.5)
+    assert c.position(1.5) == pytest.approx(11.5)
     c.sync(40.6, True, 1.6, 1.6, 1.0, 600.0)
     assert c.position(1.6) == pytest.approx(40.6, abs=0.05)
 

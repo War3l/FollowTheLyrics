@@ -363,10 +363,10 @@ also push a change, and the app uses it as soon as it arrives.
     (`test_a_seek_applied_late_is_re_anchored_within_half_a_quantum`); the
     seek is sent on the first poll at or after its instant, so poll periods
     that do not land on it are exercised too;
-  - until the player applies a late seek, the display trusts the sought
-    target whenever the readings are at least `JUMP` away from it, so the
-    error during the delay is the length of the seek
-    (`test_until_a_late_seek_is_applied_the_display_trusts_the_sought_target`);
+  - until the player applies a late seek, the readings at least `JUMP` away
+    from the target refute it, so the display follows them, within `DEADBAND`
+    for an exact player and within `QUANTUM` for a quantized one
+    (`test_until_a_late_seek_lands_the_display_follows_the_refuting_readings`);
   - a late seek to the played position hides a rewind of the rate times the
     delay; it is absorbed to within half a quantum plus `DEADBAND` once the
     rate band proved before the seek has closed, twice the time it was proved
@@ -461,8 +461,10 @@ also push a change, and the app uses it as soon as it arrives.
   the upper edge of the truth hull, or of the cells kept from before a seek
   while they still admit the readings), never down to the estimate when the
   estimate is lower: the display holds at that position until the estimate
-  reaches it (`_approach`). A step back is then never larger than what the
-  readings prove, which the tests measure on every scenario (see the
+  reaches it (`_approach`). While a seek is held, a display ahead by less
+  than `SETTLE_SECONDS` of playback keeps waiting for the target instead; a
+  reading that refutes the seek ends that wait. A step back is then never
+  larger than what the readings prove, which the tests measure on every scenario (see the
   backward-step grids below). A reading taken at the very instant of a held
   seek gives no elapsed time to learn a rate from, so it relearns nothing.
 - **Stall patience for quantized players**: a quantized player that holds its
@@ -564,9 +566,22 @@ also push a change, and the app uses it as soon as it arrives.
   the next anchor, because the switch is a half-second time shift that the
   readings cannot show.
 - **Signalled seek hold, playing**: after a seek during playback, the clock
-  holds the signalled target and ignores readings that disagree with it, until
+  holds the signalled target while the readings stay compatible with it, until
   a reading confirms the target (within `DEADBAND`) or `SETTLE_SECONDS` (2 s)
-  pass. A whole reading held this way still narrows the truth cells of an
+  pass. The first reading taken after the seek that the target cannot explain
+  gives the seek up at once: a whole reading that no phase and no ratio of the
+  target cells admits, or any reading of a precise player that misses the
+  target by more than `DEADBAND`
+  (`test_a_playing_seek_is_given_up_at_the_first_reading_that_refutes_it`). A
+  rewind of `JUMP` or more found that way is followed without waiting
+  `CONFIRM_SECONDS`, and the display no longer waits for the target: from
+  that reading on it stays within `DEADBAND` of the track for an exact player
+  and within `QUANTUM` for a quantized one
+  (`test_an_ignored_seek_is_given_up_at_the_first_reading_refuting_it`). When
+  the clock restarts on a later jump of a quantized player, the cells it
+  restarts from keep the ratio range proven before the jump
+  (`test_a_seek_the_player_applies_late_keeps_the_rate_proven_before_it`). A
+  whole reading held this way still narrows the truth cells of an
   anchored clock when it advanced from the target at a ratio between
   `SEEK_RATIO_LOW` and `SEEK_RATIO_HIGH`, give or take one `QUANTUM`. When the
   narrowed cells no longer fit the gain, the gain is learned from them at once
