@@ -459,6 +459,7 @@ class PlaybackClock:
         survivors = {phase: cell for phase, cell in candidates.items() if cell}
         if not survivors:
             self._anchored = False
+            self._gain = 1.0
             self._phases.pop(self._app, None)
             survivors = self._reading_cells(position)
         elif self._anchored and len(survivors) == 1:

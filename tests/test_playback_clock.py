@@ -1211,6 +1211,26 @@ def test_readings_during_a_held_seek_keep_the_display_within_a_jump():
     assert max(released) < clock.JUMP
 
 
+def test_a_rate_learned_from_an_ignored_seek_dies_with_it():
+    lag = 0.01
+    c = clock.PlaybackClock(0.0)
+    c.reset(12.0, False, 0.0, 1.0)
+    c.seeked(12.5, 0.0, 0.0, False, 1.0)
+    t = 0.0
+    while t < 10.0:
+        t = round(t + 0.4, 6)
+        c.sync(12, False, t, t, 1.0, 600.0)
+    start = t
+    errors = []
+    while t < start + 60.0:
+        t = round(t + 0.4, 6)
+        truth = 12.0 + (t - start - lag)
+        c.sync(math.floor(truth), True, t, t, 1.0, 600.0)
+        if t >= start + 3.0:
+            errors.append(abs(c.position(t) - truth))
+    assert max(errors) <= errors[-1] + 0.01
+
+
 def test_a_mode_learned_for_one_app_is_not_applied_to_another():
     learned = clock.PlaybackClock(0.0)
     probed_track(learned, 0.0, 1.0, 0.5, 0.0, "first", True)
