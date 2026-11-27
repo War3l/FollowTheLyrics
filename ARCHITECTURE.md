@@ -296,6 +296,31 @@ also push a change, and the app uses it as soon as it arrives.
     the surviving cell admits it, and drifts within that cell until a reading
     rules the announced rate out
     (`test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell`).
+- **Scenario grids**: five grids of whole-second, rounding and exact players
+  run in the test suite, each against a bound taken from the contract rather
+  than from the measured errors:
+  - a seek the player ignores, playing or paused for 3 s, at 8 rates, 7 poll
+    periods and 4 targets, is shown within `QUANTUM` of the truth from 6 s
+    after the seek on; a seek of a single second is the limit, since an
+    ignored seek and one applied a second late read alike forever
+    (`test_a_seek_the_player_ignores_is_given_up_within_a_quantum`);
+  - a seek the player applies 0.2 to 1 s after it was sent is shown, from
+    `SETTLE_SECONDS` after the player applied it, within the distance the
+    delay hides (the rate times the delay) plus `QUANTUM`
+    (`test_a_seek_applied_late_errs_by_no_more_than_its_delay_and_a_quantum`);
+  - a player resumed 5 s after a pause is shown within the full width of the
+    cells its readings allow, with edges closed by `POSITION_RESOLUTION` as
+    the clock admits them, plus `HULL_MARGIN` when that width exceeds
+    `DEADBAND`, and within `DEADBAND` otherwise
+    (`test_a_resume_stays_in_the_width_of_the_cells_proved_before_the_pause`);
+  - a rewind of 15 s the clock was not told about is followed within half a
+    quantum from 5 s after it, since an exact player polled on whole seconds
+    reads like a truncating one
+    (`test_an_unannounced_rewind_is_followed_within_half_a_quantum`);
+  - a seek the player drops is given up, and the display is back within
+    `DEADBAND`, from `CONFIRM_SECONDS` after the first reading past
+    `SETTLE_SECONDS`, when the rewind back to the played position is confirmed
+    (`test_a_seek_the_player_drops_is_given_up_once_its_rewind_is_confirmed`).
 - **Explained jumps**: a whole-second reading that jumps by at least `JUMP`
   (1 s) resets the clock as a new position, unless the truth cells already
   explain it. A reading is explained when, after the cells have been sheared to

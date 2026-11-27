@@ -5,6 +5,7 @@ import pytest
 from followthelyrics.overlay import clock
 
 DEADBAND = clock.DEADBAND
+QUANTUM = clock.QUANTUM
 RATIO_LOW = 0.25
 RATIO_HIGH = 4.0
 CONVERGED_BY = 20.0
@@ -92,15 +93,17 @@ def alternative_death(mode, readings, origin, announced):
     return None
 
 
-def feasible_ratios(readings, origin, announced):
+def feasible_ratios(readings, origin, announced, slack=0.0):
     low = dict.fromkeys(PHASES, -math.inf)
     high = dict.fromkeys(PHASES, math.inf)
     for at, reading in readings:
         scale = announced * at
         for phase in PHASES:
-            low[phase] = max(low[phase], (reading - phase - origin) / scale)
+            low[phase] = max(
+                low[phase], (reading - phase - origin - slack) / scale
+            )
             high[phase] = min(
-                high[phase], (reading - phase + 1.0 - origin) / scale
+                high[phase], (reading - phase + 1.0 - origin + slack) / scale
             )
     return {
         phase: (low[phase], high[phase])
@@ -109,20 +112,17 @@ def feasible_ratios(readings, origin, announced):
     }
 
 
-def hull_half_width(readings, origin, announced, at):
+def hull_half_width(readings, origin, announced, at, slack=0.0):
+    ratios = feasible_ratios(readings, origin, announced, slack)
     ends = [
-        announced * at * bound
-        for bounds in feasible_ratios(readings, origin, announced).values()
-        for bound in bounds
+        announced * at * bound for bounds in ratios.values() for bound in bounds
     ]
     return (max(ends) - min(ends)) / 2
 
 
-def announced_rate_fits(readings, origin, announced):
-    return any(
-        low <= 1.0 <= high
-        for low, high in feasible_ratios(readings, origin, announced).values()
-    )
+def announced_rate_fits(readings, origin, announced, slack=0.0):
+    ratios = feasible_ratios(readings, origin, announced, slack)
+    return any(low <= 1.0 <= high for low, high in ratios.values())
 
 
 def hull_bound(readings, origin, announced, at):
@@ -132,17 +132,17 @@ def hull_bound(readings, origin, announced, at):
     return half + HULL_MARGIN
 
 
-def oracle_width(readings, origin, announced, at):
-    half = hull_half_width(readings, origin, announced, at)
-    if announced_rate_fits(readings, origin, announced):
+def oracle_width(readings, origin, announced, at, slack=0.0):
+    half = hull_half_width(readings, origin, announced, at, slack)
+    if announced_rate_fits(readings, origin, announced, slack):
         return 2 * half
     return half
 
 
-def single_phase_bound(mode, readings, origin, announced, at):
+def single_phase_bound(mode, readings, origin, announced, at, slack=0.0):
     if mode == "exact":
         return DEADBAND
-    width = oracle_width(readings, origin, announced, at)
+    width = oracle_width(readings, origin, announced, at, slack)
     if width > DEADBAND:
         return width + HULL_MARGIN
     return DEADBAND
@@ -418,3 +418,206 @@ def test_a_seek_the_player_applies_late_keeps_the_rate_proven_before_it(
     low = min(bounds[0] for bounds in ranges)
     high = max(bounds[1] for bounds in ranges)
     assert all(low <= speed <= high for speed in speeds)
+
+
+GRID_MODES = ("exact", "trunc", "round")
+GRID_SEEK_AT = 15.0
+GRID_PAUSE = 3.0
+GRID_END = 45.0
+IGNORED_SEEK_SETTLE = 6.0
+IGNORED_SEEK_RATES = (0.5, 0.8, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0)
+IGNORED_SEEK_POLLS = (0.25, 0.4, 0.5, 0.9, 1.0, 1.5, 2.0)
+IGNORED_SEEK_TARGETS = (40.0, 5.0, 16.0, 30.0)
+LATE_APPLY_RATES = (0.8, 1.1, 1.25, 1.5, 2.0)
+LATE_APPLY_POLLS = (0.4, 0.5, 1.0)
+LATE_APPLY_LAGS = (0.2, 0.5, 1.0)
+LATE_APPLY_END = 30.0
+RESUME_RATES = (1.0, 1.05, 1.1, 1.2, 0.9)
+RESUME_PAUSES = (20.3, 20.7, 30.3, 40.7)
+RESUME_POLLS = (0.4, 1.0)
+RESUME_AFTER = 5.0
+RESUME_SPAN = 10.0
+REWIND_AT = 20.0
+REWIND_BY = 15.0
+REWIND_END = 40.0
+REWIND_SETTLE = 5.0
+REWIND_POLLS = (0.25, 0.4, 0.5, 0.9, 1.0)
+DROPPED_SEEK_AT = 10.0
+DROPPED_SEEK_EARLY = 0.05
+DROPPED_SEEK_END = 30.0
+DROPPED_SEEK_POLLS = (0.4, 0.9, 1.0)
+DROPPED_SEEK_TARGETS = (40.0, 40.4, 5.0)
+
+
+def even_polls(step, end):
+    times = []
+    t = 0.0
+    while t < end:
+        t = round(t + step, 6)
+        times.append(t)
+    return times
+
+
+def started_clock():
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    return c
+
+
+def ignored_seek_errors(mode, real, poll, paused, target):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    sought = resumed = None
+    errors = []
+    for t in even_polls(poll, GRID_END):
+        if sought is None and t >= GRID_SEEK_AT:
+            sought = t
+            if paused:
+                c.status(False, t, 1.0)
+            c.seeked(target, t, t, not paused, 1.0, app="app")
+        if (
+            paused
+            and resumed is None
+            and sought is not None
+            and (t >= sought + GRID_PAUSE)
+        ):
+            c.status(True, t, 1.0)
+            resumed = t
+        if not paused or sought is None:
+            truth = real * t
+        elif resumed is None:
+            truth = real * sought
+        else:
+            truth = real * (sought + t - resumed)
+        playing = not paused or sought is None or resumed is not None
+        c.sync(quantize(truth), playing, t, t, 1.0, 600.0, app="app")
+        if t > GRID_SEEK_AT + IGNORED_SEEK_SETTLE:
+            errors.append(abs(c.position(t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize("target", IGNORED_SEEK_TARGETS)
+@pytest.mark.parametrize("paused", [False, True])
+@pytest.mark.parametrize("poll", IGNORED_SEEK_POLLS)
+@pytest.mark.parametrize("real", IGNORED_SEEK_RATES)
+@pytest.mark.parametrize("mode", GRID_MODES)
+def test_a_seek_the_player_ignores_is_given_up_within_a_quantum(
+    mode, real, poll, paused, target
+):
+    errors = ignored_seek_errors(mode, real, poll, paused, target)
+    assert max(errors) <= QUANTUM + clock.POSITION_RESOLUTION
+
+
+def late_apply_errors(mode, real, poll, lag):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    errors = []
+    for t in even_polls(poll, LATE_APPLY_END):
+        if t == LATE_SEEK_AT:
+            c.seeked(LATE_SEEK_TARGET, t, t, True, 1.0, app="app")
+        if t < LATE_SEEK_AT + lag:
+            truth = real * t
+        else:
+            truth = LATE_SEEK_TARGET + real * (t - LATE_SEEK_AT - lag)
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t >= LATE_SEEK_AT + lag + clock.SETTLE_SECONDS:
+            errors.append(abs(c.position(t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize("lag", LATE_APPLY_LAGS)
+@pytest.mark.parametrize("poll", LATE_APPLY_POLLS)
+@pytest.mark.parametrize("real", LATE_APPLY_RATES)
+@pytest.mark.parametrize("mode", GRID_MODES)
+def test_a_seek_applied_late_errs_by_no_more_than_its_delay_and_a_quantum(
+    mode, real, poll, lag
+):
+    errors = late_apply_errors(mode, real, poll, lag)
+    assert max(errors) <= real * lag + QUANTUM
+
+
+def full_width_bound(readings, at):
+    width = 2 * hull_half_width(
+        readings, 0.0, 1.0, at, clock.POSITION_RESOLUTION
+    )
+    if width > DEADBAND:
+        return width + HULL_MARGIN
+    return DEADBAND
+
+
+def resume_errors(mode, real, pause, poll):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    readings = []
+    t = 0.0
+    while t < pause - poll:
+        t = round(t + poll, 6)
+        readings.append((t, quantize(real * t)))
+        c.sync(readings[-1][1], True, t, t, 1.0, 600.0, app="app")
+    c.status(False, pause, 1.0)
+    c.status(True, pause + RESUME_AFTER, 1.0)
+    excess = []
+    t = pause + RESUME_AFTER
+    while t < pause + RESUME_AFTER + RESUME_SPAN:
+        t = round(t + poll, 6)
+        played = t - RESUME_AFTER
+        bound = full_width_bound(readings, played)
+        reading = quantize(real * played)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        excess.append(abs(c.position(t) - real * played) - bound)
+        readings.append((played, reading))
+    return excess
+
+
+@pytest.mark.parametrize("poll", RESUME_POLLS)
+@pytest.mark.parametrize("pause", RESUME_PAUSES)
+@pytest.mark.parametrize("real", RESUME_RATES)
+@pytest.mark.parametrize("mode", ("trunc", "round"))
+def test_a_resume_stays_in_the_width_of_the_cells_proved_before_the_pause(
+    mode, real, pause, poll
+):
+    assert max(resume_errors(mode, real, pause, poll)) <= 0.0
+
+
+def rewind_errors(mode, poll):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    errors = []
+    for t in even_polls(poll, REWIND_END):
+        truth = t if t < REWIND_AT else t - REWIND_BY
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t >= REWIND_AT + REWIND_SETTLE:
+            errors.append(abs(c.position(t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize("poll", REWIND_POLLS)
+@pytest.mark.parametrize("mode", ("exact", "trunc"))
+def test_an_unannounced_rewind_is_followed_within_half_a_quantum(mode, poll):
+    assert max(rewind_errors(mode, poll)) <= QUANTUM / 2
+
+
+def dropped_seek_errors(mode, poll, target):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    sent = None
+    errors = []
+    for t in even_polls(poll, DROPPED_SEEK_END):
+        if sent is None and t >= DROPPED_SEEK_AT:
+            sent = t - DROPPED_SEEK_EARLY
+            c.seeked(target, sent, sent, True, 1.0, app="app")
+        c.sync(quantize(t), True, t, t, 1.0, 600.0, app="app")
+        if sent is not None:
+            errors.append((t, abs(c.position(t) - t)))
+    doubted = next(t for t, _ in errors if t > sent + clock.SETTLE_SECONDS)
+    given_up = doubted + clock.CONFIRM_SECONDS
+    return [error for t, error in errors if t >= given_up]
+
+
+@pytest.mark.parametrize("target", DROPPED_SEEK_TARGETS)
+@pytest.mark.parametrize("poll", DROPPED_SEEK_POLLS)
+@pytest.mark.parametrize("mode", ("trunc", "round"))
+def test_a_seek_the_player_drops_is_given_up_once_its_rewind_is_confirmed(
+    mode, poll, target
+):
+    assert max(dropped_seek_errors(mode, poll, target)) <= DEADBAND
