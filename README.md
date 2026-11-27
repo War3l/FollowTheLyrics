@@ -139,6 +139,14 @@ mypy --platform linux
 pytest
 ```
 
+`pytest` leaves out the full scenario grids of the playback clock, marked `slow`,
+and runs a fixed subset of each one that still covers every class of player.
+Run the full grids before pushing a change to the clock:
+```
+pytest -m slow          (only the full grids)
+pytest -m ""            (everything)
+```
+
 ### Building the program
 - **On a pull request**, CI builds `FollowTheLyrics.exe` and the Linux binary and attaches them
   to the result (*Checks* tab, artifacts `FollowTheLyrics-exe` and `FollowTheLyrics-linux`):

@@ -438,10 +438,25 @@ OFFSET_CONVERGE_PAIRS = CONVERGE_PAIRS + tuple(
 )
 
 
-@pytest.mark.parametrize("start", CONVERGE_STARTS)
-@pytest.mark.parametrize("sampling", SAMPLINGS)
-@pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("announced,real", OFFSET_CONVERGE_PAIRS)
+def mid_track_cells():
+    for pair_index, (announced, real) in enumerate(OFFSET_CONVERGE_PAIRS):
+        for mode_index, mode in enumerate(MODES):
+            turn = pair_index + mode_index
+            for sampling in SAMPLINGS:
+                for start in CONVERGE_STARTS:
+                    sampled = (
+                        sampling == SAMPLINGS[turn % len(SAMPLINGS)]
+                        and start
+                        == CONVERGE_STARTS[turn % len(CONVERGE_STARTS)]
+                    )
+                    yield slow_unless(
+                        sampled, announced, real, mode, sampling, start
+                    )
+
+
+@pytest.mark.parametrize(
+    "announced, real, mode, sampling, start", list(mid_track_cells())
+)
 def test_a_player_joined_mid_track_converges_within_what_its_readings_prove(
     announced, real, mode, sampling, start
 ):
@@ -1159,12 +1174,16 @@ def ignored_seek_oracle_excess(mode, real, poll, paused, target):
 
 
 def ignored_seek_oracle_cells():
-    for mode in GRID_MODES:
-        for real in IGNORED_SEEK_RATES:
-            for poll in IGNORED_SEEK_POLLS:
-                for paused in (False, True):
-                    for target in IGNORED_SEEK_TARGETS:
-                        yield mode, real, poll, paused, target
+    players = itertools.product(
+        GRID_MODES, IGNORED_SEEK_RATES, IGNORED_SEEK_POLLS
+    )
+    for turn, (mode, real, poll) in enumerate(players):
+        sampled_target = IGNORED_SEEK_TARGETS[turn % len(IGNORED_SEEK_TARGETS)]
+        sampled_paused = (turn // len(IGNORED_SEEK_TARGETS)) % 2 == 1
+        for paused in (False, True):
+            for target in IGNORED_SEEK_TARGETS:
+                sampled = paused == sampled_paused and target == sampled_target
+                yield slow_unless(sampled, mode, real, poll, paused, target)
 
 
 @pytest.mark.parametrize(
