@@ -571,6 +571,7 @@ IGNORED_SEEK_SETTLE = 6.0
 IGNORED_SEEK_RATES = (0.5, 0.8, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0)
 IGNORED_SEEK_POLLS = (0.25, 0.4, 0.5, 0.9, 1.0, 1.5, 2.0)
 IGNORED_SEEK_TARGETS = (40.0, 5.0, 16.0, 30.0)
+IGNORED_SEEK_REPORTED_CELLS = (("trunc", 1.1, 1.0, 16.0),)
 LATE_APPLY_RATES = (0.8, 1.1, 1.25, 1.5, 2.0)
 LATE_APPLY_POLLS = (0.4, 0.5, 1.0)
 LATE_APPLY_LAGS = (0.2, 0.5, 1.0)
@@ -1222,7 +1223,9 @@ def ignored_seek_oracle_cells():
         sampled_paused = (turn // len(IGNORED_SEEK_TARGETS)) % 2 == 1
         for paused in (False, True):
             for target in IGNORED_SEEK_TARGETS:
-                sampled = paused == sampled_paused and target == sampled_target
+                sampled = (
+                    paused == sampled_paused and target == sampled_target
+                ) or (mode, real, poll, target) in IGNORED_SEEK_REPORTED_CELLS
                 yield slow_unless(sampled, mode, real, poll, paused, target)
 
 
