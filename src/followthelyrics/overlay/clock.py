@@ -1152,7 +1152,7 @@ class PlaybackClock:
     def _approach(
         self, shown: float, estimate: float, now: float, proven_upper: float
     ):
-        if not self.playing or estimate >= shown or self.speed <= 0.0:
+        if not self.playing or estimate >= shown:
             self._anchor(estimate, now, self.speed, now)
             return
         stepped = max(estimate, min(shown, proven_upper))
