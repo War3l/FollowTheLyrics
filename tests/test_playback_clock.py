@@ -1132,8 +1132,9 @@ def test_a_track_without_any_anchor_stays_within_the_pre_anchor_bound(
     )
 
 
-def test_without_the_probe_two_pre_anchor_truths_apart_read_the_same():
+def test_on_the_poll_grid_two_pre_anchor_truths_apart_read_the_same():
     rounded_origin, truncated_origin = 12.3, 12.99
+    floor = (truncated_origin - rounded_origin) / 2
     times = [round(0.4 * k, 6) for k in range(1, 151)]
     rounded = [math.floor(rounded_origin + t + 0.5) for t in times]
     truncated = [math.floor(truncated_origin + t) for t in times]
@@ -1150,7 +1151,7 @@ def test_without_the_probe_two_pre_anchor_truths_apart_read_the_same():
                 abs(shown - rounded_origin - t),
                 abs(shown - truncated_origin - t),
             )
-    assert worst >= (truncated_origin - rounded_origin) / 2
+    assert floor <= worst <= floor + 0.01
 
 
 def test_a_rate_learned_too_high_is_relearned_from_readings_left_behind():

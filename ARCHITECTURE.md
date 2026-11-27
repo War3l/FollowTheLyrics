@@ -294,11 +294,14 @@ also push a change, and the app uses it as soon as it arrives.
   (rounded, 2x). With the probe's rate reported 3% high or low, the worst is
   0.2717 (truncated, 1x, rate 3% high), and every case stays at or below
   0.28, the bound the test asserts.
-  Without the probe the bound is out of reach. A 0.4 s poll at 1x or 2x only
-  samples five fractional positions, so a rounded truth at 12.3 and a
-  truncated truth at 12.99 give the same readings forever, and any estimate
-  is at least 0.345 s off one of them
-  (`test_without_the_probe_two_pre_anchor_truths_apart_read_the_same`).
+  Without the probe the bound is out of reach on the 0.4 s poll grid. A 0.4 s
+  poll at 1x only samples five fractional positions, so a rounded truth at
+  12.3 and a truncated truth at 12.99 give the same readings forever, and any
+  estimate is at least 0.345 s off one of them. The clock stays within 0.01 s
+  of that floor, at 0.3492
+  (`test_on_the_poll_grid_two_pre_anchor_truths_apart_read_the_same`). A
+  0.1 s poll samples finer positions and tells these two truths apart, so the
+  floor is a property of the 0.4 s grid, not of the readings in general.
 - **Unanchored mode switch**: the learned mode is kept until an exact anchor
   contradicts it. A player that switches between truncated and rounded
   positions with no exact anchor in between stays up to about 0.5 s off until
