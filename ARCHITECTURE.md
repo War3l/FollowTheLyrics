@@ -420,8 +420,13 @@ also push a change, and the app uses it as soon as it arrives.
   is multiplied by the observed ratio, and the clock is re-anchored on the
   reading. When that reading is less than `JUMP` from the clock, the lead
   built up meanwhile was a drift, not a rewind, so a display ahead of the
-  reading holds still until the track reaches it instead of stepping back
-  (`test_an_exact_player_slower_than_announced_is_caught_without_a_step_back`).
+  reading goes on at `CATCH_UP_SHARE` (half) of the track's speed until the
+  track reaches it, instead of stepping back
+  (`test_an_exact_player_slower_than_announced_is_caught_without_a_step_back`)
+  or standing still: a player at a quarter of its announced rate, which used
+  to leave the display frozen for up to 8.6 s, keeps it moving
+  (`test_an_exact_player_at_a_quarter_of_its_rate_is_caught_without_freezing`).
+  Readings that come in meanwhile keep that pace and only shorten it.
   Smaller jumps keep the usual steering, so a 10% speed difference
   polled every 0.4 s is still absorbed by slewing.
 - **Backward jump**: a reading at least `JUMP` (1 s) behind the clock is

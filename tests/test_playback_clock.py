@@ -1952,6 +1952,28 @@ def test_an_exact_player_slower_than_announced_is_caught_without_a_step_back(
     assert final <= clock.DEADBAND
 
 
+def still_samples_of_a_slow_exact_player(real, poll):
+    c = clock.PlaybackClock(0.0)
+    c.reset(30.0, True, 0.0, 1.0)
+    shown = c.position(0.0)
+    still = 0
+    for tick in range(1, 601):
+        t = 0.05 * tick
+        if tick % round(poll / 0.05) == 0:
+            c.sync(30.0 + real * t, True, t, t, 1.0, 600.0)
+        if c.position(t) - shown <= clock.POSITION_RESOLUTION:
+            still += 1
+        shown = c.position(t)
+    return still
+
+
+@pytest.mark.parametrize("poll", [0.5, 1.0])
+def test_an_exact_player_at_a_quarter_of_its_rate_is_caught_without_freezing(
+    poll,
+):
+    assert still_samples_of_a_slow_exact_player(0.25, poll) == 0
+
+
 def test_an_exact_player_that_changes_rate_is_relearned_from_its_gain():
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)

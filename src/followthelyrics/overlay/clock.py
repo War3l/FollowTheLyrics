@@ -35,6 +35,7 @@ HOLD_LEAD = 0.3
 SEEK_RATIO_LOW = 0.25
 SEEK_RATIO_HIGH = 4.0
 MISMATCH_READS = 3
+CATCH_UP_SHARE = 0.5
 
 
 class Rewind(enum.Enum):
@@ -199,6 +200,7 @@ class PlaybackClock:
         self._sought = False
         self._slew_until = now
         self._closing_until = now
+        self._catching_up = False
         self._reading = (0.0, now)
         self._shift: tuple[float, float] | None = None
         self._doubt: tuple[float, float] | None = None
@@ -1182,9 +1184,12 @@ class PlaybackClock:
     ):
         tolerance = QUANTIZED_TOLERANCE if narrowing else DEADBAND
         holding = self._rate == 0.0 and now < self._slew_until
+        catching_up = self._catching_up and now < self._slew_until
         closing = strayed or now < self._closing_until
         if stalled and error < 0.0:
             self._anchor(shown, now, 0.0, math.inf)
+        elif catching_up and error < 0.0:
+            self._catch_up(shown, now, -error)
         elif (holding or settled) and error < 0.0:
             self._anchor(shown, now, 0.0, now - error / self.speed)
         elif settled:
@@ -1209,7 +1214,12 @@ class PlaybackClock:
     def _wait_for_the_track(self, shown: float, now: float):
         estimate = self.position(now)
         if shown > estimate:
-            self._anchor(shown, now, 0.0, now + (shown - estimate) / self.speed)
+            self._catch_up(shown, now, shown - estimate)
+
+    def _catch_up(self, shown: float, now: float, ahead: float):
+        rate = self.speed * CATCH_UP_SHARE
+        self._anchor(shown, now, rate, now + ahead / (self.speed - rate))
+        self._catching_up = True
 
     def _approach(
         self, shown: float, estimate: float, now: float, proven_upper: float
@@ -1228,3 +1238,4 @@ class PlaybackClock:
         self._rate = rate
         self._slew_until = until
         self._closing_until = at
+        self._catching_up = False
