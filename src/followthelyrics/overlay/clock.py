@@ -121,6 +121,7 @@ class PlaybackClock:
         self._anchor_t = now
         self._rate = 1.0
         self._gain = 1.0
+        self._gain_before_chance: float | None = None
         self._window: tuple[float, list[tuple[float, float]]] | None = None
         self._hold: tuple[float, float, float, float | None] | None = None
         self._slew_until = now
@@ -205,6 +206,11 @@ class PlaybackClock:
         self._app = app
         self._count_whole(position, at)
         quantized = self._whole_run >= QUANTIZED_READS
+        if quantized:
+            self._gain_before_chance = None
+        elif self._gain_before_chance is not None and not _whole(position):
+            self._drop_chance_gain(position, playing, at, now, speed)
+            return
         if not playing:
             self._freeze(at)
         if self._holds(position, playing, at, now):
@@ -214,7 +220,14 @@ class PlaybackClock:
                 and self._plausible_after_hold(position, at)
                 and _whole(position)
             ):
+                gain = self._gain
                 self._relearn_rate(position, at, now, speed)
+                if (
+                    not quantized
+                    and self._gain != gain
+                    and self._gain_before_chance is None
+                ):
+                    self._gain_before_chance = gain
             if playing and self._follows_base(position, at):
                 self._reading = (position, at)
             return
@@ -376,6 +389,20 @@ class PlaybackClock:
             lower, upper = self._truth_bounds()
             estimate = (lower + upper) / 2 + (now - at) * self.speed
             self._anchor(estimate, now, self.speed, now)
+
+    def _drop_chance_gain(
+        self,
+        position: float,
+        playing: bool,
+        at: float,
+        now: float,
+        speed: float,
+    ):
+        if self._gain_before_chance is not None:
+            self._gain = self._gain_before_chance
+        self._gain_before_chance = None
+        reported = position + ((now - at) * speed if playing else 0.0)
+        self.reset(reported, playing, now, speed)
 
     def _plausible_after_hold(self, position: float, at: float) -> bool:
         if self._hold is None:

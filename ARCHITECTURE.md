@@ -380,6 +380,13 @@ also push a change, and the app uses it as soon as it arrives.
   (`test_a_seek_read_one_poll_late_keeps_its_target_then_follows`), and a
   precise player that ignores the seek is not given the rate needed to reach
   it (`test_a_precise_player_ignoring_a_seek_is_not_given_the_rate_to_reach_it`).
+  A rate learned this way before the player has sent `QUANTIZED_READS` (3)
+  whole readings in a row stays provisional: the first reading that is not a
+  whole second proves the player precise, so the whole reading was a
+  coincidence. The gain goes back to its value before the hold and the clock
+  restarts on that reading, which bounds the error of an exact player that
+  ignores a seek by the jump it ignored
+  (`test_an_exact_player_ignoring_a_seek_never_learns_from_a_whole_reading`).
   Any held
   reading that advanced from the last accepted reading at a ratio between
   `SEEK_RATIO_LOW` and `SEEK_RATIO_HIGH` becomes the base of the next jump, so

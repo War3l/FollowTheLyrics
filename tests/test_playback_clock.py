@@ -1908,3 +1908,27 @@ def test_a_player_faster_than_announced_relearns_its_rate_after_an_ignored_seek(
             c.seeked(5.0, t, t, True, 1.0, app="app")
         c.sync(quantize(real * t), True, t, t, 1.0, 600.0, app="app")
     assert c.speed == pytest.approx(real, abs=0.01)
+
+
+@pytest.mark.parametrize("real", [0.5, 0.8, 1.25, 1.5])
+@pytest.mark.parametrize("poll", [0.25, 0.4, 0.5, 1.0])
+@pytest.mark.parametrize("target", [5.0, 16.0])
+def test_an_exact_player_ignoring_a_seek_never_learns_from_a_whole_reading(
+    real, poll, target
+):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = 0.0
+    ignored = None
+    errors = []
+    while t < 45.0:
+        t = round(t + poll, 6)
+        truth = real * t
+        if ignored is None and t >= 15.0:
+            ignored = abs(target - truth)
+            c.seeked(target, t, t, True, 1.0, app="app")
+        c.sync(truth, True, t, t, 1.0, 600.0, app="app")
+        if ignored is not None:
+            errors.append((t, abs(c.position(t) - truth)))
+    assert max(error for _, error in errors) <= ignored + clock.DEADBAND
+    assert max(error for at, error in errors if at > 21.0) <= clock.DEADBAND
