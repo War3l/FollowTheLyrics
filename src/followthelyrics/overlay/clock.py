@@ -178,6 +178,7 @@ class PlaybackClock:
         self._cells_before_anchor: (
             tuple[dict[float, list[tuple[float, float]]], float, bool] | None
         ) = None
+        self._rival_alive = False
         self._truth: dict[float, list[tuple[float, float]]] = {}
         self._truth_t = now
         self._truth_playing = False
@@ -242,6 +243,7 @@ class PlaybackClock:
         self._truth = {}
         self._anchored = False
         self._cells_before_anchor = None
+        self._rival_alive = False
         if track_start and playing and position < QUANTUM:
             self._exact(0.0, at, True)
 
@@ -262,6 +264,9 @@ class PlaybackClock:
             if self._anchored and self._truth
             else None
         )
+        rival = anchored_cells is not None and not self._covers(
+            anchored_cells, target, now
+        )
         self.reset(target, playing, now, speed, app)
         self._exact(
             target,
@@ -272,6 +277,7 @@ class PlaybackClock:
             else _ratio_range(anchored_cells[0]),
         )
         self._cells_before_anchor = anchored_cells
+        self._rival_alive = rival
         if playing:
             self._hold = (target, now, now + SETTLE_SECONDS, None)
         else:
@@ -699,13 +705,57 @@ class PlaybackClock:
             self._gain_proven = False
             self._restore_phase()
             survivors = self._revived_cells(position, at, speed)
-        elif self._anchored and len(survivors) == 1:
-            (phase,) = survivors
-            self._phases[self._app] = phase
+        else:
+            self._narrow_rival(position, at, speed)
+            if self._anchored and len(survivors) == 1:
+                (phase,) = survivors
+                self._phases[self._app] = phase
         self._truth = survivors
         self._truth_t = at
         self._truth_playing = True
         return died
+
+    def _narrow_rival(self, position: float, at: float, speed: float):
+        if self._cells_before_anchor is None or not self._rival_alive:
+            return
+        cells, since, playing = self._cells_before_anchor
+        elapsed = at - since if playing else 0.0
+        admitted = _admitting(cells, elapsed, position, speed)
+        self._rival_alive = bool(admitted)
+        if admitted:
+            self._cells_before_anchor = (admitted, at, True)
+
+    def _covers(
+        self,
+        anchored: tuple[dict[float, list[tuple[float, float]]], float, bool],
+        target: float,
+        now: float,
+    ) -> bool:
+        cells, since, playing = anchored
+        elapsed = now - since if playing else 0.0
+        speed = self.speed / self._gain
+        bounds = [
+            _xbounds(_shear(cell, elapsed, speed)) for cell in cells.values()
+        ]
+        return any(
+            lower - POSITION_RESOLUTION <= target <= upper + POSITION_RESOLUTION
+            for lower, upper in bounds
+        )
+
+    def _rival_bounds(self) -> tuple[float, float] | None:
+        if self._cells_before_anchor is None or not self._rival_alive:
+            return None
+        cells = self._cells_before_anchor[0]
+        slowest, fastest = _ratio_range(cells)
+        ratio = min(fastest, max(slowest, self._gain))
+        slices = [_slice(cell, ratio) for cell in cells.values()]
+        bounds = [bound for bound in slices if bound]
+        if not bounds:
+            return None
+        return (
+            min(lower for lower, _ in bounds),
+            max(upper for _, upper in bounds),
+        )
 
     def _explained(self, position: float, at: float, speed: float) -> bool:
         if not self._truth:
@@ -807,14 +857,18 @@ class PlaybackClock:
     ) -> float:
         if not quantized:
             return position + (now - at) * effective - shown
+        rival = self._rival_bounds()
         if (
-            len(self._truth) == 1
+            rival is None
+            and len(self._truth) == 1
             and self._ratio_spread() <= ERR_PIN
             and not self._announced_fits()
         ):
             lower, upper = self._hull(now - at, effective / self._gain)
             return (lower + upper) / 2 - shown
         lower, upper = self._truth_bounds()
+        if rival is not None:
+            lower, upper = min(lower, rival[0]), max(upper, rival[1])
         return (lower + upper) / 2 + (now - at) * effective - shown
 
     def _seek_given_up(self, now: float) -> bool:
