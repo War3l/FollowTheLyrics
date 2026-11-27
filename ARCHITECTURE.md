@@ -335,7 +335,11 @@ also push a change, and the app uses it as soon as it arrives.
   tracks of that application) once the candidates collapse to one. An exact
   anchor starts again from both phases, so it revises a remembered mode:
   - the start of a track at position 0 (`reset(track_start=True)`);
-  - a `Seeked` target, which is exact in microseconds;
+  - a `Seeked` target, which is exact in microseconds. A seek moves the
+    position, not the rate, so when the cells before it came from an anchor
+    the target's box keeps only the ratios they admitted, and a player that
+    ignores the seek is followed at the rate it had proved
+    (`test_an_ignored_playing_seek_is_followed_at_the_rate_proved_before_it`);
   - a `PlaybackStatus` change to `Paused`, dated at reception by the private
     listener. The paused value is frozen at that time, and the bounds are
     advanced to it, only when the interval is pinned (width at most

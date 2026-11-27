@@ -45,13 +45,25 @@ def _whole(seconds: float) -> bool:
     return seconds == math.floor(seconds)
 
 
-def _box(lower: float, upper: float) -> list[tuple[float, float]]:
+def _box(
+    lower: float,
+    upper: float,
+    ratios: tuple[float, float] = (GAIN_MIN, GAIN_MAX),
+) -> list[tuple[float, float]]:
+    slowest, fastest = ratios
     return [
-        (lower, GAIN_MIN),
-        (upper, GAIN_MIN),
-        (upper, GAIN_MAX),
-        (lower, GAIN_MAX),
+        (lower, slowest),
+        (upper, slowest),
+        (upper, fastest),
+        (lower, fastest),
     ]
+
+
+def _ratio_range(
+    cells: dict[float, list[tuple[float, float]]],
+) -> tuple[float, float]:
+    ratios = [ratio for cell in cells.values() for _, ratio in cell]
+    return min(ratios), max(ratios)
 
 
 def _turn(
@@ -245,7 +257,14 @@ class PlaybackClock:
             else None
         )
         self.reset(target, playing, now, speed, app)
-        self._exact(target, now, playing)
+        self._exact(
+            target,
+            now,
+            playing,
+            (GAIN_MIN, GAIN_MAX)
+            if anchored_cells is None
+            else _ratio_range(anchored_cells[0]),
+        )
         self._cells_before_anchor = anchored_cells
         if playing:
             self._hold = (target, now, now + SETTLE_SECONDS, None)
@@ -564,11 +583,19 @@ class PlaybackClock:
         self._truth_playing = True
         self._anchored = True
 
-    def _exact(self, truth: float, at: float, playing: bool):
+    def _exact(
+        self,
+        truth: float,
+        at: float,
+        playing: bool,
+        ratios: tuple[float, float] = (GAIN_MIN, GAIN_MAX),
+    ):
         self._phase_before_anchor = self._phases.get(self._app)
         self._truth = {
             phase: _box(
-                truth - POSITION_RESOLUTION, truth + POSITION_RESOLUTION
+                truth - POSITION_RESOLUTION,
+                truth + POSITION_RESOLUTION,
+                ratios,
             )
             for phase in PHASES
         }
@@ -707,8 +734,8 @@ class PlaybackClock:
         )
 
     def _ratio_spread(self) -> float:
-        ratios = [ratio for cell in self._truth.values() for _, ratio in cell]
-        return max(ratios) - min(ratios)
+        slowest, fastest = _ratio_range(self._truth)
+        return fastest - slowest
 
     def _announced_fits(self) -> bool:
         return any(

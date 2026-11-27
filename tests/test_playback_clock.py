@@ -2145,6 +2145,36 @@ def test_a_playing_seek_the_player_ignores_keeps_the_speed_its_cells_proved(
     assert max(abs(speed - before) for speed in speeds_after) <= 1e-9
 
 
+@pytest.mark.parametrize(
+    ("quantize", "real", "poll", "target"),
+    [
+        (math.floor, 3.0, 2.0, 40.0),
+        (math.floor, 2.0, 1.0, 5.0),
+        (math.floor, 0.5, 2.0, 5.0),
+        (math.floor, 1.0, 0.9, 16.0),
+        (round_half_up, 2.0, 0.5, 5.0),
+        (round_half_up, 0.8, 0.9, 16.0),
+    ],
+)
+def test_an_ignored_playing_seek_is_followed_at_the_rate_proved_before_it(
+    quantize, real, poll, target
+):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = 0.0
+    seeked = False
+    errors = []
+    while t < 45.0:
+        t = round(t + poll, 6)
+        if not seeked and t >= 15.0:
+            seeked = True
+            c.seeked(target, t, t, True, 1.0, app="app")
+        c.sync(quantize(real * t), True, t, t, 1.0, 600.0, app="app")
+        if t > 21.0:
+            errors.append(abs(c.position(t) - real * t))
+    assert max(errors) <= clock.DEADBAND
+
+
 @pytest.mark.parametrize("poll", [0.25, 0.4, 0.5, 1.0])
 def test_a_dropped_chance_rate_does_not_prove_the_rate_it_replaced(poll):
     c = clock.PlaybackClock(0.0)
