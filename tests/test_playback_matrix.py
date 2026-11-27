@@ -5,8 +5,10 @@ import pytest
 
 from followthelyrics.overlay import clock
 
-DEADBAND = clock.DEADBAND
-QUANTUM = clock.QUANTUM
+DEADBAND = 0.15
+QUANTUM = 1.0
+PLAYER_RATIO_LOW = 1.0 / 16.0
+PLAYER_RATIO_HIGH = 16.0
 RATIO_LOW = 0.25
 RATIO_HIGH = 4.0
 CONVERGED_BY = 20.0
@@ -22,6 +24,7 @@ SEEK_PAUSE_DELAY = 0.79
 SEEK_HORIZON = 16.0
 LATE_SEEK_AT = 15.0
 LATE_SEEK_TARGET = 30.0
+
 
 MODES = ("exact", "trunc", "round")
 SAMPLINGS = (0.1, 0.4, 0.8, 1.0)
@@ -1048,7 +1051,7 @@ def reading_interval(reading, phase):
 
 def hypothesis_ratios(readings, hypothesis, phases):
     offset, played, switch = hypothesis
-    low, high = clock.GAIN_MIN, clock.GAIN_MAX
+    low, high = PLAYER_RATIO_LOW, PLAYER_RATIO_HIGH
     for at, reading in readings:
         phase = phases[0] if switch is None or at < switch else phases[1]
         lowest, highest = reading_interval(reading, phase)
@@ -1167,3 +1170,12 @@ def test_an_ignored_seek_errs_within_the_bound_of_what_the_readings_allow(
     mode, real, poll, paused, target
 ):
     assert ignored_seek_oracle_excess(mode, real, poll, paused, target) <= 0.0
+
+
+def test_the_oracle_shares_the_clock_deadband_quantum_and_ratio_range():
+    assert (DEADBAND, QUANTUM, PLAYER_RATIO_LOW, PLAYER_RATIO_HIGH) == (
+        clock.DEADBAND,
+        clock.QUANTUM,
+        clock.GAIN_MIN,
+        clock.GAIN_MAX,
+    )
