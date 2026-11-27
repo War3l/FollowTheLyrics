@@ -940,6 +940,21 @@ def test_a_confirmed_paused_seek_is_kept_and_later_readings_apply():
     assert c.position(1.6) == pytest.approx(30.0)
 
 
+def test_a_second_seek_keeps_no_rival_from_the_track_start_the_first_replaced():
+    c = clock.PlaybackClock(0.0)
+    c.reset(30.0, True, 0.0, 1.0, app="app", track_start=True)
+    c.seeked(100.0, 0.5, 0.5, True, 1.0, app="app")
+    for t in (1.0, 1.5, 2.0, 2.5):
+        c.sync(99.75 + t, True, t, t, 1.0, 600.0, app="app")
+    c.seeked(200.0, 3.0, 3.0, True, 1.0, app="app")
+    errors = []
+    for t in (3.5, 4.0, 4.5, 5.0, 6.0, 8.0):
+        truth = 56.5 + t
+        c.sync(truth, True, t, t, 1.0, 600.0, app="app")
+        errors.append(abs(c.position(t) - truth))
+    assert max(errors) <= clock.DEADBAND
+
+
 def test_a_playing_seek_is_given_up_at_the_first_reading_that_refutes_it():
     c = playing_clock()
     c.seeked(40.0, 1.0, 1.0, True, 1.0)
