@@ -1363,6 +1363,55 @@ def test_a_fast_player_from_its_track_start_shows_no_visible_step_back(
     assert max((step for _, step, _ in steps), default=0.0) <= VISIBLE_STEP
 
 
+TWIN_RATE = 2.0
+TWIN_BASES = (10.0, 23.0, 41.0)
+TWIN_OFFSETS = {
+    "trunc": (0.0, 0.25, 0.5, 0.75, 0.999),
+    "round": (-0.5, -0.25, 0.0, 0.25, 0.499),
+}
+TWIN_END = 40.0
+TWIN_START_HALF_WIDTH = (QUANTUM + QUANTUM / 2) / 2
+
+
+def twin_starts(base):
+    return [
+        (mode, base + offset)
+        for mode, offsets in TWIN_OFFSETS.items()
+        for offset in offsets
+    ]
+
+
+def twin_readings(mode, start):
+    quantize = QUANTIZE[mode]
+    return [
+        (t, quantize(start + TWIN_RATE * t)) for t in even_polls(1.0, TWIN_END)
+    ]
+
+
+@pytest.mark.parametrize("base", TWIN_BASES)
+def test_a_double_speed_player_polled_each_second_errs_within_its_twins(
+    base,
+):
+    twins = twin_starts(base)
+    readings = twin_readings(*twins[0])
+    reported_start = QUANTIZE[twins[0][0]](twins[0][1])
+    assert all(twin_readings(*twin) == readings for twin in twins)
+    assert all(QUANTIZE[mode](start) == reported_start for mode, start in twins)
+    c = clock.PlaybackClock(0.0)
+    c.reset(reported_start, True, 0.0, 1.0, app="app", track_start=True)
+    worst = 0.0
+    for t, reading in readings:
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        if t >= CONVERGED_BY:
+            shown = c.position(t)
+            worst = max(
+                worst,
+                *(abs(shown - (start + TWIN_RATE * t)) for _, start in twins),
+            )
+    assert TWIN_START_HALF_WIDTH > DEADBAND
+    assert worst <= TWIN_START_HALF_WIDTH + clock.POSITION_RESOLUTION
+
+
 def test_the_oracle_shares_the_clock_deadband_quantum_and_ratio_range():
     assert (DEADBAND, QUANTUM, PLAYER_RATIO_LOW, PLAYER_RATIO_HIGH) == (
         clock.DEADBAND,
