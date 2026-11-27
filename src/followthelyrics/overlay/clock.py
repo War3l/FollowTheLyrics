@@ -95,7 +95,7 @@ def _admitting(
         phase: _clip(
             _shear(cell, elapsed, speed),
             position - phase - POSITION_RESOLUTION,
-            position + QUANTUM - phase + POSITION_RESOLUTION,
+            position + QUANTUM - phase,
         )
         for phase, cell in cells.items()
     }
