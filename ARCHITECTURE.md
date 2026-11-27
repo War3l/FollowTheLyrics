@@ -307,6 +307,17 @@ also push a change, and the app uses it as soon as it arrives.
     forward seek applied as late as its length gives the clock exactly the
     readings of an ignored one, playing or paused
     (`test_a_forward_seek_applied_as_late_as_its_length_reads_as_an_ignored_one`);
+  - each cell of that grid is also held, from 6 s after the seek on, to
+    the bound of what the readings allow: the hull of the positions that a
+    seek ignored or applied, with a phase switch at the resume or at the
+    seek, keeps feasible, from the readings older than `SETTLE_SECONDS` plus
+    one poll, at twice its half-width when rate 1 is feasible, never under
+    `DEADBAND`, plus `HULL_MARGIN`; 57 of the 1344 cells still exceed it and
+    are strict expected failures, so a fix shows up: a stale proven gain kept
+    while it fits the cells, a single hypothesis kept when the target is near
+    the played position, and an exact player resumed at 0.4 s polls that
+    outruns the reaction delay
+    (`test_an_ignored_seek_errs_within_the_bound_of_what_the_readings_allow`);
   - a rounding player that switches to truncation at a resume, at the rate
     that keeps its readings, reads like the original player until the two
     rates part, and the display stays between the two truths until then

@@ -466,11 +466,11 @@ def started_clock():
     return c
 
 
-def ignored_seek_errors(mode, real, poll, paused, target):
+def ignored_seek_trace(mode, real, poll, paused, target):
     quantize = QUANTIZE[mode]
     c = started_clock()
     sought = resumed = None
-    errors = []
+    trace = []
     for t in even_polls(poll, GRID_END):
         if sought is None and t >= GRID_SEEK_AT:
             sought = t
@@ -492,10 +492,19 @@ def ignored_seek_errors(mode, real, poll, paused, target):
         else:
             truth = real * (sought + t - resumed)
         playing = not paused or sought is None or resumed is not None
-        c.sync(quantize(truth), playing, t, t, 1.0, 600.0, app="app")
-        if t > GRID_SEEK_AT + IGNORED_SEEK_SETTLE:
-            errors.append(abs(c.position(t) - truth))
-    return errors
+        reading = quantize(truth)
+        c.sync(reading, playing, t, t, 1.0, 600.0, app="app")
+        trace.append((t, reading, c.position(t) - truth))
+    return trace, sought, resumed
+
+
+def ignored_seek_errors(mode, real, poll, paused, target):
+    trace, _, _ = ignored_seek_trace(mode, real, poll, paused, target)
+    return [
+        abs(error)
+        for t, _, error in trace
+        if t > GRID_SEEK_AT + IGNORED_SEEK_SETTLE
+    ]
 
 
 @pytest.mark.parametrize("target", IGNORED_SEEK_TARGETS)
@@ -917,3 +926,159 @@ def test_an_exact_player_behind_a_hidden_rewind_reads_like_a_truncating_twin(
         for t, truth, twin, shown in settled
         if t >= sought + RATE_BAND_CLOSES
     )
+
+
+def phase_pairs(readings, switch):
+    if any(reading != math.floor(reading) for _, reading in readings):
+        return [(None, None)]
+    return [
+        (before, after)
+        for before in PHASES
+        for after in PHASES
+        if switch is not None or before == after
+    ]
+
+
+def reading_interval(reading, phase):
+    if phase is None:
+        low, high = reading, reading
+    else:
+        low, high = reading - phase, reading + QUANTUM - phase
+    return low - clock.POSITION_RESOLUTION, high + clock.POSITION_RESOLUTION
+
+
+def hypothesis_ratios(readings, hypothesis, phases):
+    offset, played, switch = hypothesis
+    low, high = clock.GAIN_MIN, clock.GAIN_MAX
+    for at, reading in readings:
+        phase = phases[0] if switch is None or at < switch else phases[1]
+        lowest, highest = reading_interval(reading, phase)
+        start, span = offset(at), played(at)
+        if span <= 0:
+            if not lowest <= start <= highest:
+                return None
+            continue
+        low = max(low, (lowest - start) / span)
+        high = min(high, (highest - start) / span)
+        if low > high:
+            return None
+    return low, high
+
+
+def hypotheses_bound(readings, hypotheses, at):
+    ends = []
+    rate_fits = False
+    for hypothesis in hypotheses:
+        offset, played, switch = hypothesis
+        for phases in phase_pairs(readings, switch):
+            ratios = hypothesis_ratios(readings, hypothesis, phases)
+            if ratios is None:
+                continue
+            ends += [offset(at) + ratio * played(at) for ratio in ratios]
+            rate_fits = rate_fits or ratios[0] <= 1.0 <= ratios[1]
+    if not ends:
+        return None
+    half = (max(ends) - min(ends)) / 2
+    return max(2 * half if rate_fits else half, DEADBAND) + HULL_MARGIN
+
+
+def ignored_seek_hypotheses(paused, target, sought, resumed):
+    if not paused:
+        return [
+            (lambda at: 0.0, lambda at: at, None),
+            (
+                lambda at: 0.0 if at < sought else target,
+                lambda at: at if at < sought else at - sought,
+                sought,
+            ),
+        ]
+    resumed_at = math.inf if resumed is None else resumed
+    return [
+        (
+            lambda at: 0.0,
+            lambda at: min(at, sought) + max(0.0, at - resumed_at),
+            resumed_at,
+        ),
+        (
+            lambda at: 0.0 if at < sought else target,
+            lambda at: at if at < sought else max(0.0, at - resumed_at),
+            sought,
+        ),
+    ]
+
+
+def ignored_seek_oracle_excess(mode, real, poll, paused, target):
+    trace, sought, resumed = ignored_seek_trace(
+        mode, real, poll, paused, target
+    )
+    hypotheses = ignored_seek_hypotheses(paused, target, sought, resumed)
+    reaction = clock.SETTLE_SECONDS + poll
+    readings = [(t, reading) for t, reading, _ in trace]
+    excess = []
+    for t, _, error in trace:
+        if t <= GRID_SEEK_AT + IGNORED_SEEK_SETTLE:
+            continue
+        known = [
+            (at, reading)
+            for at, reading in readings
+            if at <= t - reaction + clock.POSITION_RESOLUTION
+        ]
+        bound = hypotheses_bound(known, hypotheses, t)
+        if bound is not None:
+            excess.append(abs(error) - bound)
+    return max(excess)
+
+
+STALE_GAIN_SHORTFALLS = (
+    *(("trunc", 1.5, 1.5, False, target) for target in IGNORED_SEEK_TARGETS),
+    *(("trunc", 0.8, 2.0, False, target) for target in IGNORED_SEEK_TARGETS),
+    *(("round", 1.25, 2.0, True, target) for target in IGNORED_SEEK_TARGETS),
+    *(("round", 0.5, 1.5, False, target) for target in (16.0, 30.0, 40.0)),
+    *(("round", 0.5, 1.0, False, target) for target in (16.0, 30.0, 40.0)),
+    *(("trunc", 1.1, 2.0, False, target) for target in (30.0, 40.0)),
+)
+NEAR_TARGET_SHORTFALLS = (
+    *(("trunc", 1.1, poll, False, 16.0) for poll in (0.25, 0.5, 1.0, 1.5)),
+    *(("trunc", 1.1, poll, True, 16.0) for poll in (0.25, 0.5, 0.9, 1.0, 1.5)),
+    *(("exact", 1.1, poll, False, 16.0) for poll in (0.25, 0.4, 0.5, 0.9, 1.5)),
+    *(("exact", 1.0, poll, False, 16.0) for poll in (0.4, 0.9)),
+    ("exact", 0.8, 2.0, False, 16.0),
+)
+EXACT_RESUME_SHORTFALLS = tuple(
+    ("exact", real, 0.4, True, target)
+    for real in (1.0, 1.1, 1.25, 1.5, 2.0)
+    for target in IGNORED_SEEK_TARGETS
+)
+ORACLE_SHORTFALLS = {
+    **dict.fromkeys(STALE_GAIN_SHORTFALLS, "a stale proven gain is kept"),
+    **dict.fromkeys(
+        NEAR_TARGET_SHORTFALLS, "a single hypothesis is kept near the target"
+    ),
+    **dict.fromkeys(
+        EXACT_RESUME_SHORTFALLS, "an exact resume outruns the reaction delay"
+    ),
+}
+
+
+def ignored_seek_oracle_cells():
+    for mode in GRID_MODES:
+        for real in IGNORED_SEEK_RATES:
+            for poll in IGNORED_SEEK_POLLS:
+                for paused in (False, True):
+                    for target in IGNORED_SEEK_TARGETS:
+                        cell = (mode, real, poll, paused, target)
+                        marks = ()
+                        if cell in ORACLE_SHORTFALLS:
+                            marks = pytest.mark.xfail(
+                                strict=True, reason=ORACLE_SHORTFALLS[cell]
+                            )
+                        yield pytest.param(*cell, marks=marks)
+
+
+@pytest.mark.parametrize(
+    "mode, real, poll, paused, target", list(ignored_seek_oracle_cells())
+)
+def test_an_ignored_seek_errs_within_the_bound_of_what_the_readings_allow(
+    mode, real, poll, paused, target
+):
+    assert ignored_seek_oracle_excess(mode, real, poll, paused, target) <= 0.0
