@@ -246,13 +246,13 @@ also push a change, and the app uses it as soon as it arrives.
   A gain learned from a single reading during a hold that the next fractional
   reading drops gives back both the earlier gain and whether it was proven, so
   it cannot lend its proof to a rate no cell ever measured
-  (`test_a_dropped_chance_rate_does_not_prove_the_rate_it_replaced`). A cell admits a reading
-  up to `POSITION_RESOLUTION` (1e-6 s) below the lower edge of its quantum
+  (`test_a_dropped_chance_rate_does_not_prove_the_rate_it_replaced`). A cell admits
+  a reading up to `POSITION_RESOLUTION` (1e-6 s) outside either edge of its quantum
   window, so a cell narrowed to a single point by a player whose true position
   lands on whole seconds is not killed by rounding
-  (`test_a_cell_narrowed_to_a_point_on_whole_seconds_survives_rounding`). The
-  upper edge needs no margin: a true position never reaches the next whole
-  second while the reading still shows this one.
+  (`test_a_cell_narrowed_to_a_point_on_whole_seconds_survives_rounding`), and
+  neither is a cell whose edge a rounding player lands on exactly
+  (`test_a_rounded_reading_on_the_upper_edge_of_a_cell_keeps_it`).
   The prior only costs anything when the player runs at a rate it does not
   announce: after a seek to 198.4 polled every 0.9 s, a truncating player at
   1.2x and a rounding player at 1x read the same whole seconds up to 6.3 s,

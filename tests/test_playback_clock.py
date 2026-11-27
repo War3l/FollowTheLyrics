@@ -1992,7 +1992,7 @@ def test_a_rate_learned_before_an_ignored_paused_seek_survives_the_resume(
 @pytest.mark.parametrize("poll", [0.4, 0.9, 1.0])
 def test_a_paused_ignored_seek_keeps_the_rate_the_cells_proved(real, poll):
     assert_paused_ignored_seek_error(
-        real, poll, 5.0, clock.QUANTUM / 2 + clock.DEADBAND
+        math.floor, real, poll, 5.0, clock.QUANTUM / 2 + clock.DEADBAND
     )
 
 
@@ -2001,15 +2001,24 @@ def test_a_paused_seek_one_second_ahead_the_player_ignores_keeps_its_cells(
     poll,
 ):
     assert_paused_ignored_seek_error(
-        1.0, poll, 16.0, clock.QUANTUM / 2 + clock.DEADBAND
+        math.floor, 1.0, poll, 16.0, clock.QUANTUM / 2 + clock.DEADBAND
     )
 
 
 def test_a_cell_narrowed_to_a_point_on_whole_seconds_survives_rounding():
-    assert_paused_ignored_seek_error(1.25, 0.9, 5.0, 2 * clock.DEADBAND)
+    assert_paused_ignored_seek_error(
+        math.floor, 1.25, 0.9, 5.0, 2 * clock.DEADBAND
+    )
 
 
-def assert_paused_ignored_seek_error(real, poll, target, bound):
+@pytest.mark.parametrize("target", [5.0, 16.0, 30.0, 40.0])
+def test_a_rounded_reading_on_the_upper_edge_of_a_cell_keeps_it(target):
+    assert_paused_ignored_seek_error(
+        round_half_up, 1.25, 0.25, target, clock.DEADBAND
+    )
+
+
+def assert_paused_ignored_seek_error(quantize, real, poll, target, bound):
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
     t = 0.0
@@ -2036,7 +2045,7 @@ def assert_paused_ignored_seek_error(real, poll, target, bound):
         else:
             truth = real * (paused_at + t - resumed_at)
         c.sync(
-            math.floor(truth),
+            quantize(truth),
             resumed_at is not None or paused_at is None,
             t,
             t,
