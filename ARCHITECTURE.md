@@ -193,19 +193,22 @@ also push a change, and the app uses it as soon as it arrives.
 - **Truncated positions**: Firefox reports `Position` truncated to the whole
   second, while its `Seeked` carries the exact target. Three whole-number
   readings at distinct instants (`QUANTIZED_READS`) make the player quantized,
-  read as truncated or rounded, with
-  the same reading model `r = floor(x + c)` where `c` is 0 or 0.5. The clock
-  keeps a set of candidate phases (`PHASES`, 0 and 0.5) and, for each, the
-  interval where the true position can lie. Readings alone cannot separate
-  the phases. A truncating player at position `x` and a rounding player at
-  `x - 0.5` report the same whole number at every instant, so the phase is a
-  half-second time shift that no reading reveals. Only an exact anchor narrows
-  the set. When no cell survives a reading, the anchor was wrong (a seek the
-  player ignored, for instance): the clock restarts from the reading's own
-  cells and drops the gain learned from the dead cells back to 1, so a rate
-  fitted to a false anchor does not drag the display away from the middle of
-  the new cells for tens of seconds
-  (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`).
+  read as truncated or rounded, with the same reading model `r = floor(x + c)`
+  where `c` is 0 or 0.5. The clock keeps a set of candidate phases (`PHASES`, 0
+  and 0.5) and, for each, the interval where the true position can lie.
+  Readings alone cannot separate the phases. A truncating player at position
+  `x` and a rounding player at `x - 0.5` report the same whole number at every
+  instant, so the phase is a half-second time shift that no reading reveals.
+  Only an exact anchor narrows the set. When no cell survives a reading, the
+  anchor was wrong (a seek the player ignored, for instance): the clock
+  restarts from the reading's own cells and drops the gain learned from the
+  dead cells back to 1, so a rate fitted to a false anchor does not drag the
+  display away from the middle of the new cells for tens of seconds
+  (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`). The new cells are
+  not an anchor, so they explain no jump: the readings after a skip soon after
+  a seek the player ignored restart the clock instead of being fitted as a rate
+  to cells that only bound one reading
+  (`test_a_skip_after_an_ignored_seek_is_read_from_the_readings_alone`).
 - **Announced rate as the prior**: while the announced rate (gain 1) still fits
   at least one phase cell, the clock keeps it, because players almost always
   play at the rate they announce. A slope fitted to the whole readings does not
@@ -215,6 +218,10 @@ also push a change, and the app uses it as soon as it arrives.
   every reading up to 8.1 s, which fits 1.11x as well, and the clock still
   follows 1x
   (`test_a_rounding_player_at_its_announced_rate_stays_exact_after_a_seek`).
+  When the announced rate fits no cell, a learned gain that still fits every
+  cell is kept, and only a gain that a cell rules out moves to the middle of
+  the ratio range, so a learned 2x is not moved at every reading as the cells
+  narrow (`test_a_learned_rate_that_fits_every_cell_is_kept_as_they_narrow`).
   The prior only costs anything when the player runs at a rate it does not
   announce: after a seek to 198.4 polled every 0.9 s, a truncating player at
   1.2x and a rounding player at 1x read the same whole seconds up to 6.3 s,

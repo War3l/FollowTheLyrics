@@ -1297,6 +1297,20 @@ def test_a_held_seek_off_its_announced_rate_stays_in_the_hull(real):
             assert abs(error) <= clock.DEADBAND
 
 
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_learned_rate_that_fits_every_cell_is_kept_as_they_narrow(mode):
+    quantize = math.floor if mode == "trunc" else round_half_up
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    late = []
+    for t in range(1, 61):
+        truth = 2.0 * t
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t >= 20:
+            late.append(abs(c.position(t) - truth))
+    assert max(late) <= clock.DEADBAND
+
+
 @pytest.mark.parametrize("real", [1.2, 1.4])
 def test_a_held_seek_on_a_player_faster_than_announced_converges(real):
     late = [abs(e) for elapsed, e in held_seek_errors(real) if elapsed >= 20.0]
@@ -1328,6 +1342,27 @@ def test_a_rate_learned_from_an_ignored_seek_dies_with_it():
         if t >= start + 3.0:
             errors.append(abs(c.position(t) - truth))
     assert max(errors) <= errors[-1] + 0.01
+
+
+@pytest.mark.parametrize("skip", [2.0, 3.0])
+def test_a_skip_after_an_ignored_seek_is_read_from_the_readings_alone(skip):
+    c = clock.PlaybackClock(0.0)
+    c.reset(12.0, True, 0.0, 1.0, app="app")
+    t = 0.0
+    while t < 6.0:
+        t = round(t + 1.0, 6)
+        c.sync(math.floor(12.0 + t), True, t, t, 1.0, 600.0, app="app")
+    c.seeked(40.0, t, t, True, 1.0, app="app")
+    start = t
+    errors = []
+    while t < start + 20.0:
+        t = round(t + 1.0, 6)
+        skipped = t - start >= 2.4
+        truth = 12.0 + t + (skip if skipped else 0.0)
+        c.sync(math.floor(truth), True, t, t, 1.0, 600.0, app="app")
+        if skipped:
+            errors.append(abs(c.position(t) - truth))
+    assert max(errors[1:]) <= clock.QUANTUM / 2
 
 
 def test_a_mode_learned_for_one_app_is_not_applied_to_another():
