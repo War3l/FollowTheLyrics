@@ -208,10 +208,13 @@ class PlaybackClock:
         if not playing:
             self._freeze(at)
         if self._holds(position, playing, at, now):
-            if playing and self._anchored and _whole(position):
-                self._narrow(position, at, speed)
-                if self._anchored:
-                    self._adopt_rate(at, now, speed)
+            if (
+                playing
+                and self._anchored
+                and self._plausible_after_hold(position, at)
+                and _whole(position)
+            ):
+                self._relearn_rate(position, at, now, speed)
             if playing and self._follows_base(position, at):
                 self._reading = (position, at)
             return
@@ -242,7 +245,11 @@ class PlaybackClock:
             )
             return
         rewind = self._doubts(
-            jump, position, at, effective if playing else None
+            jump,
+            position,
+            at,
+            effective if playing else None,
+            quantized,
         )
         explained = (
             playing
@@ -361,17 +368,26 @@ class PlaybackClock:
     def _relearn_rate(
         self, position: float, at: float, now: float, speed: float
     ):
-        self._narrow(position, at, speed)
-        self._adopt_rate(at, now, speed)
-
-    def _adopt_rate(self, at: float, now: float, speed: float):
         gain = self._gain
+        self._narrow(position, at, speed)
         self._learn_rate()
         if self._gain != gain:
             self.speed = speed * self._gain
             lower, upper = self._truth_bounds()
             estimate = (lower + upper) / 2 + (now - at) * self.speed
             self._anchor(estimate, now, self.speed, now)
+
+    def _plausible_after_hold(self, position: float, at: float) -> bool:
+        if self._hold is None:
+            return False
+        held_position, held_at, _, _ = self._hold
+        elapsed = at - held_at
+        advance = position - held_position
+        return (
+            SEEK_RATIO_LOW * elapsed - QUANTUM
+            <= advance
+            <= SEEK_RATIO_HIGH * elapsed + QUANTUM
+        )
 
     def _follows_base(self, position: float, at: float) -> bool:
         base_position, base_at = self._reading
@@ -466,8 +482,6 @@ class PlaybackClock:
             candidates = self._reading_cells(position)
         survivors = {phase: cell for phase, cell in candidates.items() if cell}
         if not survivors:
-            self._anchored = False
-            self._gain = 1.0
             self._phases.pop(self._app, None)
             survivors = self._reading_cells(position)
         elif self._anchored and len(survivors) == 1:
@@ -661,7 +675,12 @@ class PlaybackClock:
         )
 
     def _doubts(
-        self, jump: float, position: float, at: float, speed: float | None
+        self,
+        jump: float,
+        position: float,
+        at: float,
+        speed: float | None,
+        quantized: bool,
     ) -> Rewind:
         if speed is None:
             self._doubt = None
@@ -669,7 +688,8 @@ class PlaybackClock:
         if self._doubt is not None:
             first_position, first_at = self._doubt
             drift = position - (first_position + (at - first_at) * speed)
-            if abs(drift) <= SETTLE:
+            limit = QUANTUM if quantized else SETTLE
+            if abs(drift) < limit:
                 if at - first_at < CONFIRM_SECONDS:
                     return Rewind.DOUBTED
                 self._doubt = None

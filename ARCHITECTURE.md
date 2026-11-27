@@ -201,14 +201,20 @@ also push a change, and the app uses it as soon as it arrives.
   instant, so the phase is a half-second time shift that no reading reveals.
   Only an exact anchor narrows the set. When no cell survives a reading, the
   anchor was wrong (a seek the player ignored, for instance): the clock
-  restarts from the reading's own cells and drops the gain learned from the
-  dead cells back to 1, so a rate fitted to a false anchor does not drag the
-  display away from the middle of the new cells for tens of seconds
-  (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`). The new cells are
-  not an anchor, so they explain no jump: the readings after a skip soon after
-  a seek the player ignored restart the clock instead of being fitted as a rate
-  to cells that only bound one reading
-  (`test_a_skip_after_an_ignored_seek_is_read_from_the_readings_alone`).
+  restarts from the reading's own cells. The gain is then learned again from
+  those cells, which always admit the announced rate, so the prior brings it
+  back to 1 and the display speed follows at once: a rate fitted to a false
+  anchor does not drag the display away from the middle of the new cells for
+  tens of seconds
+  (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`,
+  `test_a_gain_fitted_to_an_ignored_seek_is_dropped_with_its_cells`). The new
+  cells go on narrowing with the readings that follow and explain the jumps
+  they admit, so a player faster than its announced rate learns its rate again
+  from them instead of restarting at every reading, which would leave the
+  display at the announced rate and half a second off for good
+  (`test_a_player_faster_than_announced_relearns_its_rate_after_an_ignored_seek`).
+  A skip soon after a seek the player ignored is still read from the readings
+  alone (`test_a_skip_after_an_ignored_seek_is_read_from_the_readings_alone`).
 - **Announced rate as the prior**: while the announced rate (gain 1) still fits
   at least one phase cell, the clock keeps it, because players almost always
   play at the rate they announce. A slope fitted to the whole readings does not
@@ -255,7 +261,12 @@ also push a change, and the app uses it as soon as it arrives.
   polled every 0.4 s is still absorbed by slewing.
 - **Backward jump**: a reading at least `JUMP` (1 s) behind the clock is
   doubted. It is confirmed as a rewind when the readings that follow keep to
-  it within `SETTLE` for `CONFIRM_SECONDS` (1 s). While it is doubted, a whole
+  it for `CONFIRM_SECONDS` (1 s), within `SETTLE` for a precise player and
+  within one `QUANTUM` for a quantized one, since two whole readings of a
+  playing track differ from its advance by up to a second. A quantized rewind
+  polled every 0.25 to 0.5 s is therefore confirmed instead of staying doubted
+  for good (`test_a_quantized_rewind_polled_quickly_is_confirmed`). While it
+  is doubted, a whole
   reading that still moved forward since the last accepted reading relearns
   the rate from the truth cells at once, and a doubted reading the cells
   explain narrows them. A rate learned far too high from the first readings
@@ -292,7 +303,9 @@ also push a change, and the app uses it as soon as it arrives.
     is only the clock's estimate;
   - a `PlaybackStatus` change to `Playing`, dated at reception. When the
     paused value is pinned, playback resumes from that exact value at the
-    edge time, so the resume is exact at 1x and at 2x. Otherwise the edge
+    edge time, so the resume is exact at 1x and at 2x, and a player that reads
+    in the other mode after the resume is followed exactly
+    (`test_a_pinned_resume_revises_the_reading_mode`). Otherwise the edge
     time still dates the restart, but the position stays unknown until the
     probe narrows it.
   An exact anchor is a box of width `2 * POSITION_RESOLUTION` (1e-6 s on each
@@ -356,10 +369,18 @@ also push a change, and the app uses it as soon as it arrives.
   holds the signalled target and ignores readings that disagree with it, until
   a reading confirms the target (within `DEADBAND`) or `SETTLE_SECONDS` (2 s)
   pass. A whole reading held this way still narrows the truth cells of an
-  anchored clock. When the narrowed cells no longer fit the gain, the gain is
-  learned from them at once and the display moves to the middle of the cells,
-  so a player faster than announced is followed during the hold
-  (`test_a_held_seek_off_its_announced_rate_stays_in_the_hull`). Any held
+  anchored clock when it advanced from the target at a ratio between
+  `SEEK_RATIO_LOW` and `SEEK_RATIO_HIGH`, give or take one `QUANTUM`. When the
+  narrowed cells no longer fit the gain, the gain is learned from them at once
+  and the display moves to the middle of the cells, so a player faster than
+  announced is followed during the hold
+  (`test_a_held_seek_off_its_announced_rate_stays_in_the_hull`). A reading
+  outside that ratio is not taken as evidence about the target: a stale
+  reading sent with the seek leaves the target in place and the rate intact
+  (`test_a_seek_read_one_poll_late_keeps_its_target_then_follows`), and a
+  precise player that ignores the seek is not given the rate needed to reach
+  it (`test_a_precise_player_ignoring_a_seek_is_not_given_the_rate_to_reach_it`).
+  Any held
   reading that advanced from the last accepted reading at a ratio between
   `SEEK_RATIO_LOW` and `SEEK_RATIO_HIGH` becomes the base of the next jump, so
   a player running faster than announced is not read as a jump once the hold

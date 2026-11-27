@@ -1264,11 +1264,12 @@ def test_a_rounding_player_at_its_announced_rate_stays_exact_after_a_seek():
         -clock.POSITION_RESOLUTION / 2,
     ],
 )
+@pytest.mark.parametrize("shift", [0.0, 3e-7, -3e-7])
 @pytest.mark.parametrize("fraction", [0.0, 0.1, 0.4, 0.5, 0.6])
 @pytest.mark.parametrize("poll", [0.4, 0.5, 0.9, 1.0])
 @pytest.mark.parametrize("mode", ["exact", "trunc", "round"])
 def test_a_seek_at_rate_is_exact_on_and_beside_the_reading_boundaries(
-    mode, poll, fraction, offset
+    mode, poll, fraction, shift, offset
 ):
     quantize = {"exact": float, "trunc": math.floor, "round": round_half_up}[
         mode
@@ -1279,7 +1280,7 @@ def test_a_seek_at_rate_is_exact_on_and_beside_the_reading_boundaries(
     c.seeked(target, HELD_AT, HELD_AT, True, 1.0, app="app")
     worst = 0.0
     for k in range(1, int(40 / poll) + 1):
-        t = round(HELD_AT + poll * k, 9)
+        t = round(HELD_AT + poll * k, 9) + shift
         truth = target + (t - HELD_AT) + offset
         c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
         worst = max(worst, abs(c.position(t) - truth))
@@ -1365,6 +1366,22 @@ def test_a_skip_after_an_ignored_seek_is_read_from_the_readings_alone(skip):
     assert max(errors[1:]) <= clock.QUANTUM / 2
 
 
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_gain_fitted_to_an_ignored_seek_is_dropped_with_its_cells(mode):
+    quantize = math.floor if mode == "trunc" else round_half_up
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    late = []
+    for t in range(1, 46):
+        if t == 15:
+            c.seeked(40.0, t, t, True, 1.0, app="app")
+        truth = 1.5 * t
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t > 21:
+            late.append(abs(c.position(t) - truth))
+    assert max(late) <= clock.QUANTUM
+
+
 def test_a_mode_learned_for_one_app_is_not_applied_to_another():
     learned = clock.PlaybackClock(0.0)
     probed_track(learned, 0.0, 1.0, 0.5, 0.0, "first", True)
@@ -1397,6 +1414,32 @@ def paused_quantized_clock(mode, pause, speed):
         c.sync(quantize(truth(t)), True, t, t, speed, 600.0, app="app")
     c.status(False, pause, speed)
     return c, quantize, truth, t
+
+
+@pytest.mark.parametrize("speed", [1.0, 2.0])
+@pytest.mark.parametrize("pause", [20.3, 20.7])
+@pytest.mark.parametrize(
+    "before,after", [("trunc", "round"), ("round", "trunc")]
+)
+def test_a_pinned_resume_revises_the_reading_mode(before, after, pause, speed):
+    modes = {"trunc": math.floor, "round": round_half_up}
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, speed, app="app", track_start=True)
+    t = 0.0
+    while t < pause - 0.4:
+        t = round(t + 0.4, 6)
+        c.sync(modes[before](speed * t), True, t, t, speed, 600.0, app="app")
+    c.status(False, pause, speed)
+    resume = pause + 5.0
+    c.status(True, resume, speed)
+    t = resume
+    worst = 0.0
+    while t < resume + 20.0:
+        t = round(t + 0.4, 6)
+        truth = speed * (pause + t - resume)
+        c.sync(modes[after](truth), True, t, t, speed, 600.0, app="app")
+        worst = max(worst, abs(c.position(t) - truth))
+    assert worst <= clock.POSITION_RESOLUTION
 
 
 @pytest.mark.parametrize("speed", [1.0, 2.0])
@@ -1785,3 +1828,83 @@ def test_an_exact_player_that_changes_rate_is_relearned_from_its_gain():
         if t >= switch_at + 3.0:
             worst = max(worst, abs(c.position(t) - truth))
     assert worst <= clock.DEADBAND
+
+
+@pytest.mark.parametrize("poll", [0.4, 0.5])
+@pytest.mark.parametrize("real", [0.8, 1.1, 1.25, 1.5])
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_seek_read_one_poll_late_keeps_its_target_then_follows(
+    mode, real, poll
+):
+    quantize = math.floor if mode == "trunc" else round_half_up
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    late = []
+    t = 0.0
+    while t < 30.0:
+        t = round(t + poll, 6)
+        if t == 15.0:
+            c.seeked(30.0, t, t, True, 1.0, app="app")
+        truth = real * t if t <= 15.0 else 30.0 + real * (t - 15.0)
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t == 15.0:
+            assert c.position(t) == pytest.approx(30.0, abs=1e-9)
+        if t >= 20.0:
+            late.append(abs(c.position(t) - truth))
+    assert max(late) <= clock.QUANTUM
+
+
+@pytest.mark.parametrize("poll", [0.25, 0.4, 0.5])
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_quantized_rewind_polled_quickly_is_confirmed(mode, poll):
+    quantize = math.floor if mode == "trunc" else round_half_up
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    late = []
+    t = 0.0
+    while t < 40.0:
+        t = round(t + poll, 6)
+        truth = t if t < 20.0 else t - 15.0
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        if t >= 25.0:
+            late.append(abs(c.position(t) - truth))
+    assert max(late) <= clock.QUANTUM
+
+
+@pytest.mark.parametrize("poll", [0.5, 1.0])
+def test_a_precise_player_ignoring_a_seek_is_not_given_the_rate_to_reach_it(
+    poll,
+):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    late = []
+    t = 0.0
+    while t < 45.0:
+        t = round(t + poll, 6)
+        if t == 15.0:
+            c.seeked(5.0, t, t, True, 1.0, app="app")
+        truth = 1.25 * t
+        c.sync(truth, True, t, t, 1.0, 600.0, app="app")
+        if t > 21.0:
+            late.append(abs(c.position(t) - truth))
+    assert max(late) <= clock.DEADBAND
+
+
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+@pytest.mark.parametrize("real", [1.5, 2.0])
+@pytest.mark.parametrize("poll", [1.0, 1.5, 2.0])
+def test_a_player_faster_than_announced_relearns_its_rate_after_an_ignored_seek(
+    mode, real, poll
+):
+    quantize = math.floor if mode == "trunc" else round_half_up
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = 0.0
+    seeked = False
+    while t < 60.0:
+        t = round(t + poll, 6)
+        if not seeked and t >= 15.0:
+            seeked = True
+            c.seeked(5.0, t, t, True, 1.0, app="app")
+        c.sync(quantize(real * t), True, t, t, 1.0, 600.0, app="app")
+    assert c.speed == pytest.approx(real, abs=0.01)
