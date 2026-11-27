@@ -279,7 +279,17 @@ also push a change, and the app uses it as soon as it arrives.
     announced rate still fits one of the oracle cells (the prior pulls toward a
     hypothesis the readings cannot rule out), and within half that width plus
     `HULL_MARGIN` (0.08 s) when it fits none;
-  - once the oracle keeps a single phase, the error is within `DEADBAND`.
+  - once the oracle keeps a single phase, the error is within `DEADBAND` while
+    the oracle width (the full width of its cell when the announced rate still
+    fits it, half that width otherwise) is at most `DEADBAND`, and within that
+    width plus `HULL_MARGIN` when it is wider. The width is the one the
+    readings before the instant allow: a reading that shrinks the cell under a
+    small lead of the display is followed smoothly, never by a step back, so
+    the display meets the narrower cell from the next reading on. A player
+    near its announced rate keeps it after the second phase dies, as long as
+    the surviving cell admits it, and drifts within that cell until a reading
+    rules the announced rate out
+    (`test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell`).
 - **Explained jumps**: a whole-second reading that jumps by at least `JUMP`
   (1 s) resets the clock as a new position, unless the truth cells already
   explain it. A reading is explained when, after the cells have been sheared to

@@ -130,6 +130,22 @@ def hull_bound(readings, origin, announced, at):
     return half + HULL_MARGIN
 
 
+def oracle_width(readings, origin, announced, at):
+    half = hull_half_width(readings, origin, announced, at)
+    if announced_rate_fits(readings, origin, announced):
+        return 2 * half
+    return half
+
+
+def single_phase_bound(mode, readings, origin, announced, at):
+    if mode == "exact":
+        return DEADBAND
+    width = oracle_width(readings, origin, announced, at)
+    if width > DEADBAND:
+        return width + HULL_MARGIN
+    return DEADBAND
+
+
 def converge_errors(mode, announced, real, sampling, horizon):
     quantize = QUANTIZE[mode]
     clk = clock.PlaybackClock(0.0)
@@ -243,17 +259,18 @@ def assert_announced_rate_contract(mode, announced, real, sampling):
         errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
         assert max(error for _, error in errors) <= EXACT_AT_RATE
         return
-    if not ambiguous_at_converged(mode, announced, real, sampling):
-        late = [
-            error
-            for t, error in converge_errors(
-                mode, announced, real, sampling, SHORT_HORIZON
-            )
-            if t >= CONVERGED_BY
-        ]
-        assert max(late) <= DEADBAND
-        return
     readings = readings_of(mode, real, sampling, LONG_HORIZON)
+    if not ambiguous_at_converged(mode, announced, real, sampling):
+        errors = converge_errors(mode, announced, real, sampling, SHORT_HORIZON)
+        assert (
+            max(
+                beyond_the_single_phase_bound(
+                    mode, readings, announced, errors, CONVERGED_BY
+                )
+            )
+            <= 0.0
+        )
+        return
     death = alternative_death(mode, readings, 0.0, announced) or math.inf
     errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
     beyond_the_bound = [
@@ -267,9 +284,26 @@ def assert_announced_rate_contract(mode, announced, real, sampling):
         for t, error in errors
         if CONVERGED_BY <= t < death
     ]
-    after_death = [error for t, error in errors if t > death]
-    assert max(beyond_the_bound) <= 0.0
-    assert max(after_death, default=0.0) <= DEADBAND
+    after_death = beyond_the_single_phase_bound(
+        mode, readings, announced, [(t, e) for t, e in errors if t > death], 0.0
+    )
+    assert max(beyond_the_bound, default=0.0) <= 0.0
+    assert max(after_death, default=0.0) <= 0.0
+
+
+def beyond_the_single_phase_bound(mode, readings, announced, errors, since):
+    return [
+        error
+        - single_phase_bound(
+            mode,
+            [(at, reading) for at, reading in readings if at < t],
+            0.0,
+            announced,
+            t,
+        )
+        for t, error in errors
+        if t >= since
+    ]
 
 
 ANNOUNCED_HALF_AND_DOUBLE = (0.5, 2.0)
@@ -321,3 +355,23 @@ def test_a_truncating_player_polled_every_second_keeps_its_first_readings():
 
 def test_an_exact_player_slower_than_announced_is_corrected_at_once():
     assert_announced_rate_contract("exact", 1.5, 1.125, 0.8)
+
+
+@pytest.mark.parametrize(
+    "mode,announced,ratio,sampling",
+    [
+        ("trunc", 0.5, 0.98, 0.8),
+        ("trunc", 1.0, 0.99, 0.8),
+        ("trunc", 0.5, 0.981234, 0.8),
+        ("trunc", 2.0, 0.995923, 0.8),
+        ("round", 1.5, 0.994767, 0.6),
+        ("trunc", 1.0, 0.988286, 0.8),
+        ("trunc", 2.0, 0.996838, 0.8),
+        ("trunc", 1.0, 0.964554, 1.0),
+        ("trunc", 2.0, 1.048561, 1.0),
+    ],
+)
+def test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell(
+    mode, announced, ratio, sampling
+):
+    assert_announced_rate_contract(mode, announced, announced * ratio, sampling)
