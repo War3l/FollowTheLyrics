@@ -732,3 +732,93 @@ def paused_ignored_seek_excess(mode, real, poll, target):
 
 def test_a_paused_ignored_seek_resumes_within_the_width_of_a_single_phase():
     assert max(paused_ignored_seek_excess("trunc", 0.5, 1.5, 16.0)) <= 0.0
+
+
+def forward_seek_errors(mode, poll, paused, ahead, applied):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    sought = resumed = None
+    errors = []
+    for t in even_polls(poll, GRID_END):
+        if sought is None and t >= GRID_SEEK_AT:
+            sought = t
+            if paused:
+                c.status(False, t, 1.0)
+            c.seeked(t + ahead, t, t, not paused, 1.0, app="app")
+        if (
+            paused
+            and resumed is None
+            and sought is not None
+            and t >= sought + GRID_PAUSE
+        ):
+            c.status(True, t, 1.0)
+            resumed = t
+        if sought is None:
+            played = t
+        elif paused:
+            played = sought if resumed is None else sought + t - resumed
+        else:
+            played = t
+        playing = not paused or sought is None or resumed is not None
+        truth = played
+        if applied and sought is not None and played >= sought + ahead:
+            target, applied_at = sought + ahead, sought + ahead
+            truth = target + (played - applied_at)
+        c.sync(quantize(truth), playing, t, t, 1.0, 600.0, app="app")
+        if t > GRID_SEEK_AT + IGNORED_SEEK_SETTLE:
+            errors.append(abs(c.position(t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize("ahead", [0.7, 1.0])
+@pytest.mark.parametrize("paused", [False, True])
+@pytest.mark.parametrize("poll", [0.9, 1.0])
+@pytest.mark.parametrize("mode", ["trunc", "round"])
+def test_a_forward_seek_applied_as_late_as_its_length_reads_as_an_ignored_one(
+    mode, poll, paused, ahead
+):
+    ignored = forward_seek_errors(mode, poll, paused, ahead, False)
+    late = forward_seek_errors(mode, poll, paused, ahead, True)
+    assert ignored == late
+    assert max(late) <= QUANTUM + clock.POSITION_RESOLUTION
+
+
+MODE_SWITCH_TWIN_RATE = 0.534
+
+
+def mode_switch_twin(poll_end):
+    c = started_clock()
+    resumed = GRID_SEEK_AT + GRID_PAUSE
+    rows = []
+    for t in even_polls(1.0, poll_end):
+        if t == GRID_SEEK_AT:
+            c.status(False, t, 1.0)
+            c.seeked(IGNORED_SEEK_TARGETS[1], t, t, False, 1.0, app="app")
+        if t == resumed:
+            c.status(True, t, 1.0)
+        played = t if t < GRID_SEEK_AT else GRID_SEEK_AT + max(0.0, t - resumed)
+        rounded = 0.5 * played
+        switched = MODE_SWITCH_TWIN_RATE * played
+        reading = QUANTIZE["round"](rounded)
+        twin = QUANTIZE["round" if t < resumed else "trunc"](switched)
+        c.sync(
+            reading,
+            t < GRID_SEEK_AT or t >= resumed,
+            t,
+            t,
+            1.0,
+            600.0,
+            app="app",
+        )
+        rows.append((t, reading, twin, rounded, switched, c.position(t)))
+    return rows
+
+
+def test_a_mode_switch_at_a_resume_reads_alike_until_the_rates_part():
+    rows = mode_switch_twin(32.0)
+    assert all(reading == twin for _, reading, twin, *_ in rows)
+    assert all(
+        min(a, b) - HULL_MARGIN <= shown <= max(a, b) + HULL_MARGIN
+        for t, _, _, a, b, shown in rows
+        if t >= GRID_SEEK_AT + GRID_PAUSE
+    )

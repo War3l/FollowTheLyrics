@@ -303,7 +303,14 @@ also push a change, and the app uses it as soon as it arrives.
     periods and 4 targets, is shown within `QUANTUM` of the truth from 6 s
     after the seek on; a seek of a single second is the limit, since an
     ignored seek and one applied a second late read alike forever
-    (`test_a_seek_the_player_ignores_is_given_up_within_a_quantum`);
+    (`test_a_seek_the_player_ignores_is_given_up_within_a_quantum`), and a
+    forward seek applied as late as its length gives the clock exactly the
+    readings of an ignored one, playing or paused
+    (`test_a_forward_seek_applied_as_late_as_its_length_reads_as_an_ignored_one`);
+  - a rounding player that switches to truncation at a resume, at the rate
+    that keeps its readings, reads like the original player until the two
+    rates part, and the display stays between the two truths until then
+    (`test_a_mode_switch_at_a_resume_reads_alike_until_the_rates_part`);
   - a seek the player applies 0.2 to 1 s after it was sent is shown, from
     `SETTLE_SECONDS` after the player applied it, within the distance the
     delay hides (the rate times the delay) plus `QUANTUM`
