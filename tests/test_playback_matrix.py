@@ -1,5 +1,6 @@
 import itertools
 import math
+import random
 
 import pytest
 
@@ -59,6 +60,10 @@ def round_half_up(value):
 
 
 QUANTIZE = {"exact": float, "trunc": math.floor, "round": round_half_up}
+
+
+def slow_unless(sampled, *values):
+    return pytest.param(*values, marks=() if sampled else pytest.mark.slow)
 
 
 def sample_times(sampling, horizon):
@@ -753,7 +758,7 @@ def dropped_seek_errors(mode, poll, target):
             errors.append((t, abs(c.position(t) - t)))
     doubted = next(t for t, _ in errors if t > sent + clock.SETTLE_SECONDS)
     given_up = doubted + clock.CONFIRM_SECONDS
-    return [error for t, error in errors if t >= given_up]
+    return [(t - given_up, error) for t, error in errors if t >= given_up]
 
 
 @pytest.mark.parametrize("target", DROPPED_SEEK_TARGETS)
@@ -762,7 +767,11 @@ def dropped_seek_errors(mode, poll, target):
 def test_a_seek_the_player_drops_is_given_up_once_its_rewind_is_confirmed(
     mode, poll, target
 ):
-    assert max(dropped_seek_errors(mode, poll, target)) <= DEADBAND
+    errors = dropped_seek_errors(mode, poll, target)
+    assert max(error for _, error in errors) <= (
+        QUANTUM + clock.POSITION_RESOLUTION
+    )
+    assert max(error for since, error in errors if since >= QUANTUM) <= DEADBAND
 
 
 @pytest.mark.parametrize(
@@ -1165,6 +1174,193 @@ def test_an_ignored_seek_errs_within_the_bound_of_what_the_readings_allow(
     mode, real, poll, paused, target
 ):
     assert ignored_seek_oracle_excess(mode, real, poll, paused, target) <= 0.0
+
+
+STEP_SEEK_AT = 10.0
+STEP_END = 30.0
+STEP_SAMPLE = 0.05
+STEP_TOLERANCE = 1e-5
+VISIBLE_STEP = 0.05
+LEAD_RATES = (1.0, 1.25, 0.8)
+LEAD_POLLS = (0.25, 1.0)
+LEADS = (0.2, 0.5, 1.0, 2.0)
+LEAD_SEEDS = tuple(range(6))
+LEAD_FAMILIES = {
+    "ignored": (False, True),
+    "applied": (True, True),
+    "ignored joined at the seek": (False, False),
+    "applied joined at the seek": (True, False),
+}
+FUZZ_SEEDS = tuple(range(150))
+FUZZ_MODES = ("trunc", "round", "exact")
+FUZZ_RATES = (0.5, 0.8, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0)
+FUZZ_POLLS = (0.1, 0.25, 0.4, 0.5, 1.0)
+FUZZ_SEEK_SPREAD = (0.2, 1.5)
+FUZZ_REPORTED_SEEDS = (16, 52, 64, 65, 73)
+FUZZ_SAMPLE_EVERY = 15
+
+
+def random_start(seed):
+    return random.Random(seed).uniform(0.0, 60.0)
+
+
+def step_hypotheses(start, target):
+    held = (lambda at: start, lambda at: at, None)
+    if target is None:
+        return [held]
+    sought = (
+        lambda at: start if at < STEP_SEEK_AT else target,
+        lambda at: at if at < STEP_SEEK_AT else at - STEP_SEEK_AT,
+        STEP_SEEK_AT,
+    )
+    return [held, sought]
+
+
+def proven_upper(readings, hypotheses, at):
+    ends = []
+    for hypothesis in hypotheses:
+        offset, played, switch = hypothesis
+        for phases in phase_pairs(readings, switch):
+            ratios = hypothesis_ratios(readings, hypothesis, phases)
+            if ratios is not None:
+                ends += [offset(at) + ratio * played(at) for ratio in ratios]
+    return max(ends)
+
+
+def unproven_share(before, after, upper):
+    if before <= upper + STEP_TOLERANCE:
+        return before - after
+    return max(0.0, upper - after)
+
+
+def display_steps_back(scenario):
+    mode, real, poll, announced, start, target, applied, warm = scenario
+    quantize = QUANTIZE[mode]
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, announced, app="app", track_start=True)
+    hypotheses = step_hypotheses(start, target)
+    reported_speed = 1.0 if warm else real
+    readings = []
+    steps = []
+    shown = c.position(0.0)
+    previous = 0.0
+    sought = target is None
+    for t in even_polls(poll, STEP_END):
+        if not sought and t >= STEP_SEEK_AT:
+            sought = True
+            c.seeked(target, t, t, True, 1.0, app="app")
+            shown = c.position(t)
+            previous = t
+        for sample in even_polls(STEP_SAMPLE, round(t - previous, 6)):
+            at = previous + sample
+            drawn = c.position(at)
+            if shown - drawn > STEP_TOLERANCE:
+                steps.append((at, shown - drawn, shown - drawn))
+            shown = drawn
+        previous = t
+        if applied and target is not None and t >= STEP_SEEK_AT:
+            truth = target + real * (t - STEP_SEEK_AT)
+        else:
+            truth = start + real * t
+        if not warm and t < STEP_SEEK_AT:
+            continue
+        readings.append((t, quantize(truth)))
+        c.sync(readings[-1][1], True, t, t, reported_speed, 600.0, app="app")
+        after = c.position(t)
+        if shown - after > STEP_TOLERANCE:
+            upper = proven_upper(readings, hypotheses, t)
+            steps.append(
+                (t, shown - after, unproven_share(shown, after, upper))
+            )
+        shown = after
+    return steps
+
+
+def unproven_steps_back(scenario):
+    return [
+        (round(at, 2), round(unproven, 3))
+        for at, _, unproven in display_steps_back(scenario)
+        if unproven > STEP_TOLERANCE
+    ]
+
+
+def lead_scenario(family, mode, real, poll, lead, seed):
+    applied, warm = LEAD_FAMILIES[family]
+    start = random_start(seed)
+    target = start + real * STEP_SEEK_AT + lead
+    return mode, real, poll, real, start, target, applied, warm
+
+
+def fuzz_scenario(seed, seeking):
+    draw = random.Random(seed)
+    mode = draw.choice(FUZZ_MODES)
+    real = draw.choice(FUZZ_RATES)
+    poll = draw.choice(FUZZ_POLLS)
+    announced = draw.choice([1.0, real])
+    start = draw.uniform(0.0, 60.0)
+    target = (
+        start
+        + real * STEP_SEEK_AT
+        + draw.choice([-1, 1]) * draw.uniform(*FUZZ_SEEK_SPREAD)
+    )
+    return (
+        mode,
+        real,
+        poll,
+        announced,
+        start,
+        target if seeking else None,
+        True,
+        True,
+    )
+
+
+def lead_cells():
+    cells = itertools.product(
+        LEAD_FAMILIES, GRID_MODES, LEAD_RATES, LEAD_POLLS, LEADS, LEAD_SEEDS
+    )
+    for index, cell in enumerate(cells):
+        yield slow_unless(index % len(LEAD_SEEDS) == 0, *cell)
+
+
+def fuzz_cells():
+    for seed in FUZZ_SEEDS:
+        sampled = seed in FUZZ_REPORTED_SEEDS or seed % FUZZ_SAMPLE_EVERY == 0
+        for seeking in (False, True):
+            yield slow_unless(sampled, seed, seeking)
+
+
+@pytest.mark.parametrize(
+    "family, mode, real, poll, lead, seed", list(lead_cells())
+)
+def test_a_lead_after_a_seek_is_stepped_back_only_as_far_as_the_readings_prove(
+    family, mode, real, poll, lead, seed
+):
+    scenario = lead_scenario(family, mode, real, poll, lead, seed)
+    assert unproven_steps_back(scenario) == []
+
+
+@pytest.mark.parametrize("seed, seeking", list(fuzz_cells()))
+def test_a_random_player_is_stepped_back_only_as_far_as_the_readings_prove(
+    seed, seeking
+):
+    assert unproven_steps_back(fuzz_scenario(seed, seeking)) == []
+
+
+def test_a_small_lead_after_an_ignored_seek_shows_no_visible_step_back():
+    scenario = lead_scenario(
+        "ignored joined at the seek", "round", 1.0, 0.25, 0.2, 2
+    )
+    steps = display_steps_back(scenario)
+    assert max((step for _, step, _ in steps), default=0.0) <= VISIBLE_STEP
+
+
+@pytest.mark.parametrize("seed", (11, 76, 131))
+def test_a_fast_player_from_its_track_start_shows_no_visible_step_back(
+    seed,
+):
+    steps = display_steps_back(fuzz_scenario(seed, False))
+    assert max((step for _, step, _ in steps), default=0.0) <= VISIBLE_STEP
 
 
 def test_the_oracle_shares_the_clock_deadband_quantum_and_ratio_range():

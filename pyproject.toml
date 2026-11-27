@@ -95,5 +95,6 @@ strict_equality = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
+addopts = ["-ra", "--strict-markers", "--import-mode=importlib", "-m", "not slow"]
+markers = ["slow: full scenario grids, left out unless run with -m slow"]
 pythonpath = ["src"]

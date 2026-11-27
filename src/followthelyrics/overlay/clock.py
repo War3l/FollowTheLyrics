@@ -179,6 +179,7 @@ class PlaybackClock:
             tuple[dict[float, list[tuple[float, float]]], float, bool] | None
         ) = None
         self._rival_alive = False
+        self._before_anchor_from_track_start = False
         self._truth: dict[float, list[tuple[float, float]]] = {}
         self._wholes: list[tuple[float, float, float]] = []
         self._truth_t = now
@@ -246,9 +247,12 @@ class PlaybackClock:
         self._anchored = False
         self._cells_before_anchor = None
         self._rival_alive = False
+        self._before_anchor_from_track_start = False
         self._wholes = [(position, at, speed)] if playing else []
         if track_start and playing and position < QUANTUM:
             self._exact(0.0, at, True)
+        elif track_start and playing and not _whole(position):
+            self._remember_track_start(position, at)
 
     def seeked(
         self,
@@ -264,8 +268,8 @@ class PlaybackClock:
         stale = self._reading[0]
         anchored_cells = (
             (self._truth, self._truth_t, self._truth_playing)
-            if self._anchored and self._truth
-            else None
+            if self._truth
+            else self._exact_reading_cells()
         )
         rival = anchored_cells is not None and not self._covers(
             anchored_cells, target, now
@@ -355,17 +359,18 @@ class PlaybackClock:
                 speed,
             )
             return
-        rewind = self._doubts(
-            jump,
-            position,
-            at,
-            effective if playing else None,
-            quantized,
-        )
         explained = (
             playing
             and self._reads_cells(position, quantized)
             and self._explained(position, at, speed)
+        )
+        repeated_whole = quantized and explained and position >= last_position
+        rewind = self._doubts(
+            max(jump, 0.0) if repeated_whole else jump,
+            position,
+            at,
+            effective if playing else None,
+            quantized,
         )
         if rewind is Rewind.DOUBTED:
             if explained:
@@ -379,6 +384,8 @@ class PlaybackClock:
                 self._relearn_rate(position, at, now, speed)
             return
         if (rewind is Rewind.CONFIRMED or abs(jump) >= JUMP) and not explained:
+            if jump > 0 and self._before_anchor_from_track_start:
+                self._cells_before_anchor = None
             if not self._revive(position, playing, at, now, speed):
                 self.reset(reported_now, playing, now, speed)
             return
@@ -429,6 +436,7 @@ class PlaybackClock:
             self._remember_whole(position, at, speed)
         error = self._error(position, at, now, shown, effective, narrowing)
         outside = strayed = False
+        proven_upper = math.inf
         if narrowing:
             lower, upper = self._hull(now - at, speed)
             margin = 0.0 if self._anchored else SETTLE
@@ -436,6 +444,7 @@ class PlaybackClock:
                 lower - margin <= shown <= upper + margin
             )
             strayed = not lower <= shown <= upper
+            proven_upper = self._proven_upper(now, speed)
         settled = self._settled(error, at, abs(jump) <= SETTLE)
         given_up = self._given_up and not narrowing
         if given_up:
@@ -443,7 +452,7 @@ class PlaybackClock:
         resumed_off = (resumed or given_up) and abs(error) > DEADBAND
         relearned = learned
         if corrected and error < -HOLD_LEAD:
-            self._anchor(shown + error, now, self.speed, now)
+            self._approach(shown, shown + error, now, proven_upper)
             return
         self._steer(
             shown,
@@ -487,6 +496,7 @@ class PlaybackClock:
         self, position: float, at: float, now: float, speed: float
     ):
         gain = self._gain
+        shown = self.position(now)
         died = self._narrow(position, at, speed)
         self._learn_rate()
         if died or self._gain != gain:
@@ -495,7 +505,7 @@ class PlaybackClock:
                 self._hull(0.0, speed) if died else self._truth_bounds()
             )
             estimate = (lower + upper) / 2 + (now - at) * self.speed
-            self._anchor(estimate, now, self.speed, now)
+            self._approach(shown, estimate, now, self._proven_upper(now, speed))
 
     def _drop_chance_gain(
         self,
@@ -517,7 +527,7 @@ class PlaybackClock:
         held_position, held_at, _, _ = self._hold
         elapsed = at - held_at
         advance = position - held_position
-        return (
+        return elapsed > 0.0 and (
             SEEK_RATIO_LOW * elapsed - QUANTUM
             <= advance
             <= SEEK_RATIO_HIGH * elapsed + QUANTUM
@@ -639,6 +649,20 @@ class PlaybackClock:
         self._truth_playing = playing
         self._anchored = True
 
+    def _remember_track_start(self, position: float, at: float):
+        self._cells_before_anchor = (
+            {
+                phase: _box(
+                    position - POSITION_RESOLUTION,
+                    position + POSITION_RESOLUTION,
+                )
+                for phase in PHASES
+            },
+            at,
+            True,
+        )
+        self._before_anchor_from_track_start = True
+
     def _revived_cells(
         self, position: float, at: float, speed: float
     ) -> dict[float, list[tuple[float, float]]]:
@@ -668,9 +692,12 @@ class PlaybackClock:
         now: float,
         speed: float,
     ) -> bool:
+        if not _whole(position):
+            return False
         revived = self._cells_revived_by(position, at, speed)
         if not revived:
             return False
+        shown = self.position(now)
         self._restore_phase()
         self._truth = revived
         self._truth_t = at
@@ -686,7 +713,7 @@ class PlaybackClock:
         lower, upper = self._truth_bounds()
         elapsed = now - at if playing else 0.0
         estimate = (lower + upper) / 2 + elapsed * self.speed
-        self._anchor(estimate, now, self.speed, now)
+        self._approach(shown, estimate, now, self._proven_upper(now, speed))
         return True
 
     def _restore_phase(self):
@@ -757,6 +784,25 @@ class PlaybackClock:
                 return self._reading_cells(position)
             since = seen
         return cells
+
+    def _exact_reading_cells(
+        self,
+    ) -> tuple[dict[float, list[tuple[float, float]]], float, bool] | None:
+        position, at = self._reading
+        if self._fraction_seen or _whole(position):
+            return None
+        return (
+            {
+                phase: _box(
+                    position - POSITION_RESOLUTION,
+                    position + POSITION_RESOLUTION,
+                    (GAIN_MIN, GAIN_MAX),
+                )
+                for phase in PHASES
+            },
+            at,
+            self.playing,
+        )
 
     def _narrow_rival(self, position: float, at: float, speed: float):
         if self._cells_before_anchor is None or not self._rival_alive:
@@ -859,6 +905,21 @@ class PlaybackClock:
         return (
             min(lower for lower, _ in bounds),
             max(upper for _, upper in bounds),
+        )
+
+    def _proven_upper(self, now: float, speed: float) -> float:
+        elapsed = now - self._truth_t if self._truth_playing else 0.0
+        upper = self._hull(elapsed, speed)[1]
+        if self._cells_before_anchor is None or not self._rival_alive:
+            return upper
+        cells, since, playing = self._cells_before_anchor
+        rival_elapsed = now - since if playing else 0.0
+        return max(
+            upper,
+            *(
+                _xbounds(_shear(cell, rival_elapsed, speed))[1]
+                for cell in cells.values()
+            ),
         )
 
     def _ratio_spread(self) -> float:
@@ -1087,6 +1148,15 @@ class PlaybackClock:
             self._anchor(shown, now, self.speed * (1.0 + skew), until)
             if closing:
                 self._closing_until = until
+
+    def _approach(
+        self, shown: float, estimate: float, now: float, proven_upper: float
+    ):
+        if not self.playing or estimate >= shown or self.speed <= 0.0:
+            self._anchor(estimate, now, self.speed, now)
+            return
+        stepped = max(estimate, min(shown, proven_upper))
+        self._anchor(stepped, now, 0.0, now + (stepped - estimate) / self.speed)
 
     def _anchor(self, position: float, at: float, rate: float, until: float):
         self._anchor_pos = position
