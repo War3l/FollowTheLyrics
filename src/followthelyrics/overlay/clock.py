@@ -462,11 +462,13 @@ class PlaybackClock:
         self, position: float, at: float, now: float, speed: float
     ):
         gain = self._gain
-        self._narrow(position, at, speed)
+        died = self._narrow(position, at, speed)
         self._learn_rate()
-        if self._gain != gain:
+        if died or self._gain != gain:
             self.speed = speed * self._gain
-            lower, upper = self._truth_bounds()
+            lower, upper = (
+                self._hull(0.0, speed) if died else self._truth_bounds()
+            )
             estimate = (lower + upper) / 2 + (now - at) * self.speed
             self._anchor(estimate, now, self.speed, now)
 
@@ -606,9 +608,13 @@ class PlaybackClock:
     def _revived_cells(
         self, position: float, at: float, speed: float
     ) -> dict[float, list[tuple[float, float]]]:
+        before = self._cells_before_anchor
         return self._cells_revived_by(
             position, at, speed
-        ) or self._reading_cells(position)
+        ) or self._reading_cells(
+            position,
+            (GAIN_MIN, GAIN_MAX) if before is None else _ratio_range(before[0]),
+        )
 
     def _cells_revived_by(
         self, position: float, at: float, speed: float
@@ -660,13 +666,14 @@ class PlaybackClock:
             return (self._phases[self._app],)
         return PHASES
 
-    def _narrow(self, position: float, at: float, speed: float):
+    def _narrow(self, position: float, at: float, speed: float) -> bool:
         if self._truth:
             elapsed = at - self._truth_t if self._truth_playing else 0.0
             survivors = _admitting(self._truth, elapsed, position, speed)
         else:
             survivors = self._reading_cells(position)
-        if not survivors:
+        died = not survivors
+        if died:
             self._gain_proven = False
             self._restore_phase()
             survivors = self._revived_cells(position, at, speed)
@@ -676,6 +683,7 @@ class PlaybackClock:
         self._truth = survivors
         self._truth_t = at
         self._truth_playing = True
+        return died
 
     def _explained(self, position: float, at: float, speed: float) -> bool:
         elapsed = at - self._truth_t if self._truth_playing else 0.0
@@ -697,10 +705,12 @@ class PlaybackClock:
         )
 
     def _reading_cells(
-        self, position: float
+        self,
+        position: float,
+        ratios: tuple[float, float] = (GAIN_MIN, GAIN_MAX),
     ) -> dict[float, list[tuple[float, float]]]:
         return {
-            phase: _box(position - phase, position + QUANTUM - phase)
+            phase: _box(position - phase, position + QUANTUM - phase, ratios)
             for phase in self._phase_candidates()
         }
 

@@ -18,6 +18,8 @@ GOLDEN = 2.399963
 SEEK_ORIGIN = 12.3
 SEEK_PAUSE_DELAY = 0.79
 SEEK_HORIZON = 16.0
+LATE_SEEK_AT = 15.0
+LATE_SEEK_TARGET = 30.0
 
 MODES = ("exact", "trunc", "round")
 SAMPLINGS = (0.1, 0.4, 0.8, 1.0)
@@ -375,3 +377,44 @@ def test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell(
     mode, announced, ratio, sampling
 ):
     assert_announced_rate_contract(mode, announced, announced * ratio, sampling)
+
+
+def late_seek_speeds(mode, real, sampling, lag):
+    quantize = QUANTIZE[mode]
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    readings, speeds, sought = [], [], None
+    for t in sample_times(sampling, LATE_SEEK_AT + SEEK_HORIZON):
+        if sought is None and t >= LATE_SEEK_AT:
+            sought = t
+            c.seeked(LATE_SEEK_TARGET, t, t, True, 1.0, app="app")
+        if sought is not None and t >= sought + lag:
+            truth = LATE_SEEK_TARGET + real * (t - sought - lag)
+        else:
+            truth = real * t
+        reading = quantize(truth)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        if sought is None:
+            readings.append((t, reading))
+        elif t >= sought + lag + sampling:
+            speeds.append(c.speed)
+    return readings, speeds
+
+
+@pytest.mark.parametrize(
+    "mode, real, sampling, lag",
+    [
+        ("trunc", 1.1, 1.0, 0.2),
+        ("trunc", 1.5, 0.5, 0.5),
+        ("trunc", 1.25, 0.5, 0.2),
+        ("trunc", 0.8, 1.0, 0.5),
+    ],
+)
+def test_a_seek_the_player_applies_late_keeps_the_rate_proven_before_it(
+    mode, real, sampling, lag
+):
+    readings, speeds = late_seek_speeds(mode, real, sampling, lag)
+    ranges = feasible_ratios(readings, 0.0, 1.0).values()
+    low = min(bounds[0] for bounds in ranges)
+    high = max(bounds[1] for bounds in ranges)
+    assert all(low <= speed <= high for speed in speeds)

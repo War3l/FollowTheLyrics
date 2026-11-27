@@ -253,6 +253,12 @@ also push a change, and the app uses it as soon as it arrives.
   while it fits the cells revived from before the anchor, so a seek the player
   ignores while playing leaves the speed untouched
   (`test_a_playing_seek_the_player_ignores_keeps_the_speed_its_cells_proved`).
+  When no cell from before the anchor admits the reading either, as when the
+  player applies the seek a poll or more after it was sent, the fresh cells
+  only take the ratios those earlier cells proved, and the clock re-anchors at
+  the middle of their hull even when the gain does not change, so a seek
+  applied late keeps the rate proven before it
+  (`test_a_seek_the_player_applies_late_keeps_the_rate_proven_before_it`).
   A gain learned from a single reading during a hold that the next fractional
   reading drops gives back both the earlier gain and whether it was proven, so
   it cannot lend its proof to a rate no cell ever measured
