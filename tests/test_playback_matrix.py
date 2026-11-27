@@ -1,3 +1,4 @@
+import itertools
 import math
 
 import pytest
@@ -509,21 +510,32 @@ def test_a_seek_the_player_ignores_is_given_up_within_a_quantum(
     assert max(errors) <= QUANTUM + clock.POSITION_RESOLUTION
 
 
-def late_apply_errors(mode, real, poll, lag):
+def late_apply_rows(mode, real, poll, lag, end):
     quantize = QUANTIZE[mode]
     c = started_clock()
-    errors = []
-    for t in even_polls(poll, LATE_APPLY_END):
-        if t == LATE_SEEK_AT:
+    sought = None
+    rows = []
+    for t in even_polls(poll, end):
+        if sought is None and t >= LATE_SEEK_AT:
+            sought = t
             c.seeked(LATE_SEEK_TARGET, t, t, True, 1.0, app="app")
-        if t < LATE_SEEK_AT + lag:
+        if sought is None or t < sought + lag:
             truth = real * t
         else:
-            truth = LATE_SEEK_TARGET + real * (t - LATE_SEEK_AT - lag)
+            truth = LATE_SEEK_TARGET + real * (t - sought - lag)
         c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
-        if t >= LATE_SEEK_AT + lag + clock.SETTLE_SECONDS:
-            errors.append(abs(c.position(t) - truth))
-    return errors
+        rows.append((t, truth, c.position(t), sought))
+    return rows
+
+
+def late_apply_errors(mode, real, poll, lag):
+    return [
+        abs(shown - truth)
+        for t, truth, shown, sought in late_apply_rows(
+            mode, real, poll, lag, LATE_APPLY_END
+        )
+        if sought is not None and t >= sought + lag + clock.SETTLE_SECONDS
+    ]
 
 
 @pytest.mark.parametrize("lag", LATE_APPLY_LAGS)
@@ -821,4 +833,87 @@ def test_a_mode_switch_at_a_resume_reads_alike_until_the_rates_part():
         min(a, b) - HULL_MARGIN <= shown <= max(a, b) + HULL_MARGIN
         for t, _, _, a, b, shown in rows
         if t >= GRID_SEEK_AT + GRID_PAUSE
+    )
+
+
+@pytest.mark.parametrize("lag", LATE_APPLY_LAGS)
+@pytest.mark.parametrize("poll", LATE_APPLY_POLLS)
+@pytest.mark.parametrize("real", LATE_APPLY_RATES)
+@pytest.mark.parametrize("mode", GRID_MODES)
+def test_until_a_late_seek_is_applied_the_display_trusts_the_sought_target(
+    mode, real, poll, lag
+):
+    rows = late_apply_rows(mode, real, poll, lag, LATE_APPLY_END)
+    sought = rows[-1][3]
+    trusted = [
+        (shown, LATE_SEEK_TARGET + real * (t - sought))
+        for t, truth, shown, _ in rows
+        if sought < t < sought + lag
+        and abs(truth - LATE_SEEK_TARGET - real * (t - sought)) >= clock.JUMP
+    ]
+    assert all(abs(shown - target) <= DEADBAND for shown, target in trusted)
+
+
+HIDDEN_REWIND_RATE = LATE_SEEK_TARGET / LATE_SEEK_AT
+RATE_BAND_CLOSES = 2 * LATE_SEEK_AT
+RATE_BAND_END = LATE_SEEK_AT + RATE_BAND_CLOSES + 15.0
+
+
+@pytest.mark.parametrize("lag", LATE_APPLY_LAGS)
+@pytest.mark.parametrize("poll", LATE_APPLY_POLLS)
+@pytest.mark.parametrize("mode", GRID_MODES)
+def test_a_rewind_hidden_by_a_late_seek_is_absorbed_once_the_rate_band_closes(
+    mode, poll, lag
+):
+    rows = late_apply_rows(mode, HIDDEN_REWIND_RATE, poll, lag, RATE_BAND_END)
+    sought = rows[-1][3]
+    assert all(
+        abs(shown - truth) <= QUANTUM / 2 + DEADBAND
+        for t, truth, shown, _ in rows
+        if t >= sought + RATE_BAND_CLOSES
+    )
+
+
+TRUNCATED_TWIN_LEAD = QUANTUM - 1e-3
+
+
+@pytest.mark.parametrize("poll", [0.5, 1.0])
+@pytest.mark.parametrize("lag", [0.5, 1.0])
+def test_an_exact_player_behind_a_hidden_rewind_reads_like_a_truncating_twin(
+    lag, poll
+):
+    rows = late_apply_rows(
+        "exact", HIDDEN_REWIND_RATE, poll, lag, RATE_BAND_END
+    )
+    sought = rows[-1][3]
+    applied = sought + lag
+    twin_applied = applied - TRUNCATED_TWIN_LEAD / HIDDEN_REWIND_RATE
+    twins = []
+    for t, truth, shown, _ in rows:
+        if t < twin_applied:
+            twin = HIDDEN_REWIND_RATE * t
+        else:
+            twin = LATE_SEEK_TARGET + HIDDEN_REWIND_RATE * (t - twin_applied)
+        twins.append((t, truth, twin, shown))
+    assert all(math.floor(twin) == truth for _, truth, twin, _ in twins)
+    settled = [
+        (t, truth, twin, shown)
+        for t, truth, twin, shown in twins
+        if t >= applied + clock.SETTLE_SECONDS
+    ]
+    leads = [shown - truth for _, truth, _, shown in settled]
+    assert all(
+        truth - clock.POSITION_RESOLUTION
+        <= shown
+        <= twin + clock.POSITION_RESOLUTION
+        for _, truth, twin, shown in settled
+    )
+    assert all(
+        later <= earlier + clock.POSITION_RESOLUTION
+        for earlier, later in itertools.pairwise(leads)
+    )
+    assert all(
+        shown - truth <= (twin - truth) / 2 + DEADBAND
+        for t, truth, twin, shown in settled
+        if t >= sought + RATE_BAND_CLOSES
     )

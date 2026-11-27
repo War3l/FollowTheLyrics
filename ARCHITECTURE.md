@@ -317,7 +317,23 @@ also push a change, and the app uses it as soon as it arrives.
     (`test_a_seek_applied_late_errs_by_no_more_than_its_delay_and_a_quantum`),
     and when the cells die on the late jump the clock is anchored again on
     them, so the display is back within half a quantum
-    (`test_a_seek_applied_late_is_re_anchored_within_half_a_quantum`);
+    (`test_a_seek_applied_late_is_re_anchored_within_half_a_quantum`); the
+    seek is sent on the first poll at or after its instant, so poll periods
+    that do not land on it are exercised too;
+  - until the player applies a late seek, the display trusts the sought
+    target whenever the readings are at least `JUMP` away from it, so the
+    error during the delay is the length of the seek
+    (`test_until_a_late_seek_is_applied_the_display_trusts_the_sought_target`);
+  - a late seek to the played position hides a rewind of the rate times the
+    delay; it is absorbed to within half a quantum plus `DEADBAND` once the
+    rate band proved before the seek has closed, twice the time it was proved
+    over (`test_a_rewind_hidden_by_a_late_seek_is_absorbed_once_the_rate_band_closes`);
+  - an exact player at twice the speed polled on half seconds reads, behind
+    such a rewind, exactly like a truncating twin almost a quantum ahead, so
+    the display stays between the two, its lead only shrinks as the slew
+    follows the middle of the surviving cell, and it is within `DEADBAND` of
+    the middle of the two once the rate band has closed
+    (`test_an_exact_player_behind_a_hidden_rewind_reads_like_a_truncating_twin`);
   - cells killed by a seek the player ignores restart at the middle of the
     hull of the readings, never past the width a single phase allows
     (`test_cells_killed_by_an_ignored_seek_restart_at_the_hull_middle`), and
