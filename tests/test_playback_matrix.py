@@ -1620,6 +1620,64 @@ def test_a_double_speed_player_ignoring_a_seek_errs_within_its_twins(
     assert max(errors) <= TWIN_START_HALF_WIDTH + clock.POSITION_RESOLUTION
 
 
+FREEZE_MODES = ("exact", "trunc", "round")
+FREEZE_RATES = (0.25, 0.5, 0.8, 1.0, 1.25, 2.0)
+FREEZE_POLLS = (0.25, 0.5, 1.0)
+FREEZE_ANNOUNCED = (1.0, 2.0, 0.5)
+FREEZE_SEEDS = tuple(range(4))
+FREEZE_END = 30.0
+FREEZE_SAMPLE = 0.05
+FREEZE_MARGIN = 0.05
+FREEZE_START_CANDIDATES = 200
+
+
+def start_candidates(mode, reading):
+    if mode == "exact":
+        return [reading]
+    low = reading if mode == "trunc" else reading - QUANTUM / 2
+    return [
+        low + (k + 0.5) * QUANTUM / FREEZE_START_CANDIDATES
+        for k in range(FREEZE_START_CANDIDATES)
+    ]
+
+
+def freeze_depth_below_truth(mode, real, poll, announced, seed):
+    quantize = QUANTIZE[mode]
+    start = random_start(seed)
+    first = quantize(start)
+    starts = start_candidates(mode, first)
+    c = clock.PlaybackClock(0.0)
+    c.reset(first, True, 0.0, announced, app="app", track_start=True)
+    shown = c.position(0.0)
+    polled = 0.0
+    moved = False
+    depth = 0.0
+    for t in even_polls(poll, FREEZE_END):
+        reading = quantize(start + real * t)
+        starts = [s for s in starts if quantize(s + real * t) == reading]
+        for step in even_polls(FREEZE_SAMPLE, t - polled):
+            at = round(polled + step, 6)
+            before, shown = shown, c.position(at)
+            if moved and abs(shown - before) < clock.POSITION_RESOLUTION:
+                depth = max(depth, max(starts) + real * at - shown)
+        polled = t
+        moved = moved or reading != first
+        c.sync(reading, True, t, t, announced, 600.0, app="app")
+    return depth
+
+
+@pytest.mark.parametrize("seed", FREEZE_SEEDS)
+@pytest.mark.parametrize("announced", FREEZE_ANNOUNCED)
+@pytest.mark.parametrize("poll", FREEZE_POLLS)
+@pytest.mark.parametrize("real", FREEZE_RATES)
+@pytest.mark.parametrize("mode", FREEZE_MODES)
+def test_once_readings_move_a_frozen_display_is_above_every_allowed_truth(
+    mode, real, poll, announced, seed
+):
+    depth = freeze_depth_below_truth(mode, real, poll, announced, seed)
+    assert depth <= FREEZE_MARGIN
+
+
 def test_the_oracle_shares_the_clock_deadband_quantum_and_ratio_range():
     assert (
         DEADBAND,

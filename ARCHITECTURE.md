@@ -420,8 +420,9 @@ also push a change, and the app uses it as soon as it arrives.
   is multiplied by the observed ratio, and the clock is re-anchored on the
   reading. When that reading is less than `JUMP` from the clock, the lead
   built up meanwhile was a drift, not a rewind, so a display ahead of the
-  reading goes on at `CATCH_UP_SHARE` (half) of the track's speed until the
-  track reaches it, instead of stepping back
+  reading goes on at `CATCH_UP_SHARE` (half) of the track's speed, or of the
+  slowest rate the truth cells allow when that is lower, until the track
+  reaches it, instead of stepping back
   (`test_an_exact_player_slower_than_announced_is_caught_without_a_step_back`)
   or standing still: a player at a quarter of its announced rate, which used
   to leave the display frozen for up to 8.6 s, keeps it moving
@@ -476,10 +477,32 @@ also push a change, and the app uses it as soon as it arrives.
   larger than what the readings prove, which the tests measure on every scenario (see the
   backward-step grids below). A reading taken at the very instant of a held
   seek gives no elapsed time to learn a rate from, so it relearns nothing.
+- **A frozen display stays above every possible truth**: every wait of the
+  display (a hold after a correction, the wait of `_approach`, a slew whose
+  skew reaches -1) goes through `_hold_still`. It computes when the fastest
+  cell still admitted by the readings, the cells kept from before a seek
+  included, reaches the shown position (`_proven_to_reach`). The display
+  stands still until then, and from then on it loses the rest of its lead at
+  `CATCH_UP_SHARE` of the slowest rate the truth cells allow, so the truth
+  keeps closing on it. A display never stays frozen below a truth the
+  readings allow
+  (`test_once_readings_move_a_frozen_display_is_above_every_allowed_truth`,
+  648 scenarios: three modes, six real rates, three polls, three announced
+  rates, four starts, measured every 0.05 s from the first reading that
+  changes). A catch-up moving at half of the announced rate while the truth
+  cells allow a slower one could stay ahead of a slow player, which is why
+  its pace follows the slowest ratio.
 - **Stall patience for quantized players**: a quantized player that holds its
   last whole reading is stalled only after one quantum at its effective rate,
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A
-  half-speed player is therefore not frozen between two of its steps.
+  half-speed player is therefore not frozen between two of its steps. Once a
+  reading has been explained by the truth cells, the quantum is timed at the
+  slowest rate those cells allow. A whole reading gets the same patience
+  before enough whole readings have proven the player quantized, so a
+  half-speed player at its track start is not frozen after one second.
+- **Exact track start**: when the readings that build the truth cells begin
+  with a reading that is not a whole second (the exact start of a track), the
+  first cells are a point at that reading, not a quantum wide.
 - **Slope after the alias dies**: once one phase survives and the ratio range
   of its cell is within `ERR_PIN` (0.2) and the announced rate no longer fits
   it, the error is the midpoint of the cell projected to the current instant at

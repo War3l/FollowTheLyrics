@@ -430,9 +430,6 @@ class PlaybackClock:
         if not self.playing or moved:
             self._still_since = at
             self._still_position = position
-        stalled = at - self._still_since >= self._stall_patience(
-            quantized, effective
-        )
         self._track_shift(jump, effective, at)
         resumed = not self.playing
         self.playing = True
@@ -457,6 +454,9 @@ class PlaybackClock:
             self._anchored = False
             corrected = False
             self._remember_whole(position, at, speed)
+        stalled = at - self._still_since >= self._stall_patience(
+            quantized or _whole(position), effective, explained
+        )
         error = self._error(position, at, now, shown, effective, narrowing)
         outside = strayed = False
         proven_upper = math.inf
@@ -809,7 +809,11 @@ class PlaybackClock:
         while start > 0 and readings[start][0] >= readings[start - 1][0]:
             start -= 1
         (first, since), *later = readings[start:]
-        cells = self._reading_cells(first)
+        cells = (
+            self._reading_cells(first)
+            if _whole(first)
+            else self._point_cells(first)
+        )
         for whole, seen in [*later, (position, at)]:
             cells = _admitting(cells, seen - since, whole, speed)
             if not cells:
@@ -908,6 +912,16 @@ class PlaybackClock:
             for phase, (lower, upper) in self._phase_bounds().items()
         )
 
+    def _point_cells(
+        self, position: float
+    ) -> dict[float, list[tuple[float, float]]]:
+        return {
+            phase: _box(
+                position - POSITION_RESOLUTION, position + POSITION_RESOLUTION
+            )
+            for phase in self._phase_candidates()
+        }
+
     def _reading_cells(
         self,
         position: float,
@@ -948,18 +962,27 @@ class PlaybackClock:
         )
 
     def _proven_upper(self, now: float, speed: float) -> float:
+        return max(_xbounds(cell)[1] for cell in self._proven_cells(now, speed))
+
+    def _proven_cells(
+        self, now: float, speed: float
+    ) -> list[list[tuple[float, float]]]:
         elapsed = now - self._truth_t if self._truth_playing else 0.0
-        upper = self._hull(elapsed, speed)[1]
+        cells = [_shear(cell, elapsed, speed) for cell in self._truth.values()]
         if self._cells_before_anchor is None or not self._rival_alive:
-            return upper
-        cells, since, playing = self._cells_before_anchor
+            return cells
+        rivals, since, playing = self._cells_before_anchor
         rival_elapsed = now - since if playing else 0.0
-        return max(
-            upper,
-            *(
-                _xbounds(_shear(cell, rival_elapsed, speed))[1]
-                for cell in cells.values()
-            ),
+        return cells + [
+            _shear(cell, rival_elapsed, speed) for cell in rivals.values()
+        ]
+
+    def _proven_to_reach(self, position: float, now: float) -> float:
+        speed = self.speed / self._gain
+        return min(
+            now + max(0.0, position - reached) / (ratio * speed)
+            for cell in self._proven_cells(now, speed)
+            for reached, ratio in cell
         )
 
     def _ratio_spread(self) -> float:
@@ -1109,15 +1132,23 @@ class PlaybackClock:
             return changed
         return False
 
-    def _stall_patience(self, quantized: bool, effective: float) -> float:
+    def _stall_patience(
+        self, quantized: bool, effective: float, explained: bool
+    ) -> float:
         if len(self._gaps) < MOVES_BEFORE_TRUST:
             patience = STALL_SECONDS
         else:
             expected = max(self._gaps) * UPDATE_MARGIN
             patience = min(STALL_SECONDS, max(QUICK_STALL_SECONDS, expected))
         if quantized:
-            patience = max(patience, QUANTUM / effective)
+            slowest = self._slowest_rate(effective) if explained else effective
+            patience = max(patience, QUANTUM / slowest)
         return patience
+
+    def _slowest_rate(self, effective: float) -> float:
+        if not self._truth:
+            return effective
+        return effective / self._gain * _ratio_range(self._truth)[0]
 
     @staticmethod
     def _looped(
@@ -1191,7 +1222,7 @@ class PlaybackClock:
         elif catching_up and error < 0.0:
             self._catch_up(shown, now, -error)
         elif (holding or settled) and error < 0.0:
-            self._anchor(shown, now, 0.0, now - error / self.speed)
+            self._hold_still(shown, now, now - error / self.speed)
         elif settled:
             self._anchor(shown + error, now, self.speed, now)
         elif abs(error) <= tolerance:
@@ -1207,7 +1238,10 @@ class PlaybackClock:
             if narrowing and self._gain_proven and abs(proven) > abs(skew):
                 skew = max(-1.0, proven)
             until = now + error / (skew * self.speed)
-            self._anchor(shown, now, self.speed * (1.0 + skew), until)
+            if skew <= -1.0:
+                self._hold_still(shown, now, until)
+            else:
+                self._anchor(shown, now, self.speed * (1.0 + skew), until)
             if closing:
                 self._closing_until = until
 
@@ -1217,7 +1251,7 @@ class PlaybackClock:
             self._catch_up(shown, now, shown - estimate)
 
     def _catch_up(self, shown: float, now: float, ahead: float):
-        rate = self.speed * CATCH_UP_SHARE
+        rate = min(self.speed, self._slowest_rate(self.speed)) * CATCH_UP_SHARE
         self._anchor(shown, now, rate, now + ahead / (self.speed - rate))
         self._catching_up = True
 
@@ -1230,7 +1264,18 @@ class PlaybackClock:
         stepped = max(estimate, min(shown, proven_upper))
         if self._sought and (shown - stepped) / self.speed <= SETTLE_SECONDS:
             stepped = shown
-        self._anchor(stepped, now, 0.0, now + (stepped - estimate) / self.speed)
+        self._hold_still(stepped, now, now + (stepped - estimate) / self.speed)
+
+    def _hold_still(self, shown: float, now: float, until: float):
+        reached = (
+            max(now, self._proven_to_reach(shown, now))
+            if self._truth
+            else math.inf
+        )
+        if reached < until:
+            self._catch_up(shown, reached, (until - reached) * self.speed)
+        else:
+            self._anchor(shown, now, 0.0, until)
 
     def _anchor(self, position: float, at: float, rate: float, until: float):
         self._anchor_pos = position
