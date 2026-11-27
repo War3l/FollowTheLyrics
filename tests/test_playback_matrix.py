@@ -1408,6 +1408,16 @@ def test_a_random_player_is_stepped_back_only_as_far_as_the_readings_prove(
     assert unproven_steps_back(fuzz_scenario(seed, seeking)) == []
 
 
+@pytest.mark.parametrize("seed", (15, 18))
+def test_a_half_speed_player_is_stepped_back_only_as_far_as_proven(
+    seed,
+):
+    scenario = lead_scenario(
+        "ignored joined at the seek", "trunc", 0.5, 0.25, 1.0, seed
+    )
+    assert unproven_steps_back(scenario) == []
+
+
 def test_a_small_lead_after_an_ignored_seek_shows_no_visible_step_back():
     scenario = lead_scenario(
         "ignored joined at the seek", "round", 1.0, 0.25, 0.2, 2
