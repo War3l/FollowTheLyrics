@@ -210,6 +210,10 @@ also push a change, and the app uses it as soon as it arrives.
   player at its announced rate that ignored a seek thus goes on with the cells
   it had already narrowed and is shown exact again
   (`test_a_quantized_player_at_its_announced_rate_ignoring_a_seek_ends_exact`).
+  The cells kept from before the anchor stop moving while the player is paused
+  and move again when it resumes, so a seek the player ignores while paused
+  keeps them too
+  (`test_a_paused_ignored_seek_revives_the_cells_from_before_it`).
   The gain is then learned again from those cells, which always admit the
   announced rate when they are new, so the prior brings it back to 1 and the display speed follows at once: a rate fitted to a false
   anchor does not drag the display away from the middle of the new cells for

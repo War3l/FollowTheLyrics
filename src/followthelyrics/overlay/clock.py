@@ -132,7 +132,7 @@ class PlaybackClock:
         self._phases: dict[str, float] = {}
         self._phase_before_anchor: float | None = None
         self._cells_before_anchor: (
-            tuple[dict[float, list[tuple[float, float]]], float] | None
+            tuple[dict[float, list[tuple[float, float]]], float, bool] | None
         ) = None
         self._truth: dict[float, list[tuple[float, float]]] = {}
         self._truth_t = now
@@ -210,11 +210,8 @@ class PlaybackClock:
         target = position + elapsed * speed * self._gain
         stale = self._reading[0]
         anchored_cells = (
-            (self._truth, self._truth_t)
-            if playing
-            and self._anchored
-            and self._truth
-            and self._truth_playing
+            (self._truth, self._truth_t, self._truth_playing)
+            if self._anchored and self._truth
             else None
         )
         self.reset(target, playing, now, speed, app)
@@ -492,9 +489,23 @@ class PlaybackClock:
         else:
             self._exact(frozen, at, True)
             self._anchor(frozen, at, self.speed, at)
+        if self._cells_before_anchor is not None:
+            cells, _, _ = self._cells_before_anchor
+            self._cells_before_anchor = (cells, at, True)
 
     def _freeze(self, at: float):
-        self._cells_before_anchor = None
+        if self._cells_before_anchor is not None:
+            cells, since, playing = self._cells_before_anchor
+            if playing:
+                speed = self.speed / self._gain
+                self._cells_before_anchor = (
+                    {
+                        phase: _shear(cell, at - since, speed)
+                        for phase, cell in cells.items()
+                    },
+                    at,
+                    False,
+                )
         if self._truth and self._truth_playing:
             elapsed = at - self._truth_t
             speed = self.speed / self._gain
@@ -528,22 +539,24 @@ class PlaybackClock:
     def _revived_cells(
         self, position: float, at: float, speed: float
     ) -> dict[float, list[tuple[float, float]]]:
-        if self._cells_before_anchor is not None:
-            cells, since = self._cells_before_anchor
-            self._cells_before_anchor = None
-            revived = _admitting(cells, at - since, position, speed)
-            if revived:
-                return revived
-        return self._reading_cells(position)
+        return self._cells_revived_by(
+            position, at, speed
+        ) or self._reading_cells(position)
+
+    def _cells_revived_by(
+        self, position: float, at: float, speed: float
+    ) -> dict[float, list[tuple[float, float]]]:
+        if self._cells_before_anchor is None:
+            return {}
+        cells, since, playing = self._cells_before_anchor
+        self._cells_before_anchor = None
+        elapsed = at - since if playing else 0.0
+        return _admitting(cells, elapsed, position, speed)
 
     def _revive(
         self, position: float, at: float, now: float, speed: float
     ) -> bool:
-        if self._cells_before_anchor is None:
-            return False
-        cells, since = self._cells_before_anchor
-        self._cells_before_anchor = None
-        revived = _admitting(cells, at - since, position, speed)
+        revived = self._cells_revived_by(position, at, speed)
         if not revived:
             return False
         self._restore_phase()

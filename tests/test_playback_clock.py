@@ -2027,6 +2027,24 @@ def test_an_exact_player_paused_on_a_whole_second_resumes_at_its_rate(
     assert_paused_ignored_seek_error(float, real, poll, 16.0, 1e-6)
 
 
+@pytest.mark.parametrize(
+    ("real", "poll", "target"),
+    [
+        (0.5, 1.0, 5.0),
+        (0.5, 0.9, 5.0),
+        (0.5, 0.25, 16.0),
+        (1.25, 0.25, 40.0),
+        (1.5, 0.25, 30.0),
+    ],
+)
+def test_a_paused_ignored_seek_revives_the_cells_from_before_it(
+    real, poll, target
+):
+    assert_paused_ignored_seek_error(
+        math.floor, real, poll, target, clock.DEADBAND
+    )
+
+
 def assert_paused_ignored_seek_error(quantize, real, poll, target, bound):
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
