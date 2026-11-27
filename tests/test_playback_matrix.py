@@ -588,7 +588,7 @@ REWIND_POLLS = (0.25, 0.4, 0.5, 0.9, 1.0)
 DROPPED_SEEK_AT = 10.0
 DROPPED_SEEK_EARLY = 0.05
 DROPPED_SEEK_END = 30.0
-DROPPED_SEEK_POLLS = (0.4, 0.9, 1.0)
+DROPPED_SEEK_POLLS = (0.25, 0.4, 0.9, 1.0)
 DROPPED_SEEK_TARGETS = (40.0, 40.4, 5.0)
 
 
@@ -787,7 +787,7 @@ def test_a_seek_the_player_drops_is_given_up_once_its_rewind_is_confirmed(
     assert max(error for _, error in errors) <= (
         QUANTUM + clock.POSITION_RESOLUTION
     )
-    assert max(error for since, error in errors if since >= QUANTUM) <= DEADBAND
+    assert max(error for since, error in errors if since >= poll) <= DEADBAND
 
 
 @pytest.mark.parametrize(
