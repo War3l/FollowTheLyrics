@@ -1473,6 +1473,67 @@ def test_a_fast_player_from_its_track_start_shows_no_visible_step_back(
     assert max((step for _, step, _ in steps), default=0.0) <= VISIBLE_STEP
 
 
+PARTING_SEEDS = tuple(range(3))
+PARTING_MARGIN = 0.05
+
+
+def hypothesis_ends(readings, hypothesis, at):
+    weight, offset, played, _ = hypothesis
+    ends = []
+    for phase, _ in phase_pairs(readings, None):
+        cell = start_and_ratio_cell(readings, hypothesis, (phase, phase))
+        if cell is not None:
+            ends += [
+                weight(at) * start + offset(at) + ratio * played(at)
+                for start, ratio in cell
+            ]
+    return ends
+
+
+def ignored_seek_excess_once_parted(mode, real, poll, announced, lead, seed):
+    quantize = QUANTIZE[mode]
+    start = random_start(seed)
+    target = start + real * STEP_SEEK_AT + lead
+    held, sought = step_hypotheses(target)
+    c = clock.PlaybackClock(0.0)
+    readings = [(0.0, quantize(start))]
+    c.reset(readings[0][1], True, 0.0, announced, app="app", track_start=True)
+    for t in even_polls(poll, STEP_END):
+        if t == STEP_SEEK_AT:
+            c.seeked(target, t, t, True, announced, app="app")
+        reading = quantize(start + real * t)
+        c.sync(reading, True, t, t, announced, 600.0, app="app")
+        if t == STEP_SEEK_AT:
+            continue
+        readings.append((t, reading))
+        if t < STEP_SEEK_AT or hypothesis_ends(readings, sought, t):
+            continue
+        ends = hypothesis_ends(readings, held, t)
+        shown = c.position(t)
+        return max(min(ends) - shown, shown - max(ends), 0.0)
+    return 0.0
+
+
+def parting_cells():
+    for mode, real, poll, lead, seed in itertools.product(
+        GRID_MODES, LEAD_RATES, LEAD_POLLS, LEADS, PARTING_SEEDS
+    ):
+        for announced in sorted({1.0, real}):
+            yield mode, real, poll, announced, lead, seed
+
+
+@pytest.mark.parametrize(
+    "mode, real, poll, announced, lead, seed", list(parting_cells())
+)
+def test_an_ignored_seek_is_shown_within_what_the_readings_allow_once_they_part(
+    mode, real, poll, announced, lead, seed
+):
+    excess = ignored_seek_excess_once_parted(
+        mode, real, poll, announced, lead, seed
+    )
+    assert excess <= PARTING_MARGIN
+
+
 TWIN_RATE = 2.0
 TWIN_BASES = (10.0, 23.0, 41.0)
 TWIN_OFFSETS = {

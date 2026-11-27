@@ -573,15 +573,26 @@ also push a change, and the app uses it as soon as it arrives.
   holds the signalled target while the readings stay compatible with it, until
   a reading confirms the target (within `DEADBAND`) or `SETTLE_SECONDS` (2 s)
   pass. The first reading taken after the seek that the target cannot explain
-  gives the seek up at once: a whole reading that no phase and no ratio of the
-  target cells admits, or any reading of a precise player that misses the
-  target by more than `DEADBAND`
-  (`test_a_playing_seek_is_given_up_at_the_first_reading_that_refutes_it`). A
-  rewind of `JUMP` or more found that way is followed without waiting
-  `CONFIRM_SECONDS`, and the display no longer waits for the target: from
-  that reading on it stays within `DEADBAND` of the track for an exact player
-  and within `QUANTUM` for a quantized one
-  (`test_an_ignored_seek_is_given_up_at_the_first_reading_refuting_it`). When
+  gives the seek up at once, the reading that ends the hold included: a whole
+  reading that no phase and no ratio of the target cells admits, or any
+  reading of a precise player that misses the target by more than `DEADBAND`
+  (`test_a_playing_seek_is_given_up_at_the_first_reading_that_refutes_it`).
+  The clock then moves to that reading at once, in either direction and
+  whatever the distance, without waiting `CONFIRM_SECONDS`, and the display no
+  longer waits for the target: from that reading on it stays within
+  `DEADBAND` of the track for an exact player and within `QUANTUM` for a
+  quantized one
+  (`test_an_ignored_seek_is_given_up_at_the_first_reading_refuting_it`). At
+  the first reading that no rate proven before the seek can reconcile with
+  the target, an exact, truncating or rounding player at 0.8x, 1x or 1.25x,
+  announced at 1x or at its own rate, polled every 0.25 or 1 s, that ignores
+  a seek 0.2 to 2 s ahead is shown within 0.05 s of the positions its
+  readings still allow
+  (`test_an_ignored_seek_is_shown_within_what_the_readings_allow_once_they_part`).
+  Whole readings seen before the first cells chain into them across any
+  forward step, two seconds on a fast player polled every second included,
+  and across a reading the clock doubted, so the rate those readings prove
+  is not lost when the cells start. When
   the clock restarts on a later jump of a quantized player, the cells it
   restarts from keep the ratio range proven before the jump
   (`test_a_seek_the_player_applies_late_keeps_the_rate_proven_before_it`). A

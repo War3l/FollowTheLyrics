@@ -377,7 +377,7 @@ class PlaybackClock:
         repeated_whole = quantized and explained and position >= last_position
         refuted = self._refuted
         self._refuted = False
-        if refuted and jump <= -JUMP:
+        if refuted:
             self._doubt = None
             rewind = Rewind.CONFIRMED
         else:
@@ -391,6 +391,8 @@ class PlaybackClock:
         if rewind is Rewind.DOUBTED:
             if explained:
                 self._narrow(position, at, speed)
+            elif playing and not self._reads_cells(position, quantized):
+                self._remember_whole(position, at, speed)
             if (
                 quantized
                 and playing
@@ -799,13 +801,10 @@ class PlaybackClock:
         run = len(readings)
         while run > 0 and readings[run - 1][0] == position:
             run -= 1
-        if run == 0 or readings[run - 1][0] != position - QUANTUM:
+        if run == 0 or readings[run - 1][0] > position:
             return self._reading_cells(position)
         start = run - 1
-        while start > 0 and readings[start][0] - readings[start - 1][0] in (
-            0.0,
-            QUANTUM,
-        ):
+        while start > 0 and readings[start][0] >= readings[start - 1][0]:
             start -= 1
         (first, since), *later = readings[start:]
         cells = self._reading_cells(first)
@@ -1051,9 +1050,6 @@ class PlaybackClock:
                 return True
             self._hold = None
             return False
-        if now >= until:
-            self._hold = None
-            return False
         expected = held_position
         if playing:
             expected += (at - held_at) * self.speed
@@ -1065,6 +1061,9 @@ class PlaybackClock:
             self._given_up = True
             self._refuted = True
             self._sought = False
+            return False
+        if now >= until:
+            self._hold = None
             return False
         return True
 
