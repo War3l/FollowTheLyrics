@@ -1432,6 +1432,40 @@ def test_a_double_speed_player_polled_each_second_errs_within_its_twins(
     assert worst <= TWIN_START_HALF_WIDTH + clock.POSITION_RESOLUTION
 
 
+TWIN_SEEK_AT = 10.0
+TWIN_SEEK_STARTS = (5.0, 12.7, 27.45)
+TWIN_SEEK_ANNOUNCED = (TWIN_RATE, 1.0)
+
+
+def ignored_twin_seek_errors(mode, poll, announced, lead, start):
+    quantize = QUANTIZE[mode]
+    c = clock.PlaybackClock(0.0)
+    c.reset(quantize(start), True, 0.0, announced, app="app", track_start=True)
+    given_up = TWIN_SEEK_AT + clock.SETTLE_SECONDS + poll
+    errors = []
+    for t in even_polls(poll, TWIN_END):
+        if t == TWIN_SEEK_AT:
+            target = start + TWIN_RATE * t + lead
+            c.seeked(target, t, t, True, announced, app="app")
+        truth = start + TWIN_RATE * t
+        c.sync(quantize(truth), True, t, t, announced, 600.0, app="app")
+        if t >= given_up:
+            errors.append(abs(c.position(t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize("start", TWIN_SEEK_STARTS)
+@pytest.mark.parametrize("lead", LEADS)
+@pytest.mark.parametrize("announced", TWIN_SEEK_ANNOUNCED)
+@pytest.mark.parametrize("poll", LEAD_POLLS)
+@pytest.mark.parametrize("mode", ("trunc", "round"))
+def test_a_double_speed_player_ignoring_a_seek_errs_within_its_twins(
+    mode, poll, announced, lead, start
+):
+    errors = ignored_twin_seek_errors(mode, poll, announced, lead, start)
+    assert max(errors) <= TWIN_START_HALF_WIDTH + clock.POSITION_RESOLUTION
+
+
 def test_the_oracle_shares_the_clock_deadband_quantum_and_ratio_range():
     assert (
         DEADBAND,

@@ -449,7 +449,7 @@ class PlaybackClock:
             strayed = not lower <= shown <= upper
             proven_upper = self._proven_upper(now, speed)
         settled = self._settled(error, at, abs(jump) <= SETTLE)
-        given_up = self._given_up and not narrowing
+        given_up = self._given_up
         if given_up:
             self._given_up = False
         resumed_off = (resumed or given_up) and abs(error) > DEADBAND
@@ -829,10 +829,11 @@ class PlaybackClock:
         bounds = [
             _xbounds(_shear(cell, elapsed, speed)) for cell in cells.values()
         ]
-        return any(
+        lower = min(low for low, _ in bounds)
+        upper = max(high for _, high in bounds)
+        return (
             lower <= target <= upper
             and abs(target - (lower + upper) / 2) <= SETTLE
-            for lower, upper in bounds
         )
 
     def _rival_bounds(self) -> tuple[float, float] | None:
