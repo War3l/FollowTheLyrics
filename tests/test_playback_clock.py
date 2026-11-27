@@ -1171,9 +1171,15 @@ def test_a_rate_learned_too_high_is_relearned_from_readings_left_behind():
     assert worst <= clock.DEADBAND
 
 
-def test_a_correction_far_behind_the_display_steps_back_at_the_reading():
+@pytest.mark.parametrize("sought_on_previous_track", [False, True])
+def test_a_correction_far_behind_the_display_steps_back_at_the_reading(
+    sought_on_previous_track,
+):
     real = 1.04
     c = clock.PlaybackClock(0.0)
+    if sought_on_previous_track:
+        c.reset(40.0, True, -20.0, 1.0, app="app", track_start=True)
+        c.seeked(80.0, -10.0, -10.0, True, app="app")
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
     at_reading, half_a_poll_later = [], []
     for k in range(1, 61):
