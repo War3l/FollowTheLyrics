@@ -371,6 +371,7 @@ def test_an_exact_player_slower_than_announced_is_corrected_at_once():
         ("trunc", 2.0, 0.996838, 0.8),
         ("trunc", 1.0, 0.964554, 1.0),
         ("trunc", 2.0, 1.048561, 1.0),
+        ("round", 1.5, 1.1, 0.6),
     ],
 )
 def test_a_single_phase_player_off_its_rate_stays_in_the_width_of_its_cell(
@@ -621,3 +622,113 @@ def test_a_seek_the_player_drops_is_given_up_once_its_rewind_is_confirmed(
     mode, poll, target
 ):
     assert max(dropped_seek_errors(mode, poll, target)) <= DEADBAND
+
+
+@pytest.mark.parametrize(
+    "mode, real, poll, lag",
+    [
+        ("trunc", 1.25, 1.0, 0.5),
+        ("round", 1.25, 1.0, 1.0),
+        ("trunc", 0.8, 1.0, 1.0),
+    ],
+)
+def test_a_seek_applied_late_is_re_anchored_within_half_a_quantum(
+    mode, real, poll, lag
+):
+    assert max(late_apply_errors(mode, real, poll, lag)) <= QUANTUM / 2
+
+
+def ignored_seek_excess(mode, real, poll, target):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    readings, excess = [], []
+    sought = False
+    for t in even_polls(poll, GRID_END):
+        if not sought and t >= GRID_SEEK_AT:
+            sought = True
+            c.seeked(target, t, t, True, 1.0, app="app")
+        reading = quantize(real * t)
+        bound = single_phase_bound(mode, readings, 0.0, 1.0, t)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        readings.append((t, reading))
+        if t > GRID_SEEK_AT + IGNORED_SEEK_SETTLE:
+            excess.append(abs(c.position(t) - real * t) - bound)
+    return excess
+
+
+def test_cells_killed_by_an_ignored_seek_restart_at_the_hull_middle():
+    assert max(ignored_seek_excess("round", 0.5, 1.0, 5.0)) <= 0.0
+
+
+def resumed_errors_after_an_ignored_seek(mode, poll, paused_at):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    t = 0.0
+    while t < GRID_SEEK_AT:
+        t = round(t + poll, 6)
+        c.sync(quantize(t), True, t, t, 1.0, 600.0, app="app")
+    c.seeked(IGNORED_SEEK_TARGETS[0], t, t, True, 1.0, app="app")
+    while t + poll < paused_at:
+        t = round(t + poll, 6)
+        c.sync(quantize(t), True, t, t, 1.0, 600.0, app="app")
+    c.status(False, paused_at, 1.0)
+    resumed = paused_at + RESUME_AFTER
+    c.status(True, resumed, 1.0)
+    errors = []
+    for t in even_polls(poll, RESUME_SPAN):
+        truth = paused_at + t
+        c.sync(
+            quantize(truth),
+            True,
+            resumed + t,
+            resumed + t,
+            1.0,
+            600.0,
+            app="app",
+        )
+        if t > GRID_PAUSE:
+            errors.append(abs(c.position(resumed + t) - truth))
+    return errors
+
+
+@pytest.mark.parametrize(
+    "mode, poll, paused_at",
+    [("trunc", 0.5, 16.2), ("round", 1.0, 16.5), ("trunc", 1.0, 15.9)],
+)
+def test_cells_from_before_an_ignored_seek_stop_moving_during_a_pause(
+    mode, poll, paused_at
+):
+    errors = resumed_errors_after_an_ignored_seek(mode, poll, paused_at)
+    assert max(errors) <= EXACT_AT_RATE
+
+
+def paused_ignored_seek_excess(mode, real, poll, target):
+    quantize = QUANTIZE[mode]
+    c = started_clock()
+    sought = resumed = None
+    readings, excess = [], []
+    for t in even_polls(poll, GRID_END):
+        if sought is None and t >= GRID_SEEK_AT:
+            sought = t
+            c.status(False, t, 1.0)
+            c.seeked(target, t, t, False, 1.0, app="app")
+        if resumed is None and sought is not None and t >= sought + GRID_PAUSE:
+            c.status(True, t, 1.0)
+            resumed = t
+        if sought is not None and resumed is None:
+            c.sync(quantize(real * sought), False, t, t, 1.0, 600.0, app="app")
+            continue
+        played = t if sought is None else sought + t - resumed
+        reading = quantize(real * played)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        if t > GRID_SEEK_AT + IGNORED_SEEK_SETTLE:
+            bound = single_phase_bound(
+                mode, readings, 0.0, 1.0, played, clock.POSITION_RESOLUTION
+            )
+            excess.append(abs(c.position(t) - real * played) - bound)
+        readings.append((played, reading))
+    return excess
+
+
+def test_a_paused_ignored_seek_resumes_within_the_width_of_a_single_phase():
+    assert max(paused_ignored_seek_excess("trunc", 0.5, 1.5, 16.0)) <= 0.0

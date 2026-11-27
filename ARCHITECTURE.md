@@ -307,7 +307,21 @@ also push a change, and the app uses it as soon as it arrives.
   - a seek the player applies 0.2 to 1 s after it was sent is shown, from
     `SETTLE_SECONDS` after the player applied it, within the distance the
     delay hides (the rate times the delay) plus `QUANTUM`
-    (`test_a_seek_applied_late_errs_by_no_more_than_its_delay_and_a_quantum`);
+    (`test_a_seek_applied_late_errs_by_no_more_than_its_delay_and_a_quantum`),
+    and when the cells die on the late jump the clock is anchored again on
+    them, so the display is back within half a quantum
+    (`test_a_seek_applied_late_is_re_anchored_within_half_a_quantum`);
+  - cells killed by a seek the player ignores restart at the middle of the
+    hull of the readings, never past the width a single phase allows
+    (`test_cells_killed_by_an_ignored_seek_restart_at_the_hull_middle`), and
+    the cells kept from before such a seek stop moving during a later pause,
+    so the resumed display is exact again
+    (`test_cells_from_before_an_ignored_seek_stop_moving_during_a_pause`);
+    a seek ignored while paused resumes within the width of a single phase,
+    which holds only because the cells admit a reading up to
+    `POSITION_RESOLUTION` below their lower edge and an exact anchor is a box
+    of that half-width
+    (`test_a_paused_ignored_seek_resumes_within_the_width_of_a_single_phase`);
   - a player resumed 5 s after a pause is shown within the full width of the
     cells its readings allow, with edges closed by `POSITION_RESOLUTION` as
     the clock admits them, plus `HULL_MARGIN` when that width exceeds
