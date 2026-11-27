@@ -1220,6 +1220,38 @@ def test_an_exact_player_steps_back_onto_its_reading_after_an_ignored_seek():
     assert max(landings) <= clock.POSITION_RESOLUTION
 
 
+@pytest.mark.parametrize(
+    ("mode", "start", "real", "lead"),
+    [
+        ("trunc", 14.16, 1.25, 2.0),
+        ("trunc", 50.67, 1.0, 2.0),
+        ("round", 37.37, 1.25, 2.0),
+        ("round", 50.67, 1.0, 2.0),
+        ("trunc", 37.37, 0.8, 1.0),
+    ],
+)
+def test_a_display_ahead_after_an_ignored_seek_waits_without_stepping_back(
+    mode, start, real, lead
+):
+    quantize = math.floor if mode == "trunc" else round_half_up
+    poll, sought_at, end = 0.25, 10.0, 30.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(quantize(start), True, 0.0, real, app="app", track_start=True)
+    shown = []
+    for k in range(1, round(end / poll) + 1):
+        t = k * poll
+        if t == sought_at:
+            target = start + real * sought_at + lead
+            c.seeked(target, sought_at, sought_at, True, app="app")
+        c.sync(quantize(start + real * t), True, t, t, 1.0, 600.0, app="app")
+        if t > sought_at:
+            shown += [
+                c.position(t + i * STEP) for i in range(round(poll / STEP))
+            ]
+    assert all(b >= a for a, b in itertools.pairwise(shown))
+    assert abs(c.position(end) - (start + real * end)) <= clock.QUANTUM
+
+
 HELD_TARGET, HELD_AT = 198.4, 10.2
 
 

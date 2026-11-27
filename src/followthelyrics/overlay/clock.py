@@ -195,6 +195,7 @@ class PlaybackClock:
         self._window: tuple[float, list[tuple[float, float]]] | None = None
         self._hold: tuple[float, float, float, float | None] | None = None
         self._given_up = False
+        self._sought = False
         self._slew_until = now
         self._closing_until = now
         self._reading = (0.0, now)
@@ -243,6 +244,7 @@ class PlaybackClock:
         self._window = None
         self._hold = None
         self._given_up = False
+        self._sought = False
         self._truth = {}
         self._anchored = False
         self._cells_before_anchor = None
@@ -285,6 +287,7 @@ class PlaybackClock:
         )
         self._cells_before_anchor = anchored_cells
         self._rival_alive = rival
+        self._sought = True
         if playing:
             self._hold = (target, now, now + SETTLE_SECONDS, None)
         else:
@@ -1156,6 +1159,8 @@ class PlaybackClock:
             self._anchor(estimate, now, self.speed, now)
             return
         stepped = max(estimate, min(shown, proven_upper))
+        if self._sought and (shown - stepped) / self.speed <= SETTLE_SECONDS:
+            stepped = shown
         self._anchor(stepped, now, 0.0, now + (stepped - estimate) / self.speed)
 
     def _anchor(self, position: float, at: float, rate: float, until: float):
