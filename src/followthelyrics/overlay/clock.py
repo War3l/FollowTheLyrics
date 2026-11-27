@@ -54,6 +54,36 @@ def _box(lower: float, upper: float) -> list[tuple[float, float]]:
     ]
 
 
+def _turn(
+    origin: tuple[float, float],
+    first: tuple[float, float],
+    second: tuple[float, float],
+) -> float:
+    return (first[0] - origin[0]) * (second[1] - origin[1]) - (
+        first[1] - origin[1]
+    ) * (second[0] - origin[0])
+
+
+def _half_hull(
+    points: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    kept: list[tuple[float, float]] = []
+    for point in points:
+        while len(kept) >= 2 and _turn(kept[-2], kept[-1], point) <= 0:
+            kept.pop()
+        kept.append(point)
+    return kept[:-1]
+
+
+def _convex_hull(
+    points: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    ordered = sorted(set(points))
+    if len(ordered) < 3:
+        return ordered
+    return _half_hull(ordered) + _half_hull(ordered[::-1])
+
+
 def _shear(
     cell: list[tuple[float, float]], elapsed: float, speed: float
 ) -> list[tuple[float, float]]:
@@ -312,7 +342,7 @@ class PlaybackClock:
                 self._relearn_rate(position, at, now, speed)
             return
         if (rewind is Rewind.CONFIRMED or abs(jump) >= JUMP) and not explained:
-            if not (playing and self._revive(position, at, now, speed)):
+            if not self._revive(position, playing, at, now, speed):
                 self.reset(reported_now, playing, now, speed)
             return
         learned = self._learn(position, at, speed, playing)
@@ -487,7 +517,7 @@ class PlaybackClock:
             self._truth_playing = True
             self._anchor(self._anchor_pos, at, self.speed, at)
         else:
-            self._exact(frozen, at, True)
+            self._reopen_phases(at)
             self._anchor(frozen, at, self.speed, at)
         if self._cells_before_anchor is not None:
             cells, _, _ = self._cells_before_anchor
@@ -524,6 +554,16 @@ class PlaybackClock:
             return None
         return (lower + upper) / 2
 
+    def _reopen_phases(self, at: float):
+        self._phase_before_anchor = self._phases.get(self._app)
+        hull = _convex_hull(
+            [vertex for cell in self._truth.values() for vertex in cell]
+        )
+        self._truth = {phase: list(hull) for phase in PHASES}
+        self._truth_t = at
+        self._truth_playing = True
+        self._anchored = True
+
     def _exact(self, truth: float, at: float, playing: bool):
         self._phase_before_anchor = self._phases.get(self._app)
         self._truth = {
@@ -554,7 +594,12 @@ class PlaybackClock:
         return _admitting(cells, elapsed, position, speed)
 
     def _revive(
-        self, position: float, at: float, now: float, speed: float
+        self,
+        position: float,
+        playing: bool,
+        at: float,
+        now: float,
+        speed: float,
     ) -> bool:
         revived = self._cells_revived_by(position, at, speed)
         if not revived:
@@ -562,17 +607,18 @@ class PlaybackClock:
         self._restore_phase()
         self._truth = revived
         self._truth_t = at
-        self._truth_playing = True
+        self._truth_playing = playing
         self._anchored = True
         self._doubt = None
         self._hold = None
         self._shift = None
         self._learn_rate()
         self.speed = speed * self._gain
-        self.playing = True
+        self.playing = playing
         self._reading = (position, at)
         lower, upper = self._truth_bounds()
-        estimate = (lower + upper) / 2 + (now - at) * self.speed
+        elapsed = now - at if playing else 0.0
+        estimate = (lower + upper) / 2 + elapsed * self.speed
         self._anchor(estimate, now, self.speed, now)
         return True
 

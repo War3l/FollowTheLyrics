@@ -2045,6 +2045,46 @@ def test_a_paused_ignored_seek_revives_the_cells_from_before_it(
     )
 
 
+@pytest.mark.parametrize(
+    ("quantize", "real", "poll", "target"),
+    [
+        (math.floor, 3.0, 2.0, 5.0),
+        (math.floor, 2.0, 1.5, 16.0),
+        (math.floor, 1.5, 2.0, 40.0),
+        (math.floor, 1.0, 0.5, 5.0),
+        (math.floor, 2.0, 0.5, 16.0),
+        (math.floor, 1.25, 0.4, 30.0),
+        (round_half_up, 1.0, 1.5, 5.0),
+    ],
+)
+def test_a_resume_keeps_the_rate_of_cells_revived_while_paused(
+    quantize, real, poll, target
+):
+    assert_paused_ignored_seek_error(
+        quantize, real, poll, target, clock.DEADBAND
+    )
+
+
+@pytest.mark.parametrize(
+    ("real", "poll", "target"),
+    [(1.0, 1.0, 5.0), (1.25, 0.9, 30.0), (2.0, 1.5, 16.0), (1.5, 2.0, 5.0)],
+)
+def test_a_late_paused_reading_that_revives_the_cells_does_not_move_them(
+    real, poll, target
+):
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    t = poll
+    while t < 15.0:
+        c.sync(math.floor(real * t), True, t, t, 1.0, 600.0, app="app")
+        t = round(t + poll, 6)
+    c.status(False, t, 1.0)
+    c.seeked(target, t, t, False, 1.0, app="app")
+    delivered = t + 0.5
+    c.sync(math.floor(real * t), False, t, delivered, 1.0, 600.0, app="app")
+    assert abs(c.position(delivered) - real * t) <= clock.DEADBAND
+
+
 def assert_paused_ignored_seek_error(quantize, real, poll, target, bound):
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)

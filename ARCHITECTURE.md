@@ -213,7 +213,10 @@ also push a change, and the app uses it as soon as it arrives.
   The cells kept from before the anchor stop moving while the player is paused
   and move again when it resumes, so a seek the player ignores while paused
   keeps them too
-  (`test_a_paused_ignored_seek_revives_the_cells_from_before_it`).
+  (`test_a_paused_ignored_seek_revives_the_cells_from_before_it`). A paused
+  reading that no cell admits revives them at once, without waiting for the
+  resume, and leaves them where the pause froze them even when it is delivered
+  late (`test_a_late_paused_reading_that_revives_the_cells_does_not_move_them`).
   The gain is then learned again from those cells, which always admit the
   announced rate when they are new, so the prior brings it back to 1 and the display speed follows at once: a rate fitted to a false
   anchor does not drag the display away from the middle of the new cells for
@@ -339,10 +342,14 @@ also push a change, and the app uses it as soon as it arrives.
     `PIN_WIDTH`, 0.05 s). Otherwise the position is not exact, and the value
     is only the clock's estimate;
   - a `PlaybackStatus` change to `Playing`, dated at reception. When the
-    paused value is pinned, playback resumes from that exact value at the
-    edge time, so the resume is exact at 1x and at 2x, and a player that reads
-    in the other mode after the resume is followed exactly
-    (`test_a_pinned_resume_revises_the_reading_mode`). Otherwise the edge
+    paused value is pinned, playback resumes from that value at the edge
+    time, and the cells of every phase become one cell, the convex hull of
+    the cells the clock had. The resume is exact at 1x and at 2x, a player
+    that reads in the other mode after the resume is followed exactly
+    (`test_a_pinned_resume_revises_the_reading_mode`), and the rates the
+    cells proved before the pause are kept, so a player whose cells were
+    revived while paused resumes at its rate
+    (`test_a_resume_keeps_the_rate_of_cells_revived_while_paused`). Otherwise the edge
     time still dates the restart, but the position stays unknown until the
     probe narrows it.
   An exact anchor is a box of width `2 * POSITION_RESOLUTION` (1e-6 s on each
