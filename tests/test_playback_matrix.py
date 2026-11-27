@@ -9,6 +9,7 @@ RATIO_LOW = 0.25
 RATIO_HIGH = 4.0
 CONVERGED_BY = 20.0
 HULL_MARGIN = 0.08
+EXACT_AT_RATE = 1e-6
 SMALL_LEAD = 0.3
 LONG_HORIZON = 60.0
 SHORT_HORIZON = CONVERGED_BY + 10.0
@@ -115,6 +116,20 @@ def hull_half_width(readings, origin, announced, at):
     return (max(ends) - min(ends)) / 2
 
 
+def announced_rate_fits(readings, origin, announced):
+    return any(
+        low <= 1.0 <= high
+        for low, high in feasible_ratios(readings, origin, announced).values()
+    )
+
+
+def hull_bound(readings, origin, announced, at):
+    half = hull_half_width(readings, origin, announced, at)
+    if announced_rate_fits(readings, origin, announced):
+        return 2 * half
+    return half + HULL_MARGIN
+
+
 def converge_errors(mode, announced, real, sampling, horizon):
     quantize = QUANTIZE[mode]
     clk = clock.PlaybackClock(0.0)
@@ -158,36 +173,10 @@ def ambiguous_at_converged(mode, announced, real, sampling):
 @pytest.mark.parametrize("sampling", SAMPLINGS)
 @pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("announced,real", CONVERGE_PAIRS)
-def test_converged_estimate_stays_within_the_deadband(
+def test_converging_clock_meets_the_announced_rate_contract(
     mode, announced, real, sampling
 ):
-    if not ambiguous_at_converged(mode, announced, real, sampling):
-        late = [
-            error
-            for t, error in converge_errors(
-                mode, announced, real, sampling, SHORT_HORIZON
-            )
-            if t >= CONVERGED_BY
-        ]
-        assert max(late) <= DEADBAND
-        return
-    readings = readings_of(mode, real, sampling, LONG_HORIZON)
-    death = alternative_death(mode, readings, 0.0, announced) or math.inf
-    errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
-    beyond_the_hull = [
-        error
-        - hull_half_width(
-            [(at, reading) for at, reading in readings if at <= t],
-            0.0,
-            announced,
-            t,
-        )
-        for t, error in errors
-        if CONVERGED_BY <= t < death
-    ]
-    after_death = [error for t, error in errors if t > death]
-    assert max(beyond_the_hull) <= HULL_MARGIN
-    assert max(after_death, default=0.0) <= DEADBAND
+    assert_announced_rate_contract(mode, announced, real, sampling)
 
 
 @pytest.mark.parametrize("sampling", SAMPLINGS)
@@ -197,11 +186,12 @@ def test_seek_then_pause_holds_the_true_position(mode, truth, sampling):
     readings = seek_readings(mode, truth, sampling)
     pause = seek_pause(readings)
     error = seek_error(mode, truth, sampling)
-    if alternative_is_alive(mode, readings, SEEK_ORIGIN, 2.0, pause):
-        half = hull_half_width(readings, SEEK_ORIGIN, 2.0, pause)
-        assert error - half <= HULL_MARGIN
-        return
-    assert error <= DEADBAND
+    if truth == 2.0:
+        assert error <= EXACT_AT_RATE
+    elif alternative_is_alive(mode, readings, SEEK_ORIGIN, 2.0, pause):
+        assert error <= hull_bound(readings, SEEK_ORIGIN, 2.0, pause)
+    else:
+        assert error <= DEADBAND
 
 
 @pytest.mark.parametrize("sampling", SAMPLINGS)
@@ -248,9 +238,11 @@ def test_the_round_alias_cell_is_flagged_ambiguous_and_dies_later():
     assert death is not None and death > CONVERGED_BY
 
 
-def assert_converges_or_stays_bounded_while_ambiguous(
-    mode, announced, real, sampling
-):
+def assert_announced_rate_contract(mode, announced, real, sampling):
+    if real == announced:
+        errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
+        assert max(error for _, error in errors) <= EXACT_AT_RATE
+        return
     if not ambiguous_at_converged(mode, announced, real, sampling):
         late = [
             error
@@ -264,9 +256,9 @@ def assert_converges_or_stays_bounded_while_ambiguous(
     readings = readings_of(mode, real, sampling, LONG_HORIZON)
     death = alternative_death(mode, readings, 0.0, announced) or math.inf
     errors = converge_errors(mode, announced, real, sampling, LONG_HORIZON)
-    beyond_the_hull = [
+    beyond_the_bound = [
         error
-        - hull_half_width(
+        - hull_bound(
             [(at, reading) for at, reading in readings if at <= t],
             0.0,
             announced,
@@ -276,7 +268,7 @@ def assert_converges_or_stays_bounded_while_ambiguous(
         if CONVERGED_BY <= t < death
     ]
     after_death = [error for t, error in errors if t > death]
-    assert max(beyond_the_hull) <= HULL_MARGIN
+    assert max(beyond_the_bound) <= 0.0
     assert max(after_death, default=0.0) <= DEADBAND
 
 
@@ -291,24 +283,18 @@ QUANTIZED_RATIOS = (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.5, 4.0)
 def test_players_at_announced_half_and_double_speed_converge(
     announced, ratio, mode, sampling
 ):
-    assert_converges_or_stays_bounded_while_ambiguous(
-        mode, announced, announced * ratio, sampling
-    )
+    assert_announced_rate_contract(mode, announced, announced * ratio, sampling)
 
 
 def test_a_round_player_slightly_fast_polled_every_0_6_seconds_converges():
-    assert_converges_or_stays_bounded_while_ambiguous(
-        "round", 1.5, 1.5 * 1.0407, 0.6
-    )
+    assert_announced_rate_contract("round", 1.5, 1.5 * 1.0407, 0.6)
 
 
 @pytest.mark.parametrize("ratio", [1.04, 1.0414])
 def test_a_truncating_player_slightly_fast_at_half_speed_stays_in_the_hull(
     ratio,
 ):
-    assert_converges_or_stays_bounded_while_ambiguous(
-        "trunc", 0.5, 0.5 * ratio, 1.0
-    )
+    assert_announced_rate_contract("trunc", 0.5, 0.5 * ratio, 1.0)
 
 
 @pytest.mark.parametrize("mode", ["trunc", "round"])
@@ -330,8 +316,8 @@ def test_a_round_player_polled_every_1_5_seconds_is_relearned_after_a_jump():
 
 
 def test_a_truncating_player_polled_every_second_keeps_its_first_readings():
-    assert_converges_or_stays_bounded_while_ambiguous("trunc", 1.0, 0.97, 1.0)
+    assert_announced_rate_contract("trunc", 1.0, 0.97, 1.0)
 
 
 def test_an_exact_player_slower_than_announced_is_corrected_at_once():
-    assert_converges_or_stays_bounded_while_ambiguous("exact", 1.5, 1.125, 0.8)
+    assert_announced_rate_contract("exact", 1.5, 1.125, 0.8)

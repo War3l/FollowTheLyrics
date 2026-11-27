@@ -26,7 +26,7 @@ GAIN_MAX = track.MAX_SPEED
 GAIN_MIN = 1.0 / track.MAX_SPEED
 QUANTUM = 1.0
 PHASES = (0.0, 0.5)
-ANCHOR_WIDTH = 1e-9
+POSITION_RESOLUTION = 1e-6
 PIN_WIDTH = 0.05
 ERR_PIN = 0.2
 HOLD_LEAD = 0.3
@@ -432,7 +432,10 @@ class PlaybackClock:
 
     def _exact(self, truth: float, at: float, playing: bool):
         self._truth = {
-            phase: _box(truth, truth + ANCHOR_WIDTH) for phase in PHASES
+            phase: _box(
+                truth - POSITION_RESOLUTION, truth + POSITION_RESOLUTION
+            )
+            for phase in PHASES
         }
         self._truth_t = at
         self._truth_playing = playing
@@ -536,14 +539,19 @@ class PlaybackClock:
         ratios = [ratio for cell in self._truth.values() for _, ratio in cell]
         return max(ratios) - min(ratios)
 
+    def _announced_fits(self) -> bool:
+        return any(
+            _slice(cell, 1.0) is not None for cell in self._truth.values()
+        )
+
     def _learn_rate(self):
-        sliced = [
+        if self._announced_fits():
+            self._gain = 1.0
+            return
+        if all(
             _slice(cell, self._gain) is not None
             for cell in self._truth.values()
-        ]
-        if all(sliced):
-            return
-        if any(sliced) and self._gain == 1.0:
+        ):
             return
         ratios = [ratio for cell in self._truth.values() for _, ratio in cell]
         self._gain = min(
@@ -561,7 +569,11 @@ class PlaybackClock:
     ) -> float:
         if not quantized:
             return position + (now - at) * effective - shown
-        if len(self._truth) == 1 and self._ratio_spread() <= ERR_PIN:
+        if (
+            len(self._truth) == 1
+            and self._ratio_spread() <= ERR_PIN
+            and not self._announced_fits()
+        ):
             lower, upper = self._hull(now - at, effective / self._gain)
             return (lower + upper) / 2 - shown
         lower, upper = self._truth_bounds()

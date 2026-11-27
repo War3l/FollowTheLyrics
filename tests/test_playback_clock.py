@@ -1198,12 +1198,12 @@ def held_seek_readings(real, quantize):
     ]
 
 
-def held_seek_errors(real):
+def held_seek_errors(real, quantize=math.floor):
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
     c.seeked(HELD_TARGET, HELD_AT, HELD_AT, True, 1.0, app="app")
     errors = []
-    for t, reading in held_seek_readings(real, math.floor):
+    for t, reading in held_seek_readings(real, quantize):
         c.sync(reading, True, t, t, 1.0, 600.0, app="app")
         truth = HELD_TARGET + real * (t - HELD_AT)
         errors.append((t - HELD_AT, c.position(t) - truth))
@@ -1239,6 +1239,43 @@ def test_a_truncating_player_fast_and_a_rounding_one_at_rate_read_alike():
     assert fast[:7] == at_rate[:7]
     assert fast[6][0] - HELD_AT == pytest.approx(6.3)
     assert fast[7] != at_rate[7]
+
+
+def test_a_rounding_player_at_its_announced_rate_stays_exact_after_a_seek():
+    errors = held_seek_errors(1.0, round_half_up)
+    assert max(abs(error) for _, error in errors) <= 1e-6
+
+
+@pytest.mark.parametrize(
+    "offset",
+    [
+        0.0,
+        1e-9,
+        -1e-9,
+        clock.POSITION_RESOLUTION / 2,
+        -clock.POSITION_RESOLUTION / 2,
+    ],
+)
+@pytest.mark.parametrize("fraction", [0.0, 0.1, 0.4, 0.5, 0.6])
+@pytest.mark.parametrize("poll", [0.4, 0.5, 0.9, 1.0])
+@pytest.mark.parametrize("mode", ["exact", "trunc", "round"])
+def test_a_seek_at_rate_is_exact_on_and_beside_the_reading_boundaries(
+    mode, poll, fraction, offset
+):
+    quantize = {"exact": float, "trunc": math.floor, "round": round_half_up}[
+        mode
+    ]
+    target = 198.0 + fraction
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)
+    c.seeked(target, HELD_AT, HELD_AT, True, 1.0, app="app")
+    worst = 0.0
+    for k in range(1, int(40 / poll) + 1):
+        t = round(HELD_AT + poll * k, 9)
+        truth = target + (t - HELD_AT) + offset
+        c.sync(quantize(truth), True, t, t, 1.0, 600.0, app="app")
+        worst = max(worst, abs(c.position(t) - truth))
+    assert worst <= clock.POSITION_RESOLUTION
 
 
 @pytest.mark.parametrize("real", [1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.5])

@@ -206,18 +206,31 @@ also push a change, and the app uses it as soon as it arrives.
   fitted to a false anchor does not drag the display away from the middle of
   the new cells for tens of seconds
   (`test_a_rate_learned_from_an_ignored_seek_dies_with_it`).
-- **Announced rate as the prior**: while the announced rate (gain 1) still
-  fits at least one phase cell, the clock keeps it, because players almost
-  always play at the rate they announce. This only costs anything when the
-  player runs at a rate it does not announce. After a seek to 198.4 polled
-  every 0.9 s, a truncating player at 1.2x and a rounding player at 1x read
-  the same whole seconds up to 6.3 s, when they are 1.26 s apart, so no
-  estimate serves both. The clock follows the announced one: for an
-  unannounced rate the error stays within the width of the positions the
-  readings allow while both phases fit, and within `DEADBAND` once a single
-  phase is left
-  (`test_a_truncating_player_fast_and_a_rounding_one_at_rate_read_alike`,
-  `test_a_held_seek_off_its_announced_rate_stays_in_the_hull`).
+- **Announced rate as the prior**: while the announced rate (gain 1) still fits
+  at least one phase cell, the clock keeps it, because players almost always
+  play at the rate they announce. A slope fitted to the whole readings does not
+  override it, and once a single phase is left the error aims at the slice of
+  the cell at gain 1 rather than at the middle of the cell. A rounding player
+  at 1x polled every 0.9 s after a seek to 198.4 steps by one whole second at
+  every reading up to 8.1 s, which fits 1.11x as well, and the clock still
+  follows 1x
+  (`test_a_rounding_player_at_its_announced_rate_stays_exact_after_a_seek`).
+  The prior only costs anything when the player runs at a rate it does not
+  announce: after a seek to 198.4 polled every 0.9 s, a truncating player at
+  1.2x and a rounding player at 1x read the same whole seconds up to 6.3 s,
+  when they are 1.26 s apart, so no estimate serves both
+  (`test_a_truncating_player_fast_and_a_rounding_one_at_rate_read_alike`). The
+  contract, checked on every cell of the playback matrix against an oracle that
+  rebuilds the feasible positions from the readings alone
+  (`assert_announced_rate_contract`):
+  - a player at its announced rate is shown within 1e-6 s of its true position
+    from the anchor on;
+  - a player off its announced rate, while the oracle keeps both phases, is
+    shown within the full width of the oracle hull of positions when the
+    announced rate still fits one of the oracle cells (the prior pulls toward a
+    hypothesis the readings cannot rule out), and within half that width plus
+    `HULL_MARGIN` (0.08 s) when it fits none;
+  - once the oracle keeps a single phase, the error is within `DEADBAND`.
 - **Explained jumps**: a whole-second reading that jumps by at least `JUMP`
   (1 s) resets the clock as a new position, unless the truth cells already
   explain it. A reading is explained when, after the cells have been sheared to
@@ -252,12 +265,12 @@ also push a change, and the app uses it as soon as it arrives.
   `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A
   half-speed player is therefore not frozen between two of its steps.
 - **Slope after the alias dies**: once one phase survives and the ratio range
-  of its cell is within `ERR_PIN` (0.2), the error is the midpoint of the
-  cell projected to the current instant at the announced speed, not the midpoint
-  of the ratio range times the elapsed time. The cell is the feasible set of
-  origin and ratio since the last anchor, so its projection narrows as the
-  readings accumulate, while a gain error would drift with time. The learned
-  gain is not changed by this rule.
+  of its cell is within `ERR_PIN` (0.2) and the announced rate no longer fits
+  it, the error is the midpoint of the cell projected to the current instant at
+  the announced speed, not the midpoint of the ratio range times the elapsed
+  time. The cell is the feasible set of origin and ratio since the last anchor,
+  so its projection narrows as the readings accumulate, while a gain error
+  would drift with time. The learned gain is not changed by this rule.
 - **Exact anchors**: four events give an exact position, and each one keeps
   the mode (`_phases`, learned per application identifier and kept across
   tracks of that application) once the candidates collapse to one. An exact
@@ -274,6 +287,13 @@ also push a change, and the app uses it as soon as it arrives.
     edge time, so the resume is exact at 1x and at 2x. Otherwise the edge
     time still dates the restart, but the position stays unknown until the
     probe narrows it.
+  An exact anchor is a box of width `2 * POSITION_RESOLUTION` (1e-6 s on each
+  side) around the anchored position in every phase, because MPRIS reports
+  `Seeked` and `Position` in whole microseconds and SMTC in 100 ns ticks, so a
+  boundary a microsecond away from a whole second is a rounding of the report,
+  not a different position. A player at its announced rate that lands on or
+  beside a reading boundary after a seek is therefore not cut out of its own
+  cell (`test_a_seek_at_rate_is_exact_on_and_beside_the_reading_boundaries`).
   Edges are recorded by the listener thread with their reception time and
   are applied in order by the overlay, before the poll and any reading of the
   probe. An edge that arrives inside the wake window is recorded at once, but
