@@ -940,7 +940,7 @@ def test_a_confirmed_paused_seek_is_kept_and_later_readings_apply():
     assert c.position(1.6) == pytest.approx(30.0)
 
 
-def test_a_second_seek_keeps_no_rival_from_the_track_start_the_first_replaced():
+def test_track_start_cells_a_seek_replaced_are_no_rival_to_the_next_seek():
     c = clock.PlaybackClock(0.0)
     c.reset(30.0, True, 0.0, 1.0, app="app", track_start=True)
     c.seeked(100.0, 0.5, 0.5, True, 1.0, app="app")
@@ -962,6 +962,39 @@ def test_a_playing_seek_is_given_up_at_the_first_reading_that_refutes_it():
     assert c.position(1.5) == pytest.approx(11.5)
     c.sync(40.6, True, 1.6, 1.6, 1.0, 600.0)
     assert c.position(1.6) == pytest.approx(40.6, abs=0.05)
+
+
+def test_a_reading_refuting_a_seek_as_its_hold_ends_gives_the_seek_up():
+    c = playing_clock(position=10.25)
+    c.seeked(40.0, 1.0, 1.0, True, 1.0)
+    end = 1.0 + clock.SETTLE_SECONDS
+    c.sync(10.25 + end, True, end, end, 1.0, 600.0)
+    assert c.position(end) == pytest.approx(10.25 + end)
+
+
+def test_a_reading_taken_at_the_instant_of_a_seek_does_not_refute_it():
+    c = playing_clock(position=10.25)
+    c.seeked(40.0, 1.0, 1.0, True, 1.0)
+    c.sync(11.25, True, 1.0, 1.0, 1.0, 600.0)
+    assert c.position(1.0) == pytest.approx(40.0)
+
+
+def test_a_seek_between_the_phase_cells_is_not_covered_by_them():
+    c = clock.PlaybackClock(0.0)
+    cells = {0.0: clock._box(16.2, 16.4), 0.5: clock._box(15.7, 15.9)}
+    assert c._covers((cells, 0.0, False), 16.3, 0.0)
+    assert not c._covers((cells, 0.0, False), 16.05, 0.0)
+
+
+def test_whole_readings_two_seconds_apart_chain_into_the_ratios_all_allow():
+    c = clock.PlaybackClock(0.0)
+    c.reset(10.0, True, 0.0, 2.0, app="app")
+    for k in range(1, 4):
+        c.sync(10.0 + 2.0 * k, True, k, k, 2.0, 600.0, app="app")
+    elapsed_playback = 2.0 * 3
+    slowest = (16.0 - (10.0 + clock.QUANTUM)) / elapsed_playback
+    fastest = (16.0 + clock.QUANTUM - 10.0) / elapsed_playback
+    assert clock._ratio_range(c._truth) == pytest.approx((slowest, fastest))
 
 
 def test_a_reset_forgets_the_readings_before_it():
@@ -1972,6 +2005,19 @@ def test_an_exact_player_at_a_quarter_of_its_rate_is_caught_without_freezing(
     poll,
 ):
     assert still_samples_of_a_slow_exact_player(0.25, poll) == 0
+
+
+def test_a_display_ahead_of_a_slow_exact_player_moves_at_half_its_rate():
+    c = clock.PlaybackClock(0.0)
+    c.reset(30.0, True, 0.0, 1.0)
+    slopes = []
+    for k in range(1, 13):
+        t = float(k)
+        c.sync(30.0 + 0.25 * t, True, t, t, 1.0, 600.0)
+        if t >= clock.MISMATCH_READS:
+            slopes.append((c.position(t + 0.5) - c.position(t)) / 0.5)
+            assert c.position(t) > 30.0 + 0.25 * t
+    assert slopes == pytest.approx([0.25 / 2] * len(slopes))
 
 
 def test_an_exact_player_that_changes_rate_is_relearned_from_its_gain():
