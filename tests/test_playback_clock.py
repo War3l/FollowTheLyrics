@@ -1913,6 +1913,30 @@ def test_a_truncated_player_from_a_whole_second_is_followed():
     assert worst <= 0.18
 
 
+def largest_step_back_of_a_slow_exact_player(real, poll):
+    c = clock.PlaybackClock(0.0)
+    c.reset(30.0, True, 0.0, 1.0)
+    shown = c.position(0.0)
+    largest = 0.0
+    for tick in range(1, 601):
+        t = 0.05 * tick
+        if tick % round(poll / 0.05) == 0:
+            c.sync(30.0 + real * t, True, t, t, 1.0, 600.0)
+        largest = max(largest, shown - c.position(t))
+        shown = c.position(t)
+    return largest, abs(shown - (30.0 + real * 30.0))
+
+
+@pytest.mark.parametrize("poll", [0.5, 1.0])
+@pytest.mark.parametrize("real", [0.5, 0.8])
+def test_an_exact_player_slower_than_announced_is_caught_without_a_step_back(
+    real, poll
+):
+    largest, final = largest_step_back_of_a_slow_exact_player(real, poll)
+    assert largest <= clock.POSITION_RESOLUTION
+    assert final <= clock.DEADBAND
+
+
 def test_an_exact_player_that_changes_rate_is_relearned_from_its_gain():
     c = clock.PlaybackClock(0.0)
     c.reset(0.0, True, 0.0, 1.0, app="app", track_start=True)

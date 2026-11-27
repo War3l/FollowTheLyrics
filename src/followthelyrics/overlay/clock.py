@@ -359,12 +359,15 @@ class PlaybackClock:
                 position, last_position, last_at, at, jump
             )
         ):
+            shown = self.position(now)
             self.reset(
                 position + (now - at) * speed * self._gain,
                 playing,
                 now,
                 speed,
             )
+            if abs(jump) < JUMP:
+                self._wait_for_the_track(shown, now)
             return
         explained = (
             playing
@@ -1203,6 +1206,11 @@ class PlaybackClock:
             self._anchor(shown, now, self.speed * (1.0 + skew), until)
             if closing:
                 self._closing_until = until
+
+    def _wait_for_the_track(self, shown: float, now: float):
+        estimate = self.position(now)
+        if shown > estimate:
+            self._anchor(shown, now, 0.0, now + (shown - estimate) / self.speed)
 
     def _approach(
         self, shown: float, estimate: float, now: float, proven_upper: float

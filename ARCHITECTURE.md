@@ -418,7 +418,11 @@ also push a change, and the app uses it as soon as it arrives.
   `SEEK_RATIO_HIGH`, in jumps of more than `SETTLE` (0.3 s), is relearned once
   `MISMATCH_READS` (3) consecutive readings agree within `MAX_SKEW`. The gain
   is multiplied by the observed ratio, and the clock is re-anchored on the
-  reading. Smaller jumps keep the usual steering, so a 10% speed difference
+  reading. When that reading is less than `JUMP` from the clock, the lead
+  built up meanwhile was a drift, not a rewind, so a display ahead of the
+  reading holds still until the track reaches it instead of stepping back
+  (`test_an_exact_player_slower_than_announced_is_caught_without_a_step_back`).
+  Smaller jumps keep the usual steering, so a 10% speed difference
   polled every 0.4 s is still absorbed by slewing.
 - **Backward jump**: a reading at least `JUMP` (1 s) behind the clock is
   doubted. It is confirmed as a rewind when the readings that follow keep to
