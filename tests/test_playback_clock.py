@@ -1891,10 +1891,11 @@ def test_a_precise_player_ignoring_a_seek_is_not_given_the_rate_to_reach_it(
 
 
 @pytest.mark.parametrize("mode", ["trunc", "round"])
-@pytest.mark.parametrize("real", [1.5, 2.0])
-@pytest.mark.parametrize("poll", [1.0, 1.5, 2.0])
+@pytest.mark.parametrize("real", [1.5, 2.0, 3.0])
+@pytest.mark.parametrize("poll", [0.5, 1.0, 1.5, 2.0])
+@pytest.mark.parametrize("target", [5.0, 16.0])
 def test_a_player_faster_than_announced_relearns_its_rate_after_an_ignored_seek(
-    mode, real, poll
+    mode, real, poll, target
 ):
     quantize = math.floor if mode == "trunc" else round_half_up
     c = clock.PlaybackClock(0.0)
@@ -1905,7 +1906,7 @@ def test_a_player_faster_than_announced_relearns_its_rate_after_an_ignored_seek(
         t = round(t + poll, 6)
         if not seeked and t >= 15.0:
             seeked = True
-            c.seeked(5.0, t, t, True, 1.0, app="app")
+            c.seeked(target, t, t, True, 1.0, app="app")
         c.sync(quantize(real * t), True, t, t, 1.0, 600.0, app="app")
     assert c.speed == pytest.approx(real, abs=0.01)
 

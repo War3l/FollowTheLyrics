@@ -266,7 +266,7 @@ class PlaybackClock:
         )
         explained = (
             playing
-            and self._anchored
+            and (self._anchored or quantized)
             and _whole(position)
             and self._explained(position, at, speed)
         )

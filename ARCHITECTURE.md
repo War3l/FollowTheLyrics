@@ -251,7 +251,12 @@ also push a change, and the app uses it as soon as it arrives.
   its instant, one phase cell still meets the quantum window
   `[position - phase, position + QUANTUM - phase]`. An explained jump keeps the
   anchor and narrows the cells, and it counts as a correction, so the display
-  follows at once instead of sliding for `SLEW_SECONDS` (2 s).
+  follows at once instead of sliding for `SLEW_SECONDS` (2 s). The cells
+  explain jumps on an anchored clock, and also on a quantized one after a
+  restart, when they only come from the readings since: a player at three
+  times its announced rate that ignored a seek would otherwise restart at
+  every reading and stay at the announced rate for good
+  (`test_a_player_faster_than_announced_relearns_its_rate_after_an_ignored_seek`).
 - **Exact rate mismatch**: an exact player (whole seconds are not required)
   whose readings advance at a rate inside `SEEK_RATIO_LOW` to
   `SEEK_RATIO_HIGH`, in jumps of more than `SETTLE` (0.3 s), is relearned once
