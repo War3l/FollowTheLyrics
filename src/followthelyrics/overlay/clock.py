@@ -829,11 +829,11 @@ class PlaybackClock:
         bounds = [
             _xbounds(_shear(cell, elapsed, speed)) for cell in cells.values()
         ]
-        lower = min(low for low, _ in bounds)
-        upper = max(high for _, high in bounds)
-        return (
-            lower <= target <= upper
-            and abs(target - (lower + upper) / 2) <= SETTLE
+        middle = (
+            min(low for low, _ in bounds) + max(high for _, high in bounds)
+        ) / 2
+        return abs(target - middle) <= SETTLE and any(
+            lower <= target <= upper for lower, upper in bounds
         )
 
     def _rival_bounds(self) -> tuple[float, float] | None:
