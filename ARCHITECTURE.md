@@ -502,14 +502,19 @@ also push a change, and the app uses it as soon as it arrives.
   have proven the player quantized, so a half-speed player at its track start
   is not frozen after one second. A stalled display stands still until the
   next reading.
-- **Lingering quantized reading**: a proven quantized player whose reading has
-  not changed for one quantum at its effective rate, but not yet for one
-  quantum at the slowest rate its cells allow, is not proven stalled: it may
-  be slower than announced. A display ahead of the estimate then lingers
-  (`_linger`): it stands still until the fastest admitted cell reaches it,
-  then moves at `CATCH_UP_SHARE` of the slowest rate until the next reading.
-  It neither freezes below a possible truth nor keeps running at the
-  announced rate past a reading read twice
+- **Lingering quantized reading**: a whole reading that has not changed for
+  one quantum at the effective rate, but not yet for one quantum at the
+  slowest rate the cells allow, is not proven stalled: the player may be
+  slower than announced. This holds for a proven quantized player and for a
+  whole reading read before quantization is proven, so a half-speed player
+  read once at its track start keeps the announced pace
+  (`test_a_slow_track_start_read_once_keeps_the_announced_pace`). A display
+  ahead of the estimate then lingers (`_linger`): it stands still until the
+  fastest admitted cell reaches it
+  (`test_a_display_above_every_admitted_truth_waits_before_crawling`), then
+  moves at `CATCH_UP_SHARE` of the slowest rate until the next reading. It
+  neither freezes below a possible truth nor keeps running at the announced
+  rate past a reading read twice
   (`test_a_whole_second_read_twice_holds_the_display_within_its_readings`,
   `test_a_whole_second_read_twice_from_a_whole_start_holds_the_display`).
 - **A non-whole first reading is a cell**: when the readings that build the

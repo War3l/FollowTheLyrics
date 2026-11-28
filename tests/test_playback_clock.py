@@ -1268,6 +1268,33 @@ def test_a_whole_second_read_twice_from_a_whole_start_holds_the_display():
     assert c.position(repeated_at + 1.0) < latest
 
 
+def test_a_slow_track_start_read_once_keeps_the_announced_pace():
+    speed, first_read_at, next_read_at = 0.5, 1.0, 2.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(0.0, True, 0.0, speed, app="app", track_start=True)
+    reading = math.floor(speed * first_read_at)
+    c.sync(reading, True, first_read_at, first_read_at, speed, 600.0, app="app")
+    assert reading == 0
+    assert c.position(next_read_at) == pytest.approx(speed * next_read_at)
+
+
+def test_a_display_above_every_admitted_truth_waits_before_crawling():
+    start, real, poll, stopped_at, lingering_at = 8.0, 0.8, 0.5, 3.0, 4.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, 1.0, app="app", track_start=True)
+    t = poll
+    while t <= lingering_at:
+        reading = math.floor(start + real * min(t, stopped_at))
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        t += poll
+    highest = reading + clock.QUANTUM
+    fastest = (highest - start) / lingering_at
+    shown = c.position(lingering_at)
+    reachable_at = lingering_at + (shown - highest) / fastest
+    assert shown > highest
+    assert c.position(reachable_at) == shown
+
+
 def test_a_fractional_track_start_does_not_step_back_below_a_truncating_twin():
     start, real, lead, sought_at, refuted_at = 50.66, 1.0, 2.0, 10.0, 11.0
     c = clock.PlaybackClock(0.0)

@@ -458,7 +458,7 @@ class PlaybackClock:
         repeats = quantized or _whole(position)
         slowest = self._slowest_rate(effective) if explained else effective
         stalled = still >= self._stall_patience(repeats, slowest)
-        lingering = still >= self._stall_patience(quantized, effective)
+        lingering = still >= self._stall_patience(repeats, effective)
         error = self._error(position, at, now, shown, effective, narrowing)
         outside = strayed = False
         proven_upper = math.inf
