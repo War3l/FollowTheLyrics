@@ -1282,17 +1282,108 @@ def test_a_display_above_every_admitted_truth_waits_before_crawling():
     start, real, poll, stopped_at, lingering_at = 8.0, 0.8, 0.5, 3.0, 4.0
     c = clock.PlaybackClock(0.0)
     c.reset(start, True, 0.0, 1.0, app="app", track_start=True)
+    readings = []
     t = poll
     while t <= lingering_at:
         reading = math.floor(start + real * min(t, stopped_at))
         c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        readings.append((t, reading))
         t += poll
+    first_read_at = min(at for at, value in readings if value == reading)
     highest = reading + clock.QUANTUM
-    fastest = (highest - start) / lingering_at
+    fastest = clock.QUANTUM / (lingering_at - first_read_at)
     shown = c.position(lingering_at)
     reachable_at = lingering_at + (shown - highest) / fastest
+    crawled = c.position(reachable_at + 1.0) - shown
     assert shown > highest
-    assert c.position(reachable_at) == shown
+    assert c.position(reachable_at) == pytest.approx(
+        shown, abs=clock.POSITION_RESOLUTION
+    )
+    assert 0.0 < crawled < fastest
+
+
+def test_no_cell_proves_any_position_reached():
+    c = clock.PlaybackClock(0.0)
+    assert c._proven_to_reach(10.0, 1.0) == math.inf
+
+
+REFUTED_DISPLAYS = {
+    64: ("round", 32.169455105077034, 0.8, 1.0, 0.8, 9.0, 32.7995, 0.8),
+    160: ("trunc", 55.16585674336971, 1.5, 0.5, 1.0, 2.5, 54.9995, 1.6),
+    178: ("trunc", 55.17729687538237, 3.0, 0.25, 3.0, 1.25, 54.9995, 3.2),
+    204: ("round", 7.961615060976673, 0.8, 1.0, 1.0, 8.0, 8.5995, 0.8),
+    340: ("round", 33.99118167576971, 0.8, 1.0, 1.0, 8.0, 34.5995, 0.8),
+}
+TWIN_GAP = 0.001
+
+
+def display_before_and_after_a_refuting_reading(
+    mode, start, real, poll, announced, refuted_at
+):
+    quantize = {"trunc": math.floor, "round": round_half_up}[mode]
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, announced)
+    readings = []
+    for t in even_times(poll, refuted_at - poll):
+        readings.append((t, quantize(start + real * t)))
+        c.sync(readings[-1][1], True, t, t, 1.0, 600.0)
+    before = c.position(refuted_at)
+    reading = quantize(start + real * refuted_at)
+    c.sync(reading, True, refuted_at, refuted_at, 1.0, 600.0)
+    readings.append((refuted_at, reading))
+    return before, c.position(refuted_at), readings
+
+
+def even_times(step, end):
+    return [round(step * k, 6) for k in range(1, round(end / step) + 1)]
+
+
+@pytest.mark.parametrize("seed", sorted(REFUTED_DISPLAYS))
+def test_a_refuted_display_steps_back_exactly_to_the_highest_admitted_truth(
+    seed,
+):
+    mode, start, real, poll, announced, refuted_at, twin_start, twin_rate = (
+        REFUTED_DISPLAYS[seed]
+    )
+    before, after, readings = display_before_and_after_a_refuting_reading(
+        mode, start, real, poll, announced, refuted_at
+    )
+    bound = readings[-1][1] + clock.QUANTUM
+    assert all(
+        math.floor(twin_start + twin_rate * t) == reading
+        for t, reading in readings
+    )
+    assert bound - TWIN_GAP <= twin_start + twin_rate * refuted_at < bound
+    assert before > bound
+    assert after == pytest.approx(bound, abs=clock.POSITION_RESOLUTION)
+
+
+TWINS_APART = {
+    160: ((54.8325, 1.334), (53.6675, 2.666)),
+    178: ((54.8325, 2.668), (53.6675, 5.332)),
+}
+
+
+@pytest.mark.parametrize("seed", sorted(TWINS_APART))
+def test_a_display_stays_midway_between_twins_until_a_reading_parts_them(seed):
+    mode, start, real, poll, announced, refuted_at, _, _ = REFUTED_DISPLAYS[
+        seed
+    ]
+    (low_start, low_rate), (high_start, high_rate) = TWINS_APART[seed]
+    before, _, readings = display_before_and_after_a_refuting_reading(
+        mode, start, real, poll, announced, refuted_at
+    )
+    *read_alike, (_, parting) = readings
+    assert all(
+        round_half_up(low_start + low_rate * t)
+        == math.floor(high_start + high_rate * t)
+        == reading
+        for t, reading in read_alike
+    )
+    low = low_start + low_rate * refuted_at
+    high = high_start + high_rate * refuted_at
+    assert round_half_up(low) == parting != math.floor(high)
+    assert max(before - low, high - before) <= (high - low) / 2 + TWIN_GAP
 
 
 def test_a_fractional_track_start_does_not_step_back_below_a_truncating_twin():

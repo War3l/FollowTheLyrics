@@ -475,8 +475,18 @@ also push a change, and the app uses it as soon as it arrives.
   than `SETTLE_SECONDS` of playback keeps waiting for the target instead; a
   reading that refutes the seek ends that wait. A step back is then never
   larger than what the readings prove, which the tests measure on every scenario (see the
-  backward-step grids below). A reading taken at the very instant of a held
-  seek gives no elapsed time to learn a rate from, so it relearns nothing.
+  backward-step grids below). A refuted display lands on the highest truth
+  the readings still admit, within `POSITION_RESOLUTION`, and a truncating
+  twin with the same readings sits within 0.001 below it
+  (`test_a_refuted_display_steps_back_exactly_to_the_highest_admitted_truth`,
+  seeds 64, 160, 178, 204 and 340 of the backward-step fuzz). On seeds 160
+  and 178 the display before that reading is midway between two twins the
+  readings cannot yet tell apart, one rounding and slow, one truncating and
+  fast, so stepping back less would mean erring more than half their spread
+  against the fast one
+  (`test_a_display_stays_midway_between_twins_until_a_reading_parts_them`).
+  A reading taken at the very instant of a held seek gives no elapsed time
+  to learn a rate from, so it relearns nothing.
 - **A frozen display stays above every possible truth**: every wait of the
   display (a hold after a correction, the wait of `_approach`, a slew whose
   skew reaches -1) goes through `_hold_still`. It computes when the fastest
@@ -484,9 +494,9 @@ also push a change, and the app uses it as soon as it arrives.
   included, reaches the shown position (`_proven_to_reach`). The display
   stands still until then, and from then on it loses the rest of its lead at
   `CATCH_UP_SHARE` of the slowest rate the truth cells allow, so the truth
-  keeps closing on it. A display never stays frozen below a truth the
-  readings allow
-  (`test_once_readings_move_a_frozen_display_is_above_every_allowed_truth`,
+  keeps closing on it. A display never stays frozen below the truth of a
+  start the readings allow at the player's real rate
+  (`test_once_readings_move_a_frozen_display_is_above_every_allowed_start`,
   648 scenarios: three modes, six real rates, three polls, three announced
   rates, four starts, measured every 0.05 s from the first reading that
   changes). A catch-up moving at half of the announced rate while the truth

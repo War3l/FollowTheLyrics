@@ -969,9 +969,12 @@ class PlaybackClock:
     def _proven_to_reach(self, position: float, now: float) -> float:
         speed = self.speed / self._gain
         return min(
-            now + max(0.0, position - reached) / (ratio * speed)
-            for cell in self._proven_cells(now, speed)
-            for reached, ratio in cell
+            (
+                now + max(0.0, position - reached) / (ratio * speed)
+                for cell in self._proven_cells(now, speed)
+                for reached, ratio in cell
+            ),
+            default=math.inf,
         )
 
     def _ratio_spread(self) -> float:

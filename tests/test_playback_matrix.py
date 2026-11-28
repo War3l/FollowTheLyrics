@@ -1671,7 +1671,7 @@ def freeze_depth_below_truth(mode, real, poll, announced, seed):
 @pytest.mark.parametrize("poll", FREEZE_POLLS)
 @pytest.mark.parametrize("real", FREEZE_RATES)
 @pytest.mark.parametrize("mode", FREEZE_MODES)
-def test_once_readings_move_a_frozen_display_is_above_every_allowed_truth(
+def test_once_readings_move_a_frozen_display_is_above_every_allowed_start(
     mode, real, poll, announced, seed
 ):
     depth = freeze_depth_below_truth(mode, real, poll, announced, seed)
