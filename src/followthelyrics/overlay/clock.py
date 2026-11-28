@@ -1206,7 +1206,7 @@ class PlaybackClock:
         closing = strayed or now < self._closing_until
         if stalled and error < 0.0:
             self._anchor(shown, now, 0.0, math.inf)
-        elif lingering and error < 0.0 and self._truth:
+        elif lingering and error < 0.0:
             self._linger(shown, now)
         elif catching_up and error < 0.0:
             self._catch_up(shown, now, -error)
