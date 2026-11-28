@@ -1255,6 +1255,40 @@ def test_a_whole_second_read_twice_holds_the_display_within_its_readings():
     assert c.position(repeated_at + 1.0) < latest
 
 
+def test_a_whole_second_read_twice_from_a_whole_start_holds_the_display():
+    start, real, repeated_at = 8.0, 0.8, 3.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, 1.0, app="app", track_start=True)
+    for t in (1.0, 2.0, repeated_at):
+        reading = math.floor(start + real * t + 0.5)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+    slower_than_announced = 1.0
+    latest = reading + clock.QUANTUM / 2 + slower_than_announced * 1.0
+    assert reading == math.floor(start + real * 2.0 + 0.5)
+    assert c.position(repeated_at + 1.0) < latest
+
+
+def test_a_fractional_track_start_does_not_step_back_below_a_truncating_twin():
+    start, real, lead, sought_at, refuted_at = 50.66, 1.0, 2.0, 10.0, 11.0
+    c = clock.PlaybackClock(0.0)
+    c.reset(start, True, 0.0, 1.0, app="app", track_start=True)
+    for k in range(1, 12):
+        t = float(k)
+        if t == sought_at:
+            c.seeked(start + real * t + lead, t, t, True, app="app")
+        reading = math.floor(start + real * t + 0.5)
+        c.sync(reading, True, t, t, 1.0, 600.0, app="app")
+        if t == refuted_at:
+            break
+    twin_start = start + clock.QUANTUM / 2 - 0.01
+    assert all(
+        math.floor(twin_start + real * k) == math.floor(start + real * k + 0.5)
+        for k in range(1, 12)
+    )
+    twin_latest = reading + clock.QUANTUM - clock.POSITION_RESOLUTION
+    assert c.position(refuted_at) >= twin_latest
+
+
 def test_an_exact_player_steps_back_onto_its_reading_after_an_ignored_seek():
     start, real, lead, sought_at = 57.36, 0.8, 2.0, 10.0
     c = clock.PlaybackClock(0.0)

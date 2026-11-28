@@ -493,16 +493,33 @@ also push a change, and the app uses it as soon as it arrives.
   cells allow a slower one could stay ahead of a slow player, which is why
   its pace follows the slowest ratio.
 - **Stall patience for quantized players**: a quantized player that holds its
-  last whole reading is stalled only after one quantum at its effective rate,
-  `QUANTUM / (speed * gain)`, or the usual patience if that is longer. A
-  half-speed player is therefore not frozen between two of its steps. Once a
-  reading has been explained by the truth cells, the quantum is timed at the
-  slowest rate those cells allow. A whole reading gets the same patience
-  before enough whole readings have proven the player quantized, so a
-  half-speed player at its track start is not frozen after one second.
-- **Exact track start**: when the readings that build the truth cells begin
-  with a reading that is not a whole second (the exact start of a track), the
-  first cells are a point at that reading, not a quantum wide.
+  last whole reading is stalled only after one quantum at the slowest rate it
+  may have, or the usual patience if that is longer. Before a reading has
+  been explained by the truth cells, that rate is its effective rate,
+  `QUANTUM / (speed * gain)`; once one has been, it is the slowest rate those
+  cells allow. A half-speed player is therefore not frozen between two of its
+  steps. A whole reading gets the same patience before enough whole readings
+  have proven the player quantized, so a half-speed player at its track start
+  is not frozen after one second. A stalled display stands still until the
+  next reading.
+- **Lingering quantized reading**: a proven quantized player whose reading has
+  not changed for one quantum at its effective rate, but not yet for one
+  quantum at the slowest rate its cells allow, is not proven stalled: it may
+  be slower than announced. A display ahead of the estimate then lingers
+  (`_linger`): it stands still until the fastest admitted cell reaches it,
+  then moves at `CATCH_UP_SHARE` of the slowest rate until the next reading.
+  It neither freezes below a possible truth nor keeps running at the
+  announced rate past a reading read twice
+  (`test_a_whole_second_read_twice_holds_the_display_within_its_readings`,
+  `test_a_whole_second_read_twice_from_a_whole_start_holds_the_display`).
+- **A non-whole first reading is a cell**: when the readings that build the
+  truth cells begin with a reading that is not a whole second (a track start
+  or a reset at a fractional position), its cells are a quantum wide like any
+  other reading. A truncating player a fraction of a second further gives
+  the same whole readings, so the start alone cannot rule out a phase, and a
+  display stepping back after an ignored seek stops at the top of what every
+  phase still allows
+  (`test_a_fractional_track_start_does_not_step_back_below_a_truncating_twin`).
 - **Slope after the alias dies**: once one phase survives and the ratio range
   of its cell is within `ERR_PIN` (0.2) and the announced rate no longer fits
   it, the error is the midpoint of the cell projected to the current instant at

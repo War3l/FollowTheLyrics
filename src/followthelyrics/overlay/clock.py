@@ -454,9 +454,11 @@ class PlaybackClock:
             self._anchored = False
             corrected = False
             self._remember_whole(position, at, speed)
-        stalled = at - self._still_since >= self._stall_patience(
-            quantized or _whole(position), effective, explained
-        )
+        still = at - self._still_since
+        repeats = quantized or _whole(position)
+        slowest = self._slowest_rate(effective) if explained else effective
+        stalled = still >= self._stall_patience(repeats, slowest)
+        lingering = still >= self._stall_patience(quantized, effective)
         error = self._error(position, at, now, shown, effective, narrowing)
         outside = strayed = False
         proven_upper = math.inf
@@ -482,6 +484,7 @@ class PlaybackClock:
             error,
             now,
             stalled,
+            lingering,
             settled or resumed_off or relearned or corrected or outside,
             narrowing,
             strayed,
@@ -809,11 +812,7 @@ class PlaybackClock:
         while start > 0 and readings[start][0] >= readings[start - 1][0]:
             start -= 1
         (first, since), *later = readings[start:]
-        cells = (
-            self._reading_cells(first)
-            if _whole(first)
-            else self._point_cells(first)
-        )
+        cells = self._reading_cells(first)
         for whole, seen in [*later, (position, at)]:
             cells = _admitting(cells, seen - since, whole, speed)
             if not cells:
@@ -911,16 +910,6 @@ class PlaybackClock:
             lower < position + QUANTUM - phase and upper >= position - phase
             for phase, (lower, upper) in self._phase_bounds().items()
         )
-
-    def _point_cells(
-        self, position: float
-    ) -> dict[float, list[tuple[float, float]]]:
-        return {
-            phase: _box(
-                position - POSITION_RESOLUTION, position + POSITION_RESOLUTION
-            )
-            for phase in self._phase_candidates()
-        }
 
     def _reading_cells(
         self,
@@ -1132,17 +1121,14 @@ class PlaybackClock:
             return changed
         return False
 
-    def _stall_patience(
-        self, quantized: bool, effective: float, explained: bool
-    ) -> float:
+    def _stall_patience(self, quantized: bool, rate: float) -> float:
         if len(self._gaps) < MOVES_BEFORE_TRUST:
             patience = STALL_SECONDS
         else:
             expected = max(self._gaps) * UPDATE_MARGIN
             patience = min(STALL_SECONDS, max(QUICK_STALL_SECONDS, expected))
         if quantized:
-            slowest = self._slowest_rate(effective) if explained else effective
-            patience = max(patience, QUANTUM / slowest)
+            patience = max(patience, QUANTUM / rate)
         return patience
 
     def _slowest_rate(self, effective: float) -> float:
@@ -1209,6 +1195,7 @@ class PlaybackClock:
         error: float,
         now: float,
         stalled: bool,
+        lingering: bool,
         settled: bool,
         narrowing: bool,
         strayed: bool,
@@ -1219,6 +1206,8 @@ class PlaybackClock:
         closing = strayed or now < self._closing_until
         if stalled and error < 0.0:
             self._anchor(shown, now, 0.0, math.inf)
+        elif lingering and error < 0.0 and self._truth:
+            self._linger(shown, now)
         elif catching_up and error < 0.0:
             self._catch_up(shown, now, -error)
         elif (holding or settled) and error < 0.0:
@@ -1251,9 +1240,16 @@ class PlaybackClock:
             self._catch_up(shown, now, shown - estimate)
 
     def _catch_up(self, shown: float, now: float, ahead: float):
-        rate = min(self.speed, self._slowest_rate(self.speed)) * CATCH_UP_SHARE
+        rate = self._catch_up_rate()
         self._anchor(shown, now, rate, now + ahead / (self.speed - rate))
         self._catching_up = True
+
+    def _linger(self, shown: float, now: float):
+        reached = max(now, self._proven_to_reach(shown, now))
+        self._anchor(shown, reached, self._catch_up_rate(), math.inf)
+
+    def _catch_up_rate(self) -> float:
+        return min(self.speed, self._slowest_rate(self.speed)) * CATCH_UP_SHARE
 
     def _approach(
         self, shown: float, estimate: float, now: float, proven_upper: float
