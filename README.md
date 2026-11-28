@@ -27,7 +27,8 @@ add a desktop shortcut.
 1. Download **[FollowTheLyrics-linux](https://github.com/War3l/FollowTheLyrics/releases/latest/download/FollowTheLyrics-linux)**,
    make it executable (`chmod +x FollowTheLyrics-linux`) and run it.
 2. The current track comes from **MPRIS** (Spotify, Firefox, Chrome, VLC, mpv with `mpris`…),
-   the beat from **PulseAudio or PipeWire**.
+   the beat from **PulseAudio or PipeWire**. When the player reports a seek, the lyrics move to
+   the new position as soon as the signal arrives, without waiting for the next poll.
 3. Global shortcuts and game detection go through **X11**. On Wayland, the app opens through
    XWayland: shortcuts work when an XWayland window is in the foreground (which is the case for
    most Steam and Proton games), and a Proton game is recognised by the name of its `.exe`, so
@@ -136,6 +137,14 @@ ruff format --check src tests tools
 mypy
 mypy --platform linux
 pytest
+```
+
+`pytest` leaves out the full scenario grids of the playback clock, marked `slow`,
+and runs a fixed subset of each one that still covers every class of player.
+Run the full grids before pushing a change to the clock:
+```
+pytest -m slow          (only the full grids)
+pytest -m ""            (everything)
 ```
 
 ### Building the program

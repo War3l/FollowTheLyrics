@@ -38,6 +38,7 @@ from followthelyrics.overlay import clock as playback_clock
 from followthelyrics.overlay import colors
 from followthelyrics.overlay import effects
 from followthelyrics.overlay import screens
+from followthelyrics.playback import track
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,19 @@ class Overlay(QWidget):
             return
         read_at = min(getattr(np, "read_at", None) or now, now)
         speed = getattr(np, "speed", 1.0)
+        for edge in getattr(np, "edges", ()):
+            self.playback.status(edge.playing, min(edge.at, now), speed)
+        if np.playing:
+            for reading in getattr(np, "readings", ()):
+                self.playback.sync(
+                    reading.position,
+                    True,
+                    min(reading.at, now),
+                    now,
+                    speed,
+                    getattr(np, "duration", None),
+                    app=np.app,
+                )
         if np.key != self.track_key:
             self.track_key = np.key
             self.track_changed_at = self.card_since = now
@@ -268,9 +282,25 @@ class Overlay(QWidget):
             self.cover_img = None
             self.accent = [QColor(c) for c in effects.NEUTRAL_PALETTE]
             self._places.clear()
-            self.playback.reset(np.position, np.playing, read_at, speed)
+            self.playback.reset(
+                np.position,
+                np.playing,
+                read_at,
+                speed,
+                app=np.app,
+                track_start=True,
+            )
             self.force_paint = True
             self.wake()
+        elif np.seek is not None:
+            self.playback.seeked(
+                track.bounded_position(np.seek.position, np.duration),
+                np.seek.at,
+                now,
+                np.playing,
+                np.seek.speed,
+                app=np.app,
+            )
         else:
             self.playback.sync(
                 np.position,
@@ -279,6 +309,7 @@ class Overlay(QWidget):
                 now,
                 speed,
                 getattr(np, "duration", None),
+                app=np.app,
             )
         self.playing = np.playing
         self.track = np

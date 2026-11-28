@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 
@@ -7,6 +8,15 @@ from followthelyrics.desktop.linux import boot
 from followthelyrics.desktop.linux import session
 
 mpris = pytest.importorskip("followthelyrics.desktop.linux.mpris")
+QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
+
+
+@pytest.fixture(autouse=True)
+def qt_application():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    yield app
+    app.processEvents()
+
 
 SPOTIFY = {
     "PlaybackStatus": "Paused",
@@ -179,22 +189,248 @@ def test_x11_key_mapping():
     assert mask == x11.X.ControlMask | x11.X.Mod1Mask
 
 
+class FakeReply:
+    def __init__(self, value=None):
+        self._value = value
+        self.isValid = lambda: value is not None
+        self.value = lambda: value
+
+
+class FakeInterface:
+    def __init__(self, bus):
+        self.serviceOwner = lambda service: FakeReply(bus.owners.get(service))
+
+
+class FakeBus:
+    def __init__(self, owners=None):
+        self.owners = dict(owners or {})
+        self.links = []
+        self.isConnected = lambda: True
+        self.interface = lambda: FakeInterface(self)
+
+    def connect(self, service, path, interface, name, signature, slot):
+        self.links.append((service, name, path, interface))
+        return True
+
+    def disconnect(self, service, path, interface, name, signature, slot):
+        self.links.remove((service, name, path, interface))
+        return True
+
+
+def properties_of(service):
+    return SPOTIFY if service.rsplit(".", 1)[-1] in ("spotify", "vlc") else {}
+
+
+_OPENED_READERS = []
+
+
+@pytest.fixture(autouse=True)
+def close_opened_readers():
+    yield
+    while _OPENED_READERS:
+        _OPENED_READERS.pop().close()
+
+
+@pytest.fixture(autouse=True)
+def no_initial_state(monkeypatch):
+    monkeypatch.setattr(mpris, "_get_all", lambda bus, service: None)
+
+
+def reader_with(monkeypatch, players, bus=None):
+    reader = mpris.MprisSession(bus or FakeBus())
+    _OPENED_READERS.append(reader)
+    monkeypatch.setattr(reader, "_services", lambda: players)
+    monkeypatch.setattr(reader, "_properties", properties_of)
+    return reader
+
+
 def test_each_player_is_dated_right_after_its_own_reading(monkeypatch):
     now = [0.0]
 
     def slow_properties(service):
         now[0] += 1.0
-        return {"spotify": SPOTIFY, "vlc": {}}[service]
+        return properties_of(service)
 
     monkeypatch.setattr(mpris.time, "monotonic", lambda: now[0])
-    reader = mpris.MprisSession.__new__(mpris.MprisSession)
-    monkeypatch.setattr(
-        reader, "_services", lambda: {"spotify": "spotify", "vlc": "vlc"}
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify", "vlc": "vlc"}
     )
     monkeypatch.setattr(reader, "_properties", slow_properties)
     np = reader.now_playing(frozenset(), None)
     assert np.title == "Choral Chambers"
     assert np.read_at == 1.0
+
+
+FIREFOX_SERVICES = {"firefox": "org.mpris.MediaPlayer2.firefox"}
+
+
+def test_a_playing_player_read_on_a_whole_second_is_probed(monkeypatch):
+    calls = []
+    reader = reader_with(monkeypatch, FIREFOX_SERVICES)
+    monkeypatch.setattr(reader, "_properties", lambda service: FIREFOX)
+    monkeypatch.setattr(reader._listener, "probe", lambda: calls.append(True))
+    reader.now_playing(frozenset(), None)
+    assert calls == [True]
+
+
+def test_a_playing_player_read_between_seconds_is_not_probed(monkeypatch):
+    calls = []
+    reader = reader_with(monkeypatch, FIREFOX_SERVICES)
+    monkeypatch.setattr(reader._listener, "probe", lambda: calls.append(True))
+    fractional = {**FIREFOX, "Position": 12_345_000}
+    monkeypatch.setattr(reader, "_properties", lambda service: fractional)
+    reader.now_playing(frozenset(), None)
+    assert calls == []
+
+
+def test_the_owner_of_the_picked_player_is_followed(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    assert sorted(name for _, name, _, _ in bus.links) == [
+        "PropertiesChanged",
+        "Seeked",
+    ]
+    assert {service for service, *_ in bus.links} == {":1.42"}
+
+
+def test_a_player_restarted_under_a_new_owner_is_followed_again(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    bus.owners["org.mpris.MediaPlayer2.spotify"] = ":1.77"
+    reader.now_playing(frozenset(), None)
+    assert {service for service, *_ in bus.links} == {":1.77"}
+    assert len(bus.links) == 2
+
+
+def test_no_player_means_nothing_is_followed(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    monkeypatch.setattr(reader, "_services", dict)
+    assert reader.now_playing(frozenset(), None) is None
+    assert bus.links == []
+
+
+def test_closing_the_session_drops_its_subscriptions(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    reader.close()
+    assert bus.links == []
+
+
+def test_a_playback_change_of_the_followed_player_wakes_the_wait(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    reader._listener.changed(mpris.PLAYER, {"PlaybackStatus": "Paused"}, [])
+    started = time.monotonic()
+    reader.wait(5.0)
+    assert time.monotonic() - started < 1.0
+    assert reader.now_playing(frozenset(), None).seek is None
+
+
+def test_a_seek_of_the_player_being_left_is_not_kept(monkeypatch):
+    bus = FakeBus(
+        {
+            "org.mpris.MediaPlayer2.spotify": ":1.42",
+            "org.mpris.MediaPlayer2.vlc": ":1.9",
+        }
+    )
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    reader._listener.seeked(5_000_000)
+    monkeypatch.setattr(
+        reader, "_services", lambda: {"vlc": "org.mpris.MediaPlayer2.vlc"}
+    )
+    assert reader.now_playing(frozenset(), None).seek is None
+    assert {service for service, *_ in bus.links} == {":1.9"}
+
+
+def test_a_seek_of_the_followed_player_is_attached_to_the_next_reading(
+    monkeypatch,
+):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    reader._listener.seeked(5_000_000)
+    np = reader.now_playing(frozenset(), None)
+    assert np.seek.position == pytest.approx(5.0)
+    assert reader.now_playing(frozenset(), None).seek is None
+
+
+@pytest.mark.parametrize(
+    ("value", "position"),
+    [(0, 0.0), (5_000_000, 5.0), (86_400_000_000, 86_400.0)],
+)
+def test_a_seeked_position_is_read_in_microseconds(value, position):
+    seek = mpris.seek_of(value, 3.0)
+    assert seek.position == pytest.approx(position)
+    assert seek.at == 3.0
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-1, 86_400_000_001, 1.5, "5", None, True, float("nan")],
+)
+def test_an_invalid_seeked_position_is_dropped(value):
+    assert mpris.seek_of(value, 3.0) is None
+
+
+def test_the_player_service_is_kept_on_the_player():
+    assert mpris.player_of("spotify", SPOTIFY, service="s").service == "s"
+
+
+def next_track_of(monkeypatch, reader):
+    following = dict(
+        SPOTIFY, Metadata={"xesam:title": "Next", "xesam:artist": "Someone"}
+    )
+    monkeypatch.setattr(reader, "_properties", lambda service: following)
+    reader._listener.changed(
+        mpris.PLAYER,
+        {"Metadata": {"xesam:title": "Next", "xesam:artist": "Someone"}},
+        [],
+    )
+
+
+def test_a_seek_of_the_previous_track_is_dropped(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    reader._listener.seeked(5_000_000)
+    next_track_of(monkeypatch, reader)
+    assert reader.now_playing(frozenset(), None).seek is None
+
+
+def test_a_seek_after_the_track_change_is_kept(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    next_track_of(monkeypatch, reader)
+    reader._listener.seeked(7_000_000)
+    seek = reader.now_playing(frozenset(), None).seek
+    assert seek.position == pytest.approx(7.0)
+    assert seek.track_key == ("next", "someone")
 
 
 @pytest.mark.parametrize(
@@ -204,3 +440,38 @@ def test_the_player_speed_is_read_from_mpris(rate, speed):
     properties = dict(SPOTIFY, Rate=rate)
     player = mpris.player_of("spotify", properties)
     assert mpris.now_playing_of(player, "").speed == speed
+
+
+def test_a_seek_received_before_the_wait_ends_it_at_once(monkeypatch):
+    bus = FakeBus({"org.mpris.MediaPlayer2.spotify": ":1.42"})
+    reader = reader_with(
+        monkeypatch, {"spotify": "org.mpris.MediaPlayer2.spotify"}, bus
+    )
+    reader.now_playing(frozenset(), None)
+    reader._listener.seeked(5_000_000)
+    started = time.monotonic()
+    reader.wait(5.0)
+    assert time.monotonic() - started < 1.0
+
+
+def test_a_seek_carries_the_rate_last_played(monkeypatch):
+    reader = reader_with(monkeypatch, {})
+    reader._listener.changed(mpris.PLAYER, {"Rate": 2.0}, [])
+    reader._listener.changed(mpris.PLAYER, {"Rate": 0.0}, [])
+    reader._listener.seeked(5_000_000)
+    assert reader._events.take_seek().speed == 2.0
+
+
+def test_a_burst_of_playback_changes_wakes_the_wait_once(monkeypatch):
+    now = [10.0]
+    monkeypatch.setattr(mpris.time, "monotonic", lambda: now[0])
+    reader = reader_with(monkeypatch, {})
+    reader._events.begin()
+    reader._listener.changed(mpris.PLAYER, {"PlaybackStatus": "Paused"}, [])
+    assert reader._events.ready()
+    reader._events.begin()
+    reader._listener.changed(mpris.PLAYER, {"PlaybackStatus": "Playing"}, [])
+    assert not reader._events.ready()
+    now[0] += 1.0
+    reader._listener.changed(mpris.PLAYER, {"PlaybackStatus": "Paused"}, [])
+    assert reader._events.ready()

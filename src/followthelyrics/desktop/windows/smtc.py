@@ -2,6 +2,8 @@ import asyncio
 import logging
 import sys
 import time
+from datetime import UTC
+from datetime import datetime
 
 from winrt.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
@@ -12,6 +14,8 @@ from winrt.windows.media.control import (
 from winrt.windows.storage.streams import Buffer
 from winrt.windows.storage.streams import InputStreamOptions
 
+from followthelyrics.playback import events
+from followthelyrics.playback import timeline
 from followthelyrics.playback import track
 
 assert sys.platform == "win32"
@@ -38,15 +42,30 @@ def _is_playing(session) -> bool:
         return False
 
 
+def _unwatch(session, timeline_token, playback_token):
+    try:
+        session.remove_timeline_properties_changed(timeline_token)
+        session.remove_playback_info_changed(playback_token)
+    except Exception:
+        logger.debug("_unwatch failed", exc_info=True)
+
+
 class SmtcSession:
     def __init__(self):
         self._loop = asyncio.new_event_loop()
         self._manager = self._loop.run_until_complete(
             SessionManager.request_async()
         )
+        self._events = events.PlayerEvents()
+        self._watched: list[tuple] = []
 
     def now_playing(self, blocked, guard):
+        self._events.begin()
+        self._watch()
         return self._loop.run_until_complete(self._now_playing(blocked, guard))
+
+    def wait(self, seconds):
+        self._events.wait(seconds)
 
     def cover(self, blocked, guard):
         return self._loop.run_until_complete(self._cover(blocked, guard))
@@ -61,7 +80,80 @@ class SmtcSession:
             return []
 
     def close(self):
+        for entry in self._watched:
+            _unwatch(*entry[1:])
+        self._watched = []
         self._loop.close()
+
+    def _on_playback(self, _sender, _args):
+        self._events.notify()
+
+    def _on_timeline(self, session, anchor):
+        try:
+            timeline_properties = session.get_timeline_properties()
+            info = session.get_playback_info()
+            reading = timeline.read(
+                timeline_properties.position.total_seconds(),
+                timeline_properties.last_updated_time,
+                getattr(info, "playback_rate", None),
+                _is_playing(session),
+            )
+        except Exception:
+            logger.debug("_on_timeline failed", exc_info=True)
+            self._events.notify()
+            return
+        previous = anchor.get("reading")
+        pending = anchor.get("pending")
+        anchor["reading"] = reading
+        anchor["pending"] = None
+        if reading is None or not timeline.departs(previous, reading, pending):
+            if reading is not None:
+                anchor["pending"] = timeline.awaiting(
+                    previous, reading, pending
+                )
+            self._events.notify()
+            return
+        self._events.notify(
+            timeline.seek_of_timeline(
+                reading.position,
+                reading.updated,
+                datetime.now(UTC),
+                time.monotonic(),
+                reading.rate,
+            )
+        )
+
+    def _watch(self):
+        try:
+            sessions = list(self._manager.get_sessions())
+        except Exception:
+            logger.debug("_watch failed", exc_info=True)
+            return
+        keys = timeline.session_keys([_app_id(s) for s in sessions])
+        kept, gone, fresh = timeline.partition_watched(
+            self._watched, list(zip(keys, sessions, strict=True))
+        )
+        for entry in gone:
+            _unwatch(*entry[1:])
+        self._watched = kept
+        for key, session in fresh:
+            entry = self._subscribe(session)
+            if entry is not None:
+                self._watched.append((key, *entry))
+
+    def _subscribe(self, session):
+        anchor: dict = {}
+        try:
+            timeline_token = session.add_timeline_properties_changed(
+                lambda _sender, _args: self._on_timeline(session, anchor)
+            )
+            playback_token = session.add_playback_info_changed(
+                self._on_playback
+            )
+        except Exception:
+            logger.debug("_subscribe failed", exc_info=True)
+            return None
+        return (session, timeline_token, playback_token)
 
     async def _pick(self, blocked, guard):
         manager = self._manager
